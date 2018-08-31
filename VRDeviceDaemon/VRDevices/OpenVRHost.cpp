@@ -177,7 +177,7 @@ Methods of class OpenVRHost:
 
 void OpenVRHost::updateHMDConfiguration(OpenVRHost::DeviceState& deviceState) const
 	{
-	Threads::Mutex::Lock hmdConfigurationLock(deviceManager->getHmdConfigurationMutex());
+	deviceManager->lockHmdConfigurations();
 	
 	/* Update recommended pre-distortion render target size: */
 	uint32_t renderTargetSize[2];
@@ -228,6 +228,8 @@ void OpenVRHost::updateHMDConfiguration(OpenVRHost::DeviceState& deviceState) co
 	
 	/* Tell the device manager that the HMD configuration was updated: */
 	deviceManager->updateHmdConfiguration(deviceState.hmdConfiguration);
+	
+	deviceManager->unlockHmdConfigurations();
 	}
 
 void OpenVRHost::deviceThreadMethod(void)
@@ -1307,13 +1309,15 @@ vr::ETrackedPropertyError OpenVRHost::WritePropertyBatch(vr::PropertyContainerHa
 				float ipd;
 				if(retrieveFloat(ulContainerHandle,minDeviceHandle,minDeviceHandle,*pPtr,ipd)&&ds.hmdConfiguration!=0)
 					{
-					Threads::Mutex::Lock hmdConfigurationLock(deviceManager->getHmdConfigurationMutex());
+					deviceManager->lockHmdConfigurations();
 					
 					/* Update the HMD's IPD: */
 					ds.hmdConfiguration->setIpd(ipd);
 					
 					/* Update the HMD configuration in the device manager: */
 					deviceManager->updateHmdConfiguration(ds.hmdConfiguration);
+					
+					deviceManager->unlockHmdConfigurations();
 					}
 				break;
 				}

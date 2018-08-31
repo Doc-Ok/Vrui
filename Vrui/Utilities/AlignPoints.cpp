@@ -362,9 +362,11 @@ Aligner<PointAlignerParam>::align(
 	void)
 	{
 	/* Stuff all valid pairs of points into the aligner: */
-	for(size_t pi=0;pi<froms.size()&&pi<tos.size();++pi)
-		if(froms[pi].value&&tos[pi].value)
-			aligner.addPointPair(froms[pi],tos[pi]);
+	const PointList& fs=froms;
+	const PointList& ts=tos;
+	for(size_t pi=0;pi<fs.size()&&pi<ts.size();++pi)
+		if(fs[pi].value&&ts[pi].value)
+			aligner.addPointPair(fs[pi],ts[pi]);
 	
 	/* Condition the point sets to increase numerical stability: */
 	aligner.condition();
@@ -440,9 +442,11 @@ RanSaCAligner<PointAlignerParam>::align(
 	void)
 	{
 	/* Stuff all valid pairs of points into the RanSaC aligner: */
-	for(size_t pi=0;pi<froms.size()&&pi<tos.size();++pi)
-		if(froms[pi].value&&tos[pi].value)
-			ransacer.addDataPoint(PointPair(froms[pi],tos[pi]));
+	const PointList& fs=froms;
+	const PointList& ts=tos;
+	for(size_t pi=0;pi<fs.size()&&pi<ts.size();++pi)
+		if(fs[pi].value&&ts[pi].value)
+			ransacer.addDataPoint(PointPair(fs[pi],ts[pi]));
 	
 	/* Fit a model via RanSaC: */
 	ransacer.fitModel(aligner);
