@@ -5550,3 +5550,10 @@ Vrui-4.6-001:
 - Added getPixelRow method to Images::BaseImage.
 - Fixed handling of PNG image files with tRNS chunks and/or 16-bit pixel
   components in Images/ReadPNGImage.cpp.
+
+Vrui-4.6-002:
+- Modified SteamVR auto-detection code in makefile yet again; maybe it
+  works this time.
+- Updated OpenVRHost device driver module to new OpenVR driver ABI as of
+  08/26/2018.
+  - Updated contributed openvr_driver.h header file.

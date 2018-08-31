@@ -177,7 +177,7 @@ Methods of class OpenVRHost:
 
 void OpenVRHost::updateHMDConfiguration(OpenVRHost::DeviceState& deviceState) const
 	{
-	deviceManager->lockHmdConfigurations();
+	Threads::Mutex::Lock hmdConfigurationLock(deviceManager->getHmdConfigurationMutex());
 	
 	/* Update recommended pre-distortion render target size: */
 	uint32_t renderTargetSize[2];
@@ -228,8 +228,6 @@ void OpenVRHost::updateHMDConfiguration(OpenVRHost::DeviceState& deviceState) co
 	
 	/* Tell the device manager that the HMD configuration was updated: */
 	deviceManager->updateHmdConfiguration(deviceState.hmdConfiguration);
-	
-	deviceManager->unlockHmdConfigurations();
 	}
 
 void OpenVRHost::deviceThreadMethod(void)
@@ -1309,15 +1307,13 @@ vr::ETrackedPropertyError OpenVRHost::WritePropertyBatch(vr::PropertyContainerHa
 				float ipd;
 				if(retrieveFloat(ulContainerHandle,minDeviceHandle,minDeviceHandle,*pPtr,ipd)&&ds.hmdConfiguration!=0)
 					{
-					deviceManager->lockHmdConfigurations();
+					Threads::Mutex::Lock hmdConfigurationLock(deviceManager->getHmdConfigurationMutex());
 					
 					/* Update the HMD's IPD: */
 					ds.hmdConfiguration->setIpd(ipd);
 					
 					/* Update the HMD configuration in the device manager: */
 					deviceManager->updateHmdConfiguration(ds.hmdConfiguration);
-					
-					deviceManager->unlockHmdConfigurations();
 					}
 				break;
 				}
@@ -1517,6 +1513,26 @@ vr::EVRInputError OpenVRHost::CreateHapticComponent(vr::PropertyContainerHandle_
 	++nextComponentHandle;
 	++ds.nextHapticFeatureIndex;
 	++ds.numHapticFeatures;
+	
+	return vr::VRInputError_None;
+	}
+
+vr::EVRInputError OpenVRHost::CreateSkeletonComponent(vr::PropertyContainerHandle_t ulContainer,const char* pchName,const char* pchSkeletonPath,const char* pchBasePosePath,const vr::VRBoneTransform_t* pGripLimitTransforms,uint32_t unGripLimitTransformCount,vr::VRInputComponentHandle_t* pHandle)
+	{
+	#ifdef VERBOSE
+	printf("OpenVRHost: Ignoring call to CreateSkeletonComponent\n");
+	fflush(stdout);
+	#endif
+	
+	return vr::VRInputError_None;
+	}
+
+vr::EVRInputError OpenVRHost::UpdateSkeletonComponent(vr::VRInputComponentHandle_t ulComponent,vr::EVRSkeletalMotionRange eMotionRange,const vr::VRBoneTransform_t* pTransforms,uint32_t unTransformCount)
+	{
+	#ifdef VERBOSE
+	printf("OpenVRHost: Ignoring call to UpdateSkeletonComponent\n");
+	fflush(stdout);
+	#endif
 	
 	return vr::VRInputError_None;
 	}
@@ -1892,7 +1908,7 @@ uint32_t OpenVRHost::LoadSharedResource(const char* pchResourceName,char* pchBuf
 		
 		return uint32_t(resourceSize);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		#ifdef VERBOSE
 		printf("OpenVRHost::LoadSharedResource: Resource %s could not be loaded due to exception %s\n",resourcePath.c_str(),err.what());
