@@ -2,7 +2,7 @@
 LensCorrector - Helper class to render imagery into an off-screen buffer
 and then warp the buffer to the final drawable to correct subsequent
 lens distortion.
-Copyright (c) 2014-2018 Oliver Kreylos
+Copyright (c) 2014-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -110,6 +110,7 @@ class LensCorrector
 	unsigned int eyePosVersion,eyeVersion,distortionMeshVersion; // Version numbers of HMD configuration components
 	Scalar lastShownIpd; // The last IPD shown to the user via dialog, to filter out random jitter
 	GLMotif::PopupWindow* ipdDisplayDialog; // A dialog window to notify the user of changed HMD configuration
+	double ipdDisplayDialogTimeout; // Time for which the IPD display dialog stays open in seconds
 	double ipdDisplayDialogTakedownTime; // Time at which the dialog window will be closed
 	LensConfig lensConfigs[2]; // Lens configurations for left and right eyes
 	int predistortionFrameSize[2]; // Width and height of pre-distortion frame buffer combining final drawable size and overscan
@@ -158,6 +159,7 @@ class LensCorrector
 	void prepare(int eye,DisplayState& displayState) const; // Prepares for rendering of the pre-distortion image for the given eye and adjusts the given display state object
 	void adjustProjection(int eye,const Point& screenEyePos,double near,double& left,double& right,double& bottom,double& top) const; // Adjusts the projection matrix to accound for overscan
 	void finish(int eye) const; // Finishes up after the pre-distortion image for the given eye has been rendered
+	void cleanup(void) const; // Cleans up after the pre-distortion images for both eyes have been rendered
 	bool doesReproject(void) const // Returns true if the lens corrector is set up to reproject rendered frames for latency mitigation
 		{
 		return warpReproject;

@@ -1,7 +1,7 @@
 /***********************************************************************
 VRDeviceDescriptor - Class describing the structure of an input device
 represented by a VR device daemon.
-Copyright (c) 2010-2018 Oliver Kreylos
+Copyright (c) 2010-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -23,8 +23,10 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 #include <Vrui/Internal/VRDeviceDescriptor.h>
 
+#include <Misc/Utility.h>
 #include <Misc/SizedTypes.h>
 #include <Misc/PrintInteger.h>
+#include <Misc/Marshaller.h>
 #include <Misc/StandardMarshallers.h>
 #include <Misc/ArrayMarshallers.h>
 #include <Misc/ConfigurationFile.h>
@@ -134,7 +136,7 @@ void VRDeviceDescriptor::initHapticFeatures(int newNumHapticFeatures)
 	}
 
 VRDeviceDescriptor::VRDeviceDescriptor(void)
-	:trackType(TRACK_NONE),rayDirection(0,1,0),rayStart(0.0f),
+	:trackType(TRACK_NONE),rayDirection(0,1,0),rayStart(0),
 	 hasBattery(false),canPowerOff(false),
 	 trackerIndex(-1),
 	 numButtons(0),buttonNames(0),buttonIndices(0),
@@ -144,7 +146,7 @@ VRDeviceDescriptor::VRDeviceDescriptor(void)
 	}
 
 VRDeviceDescriptor::VRDeviceDescriptor(int sNumButtons,int sNumValuators,int sNumHapticFeatures)
-	:trackType(TRACK_NONE),rayDirection(0,1,0),rayStart(0.0f),
+	:trackType(TRACK_NONE),rayDirection(0,1,0),rayStart(0),
 	 hasBattery(false),canPowerOff(false),
 	 trackerIndex(-1),
 	 numButtons(0),buttonNames(0),buttonIndices(0),
@@ -167,34 +169,91 @@ VRDeviceDescriptor::~VRDeviceDescriptor(void)
 	delete[] hapticFeatureIndices;
 	}
 
+namespace {
+
+/*******************************************************
+Helper functions to read/write strings in legacy format:
+*******************************************************/
+
+void writeLegacyString(const std::string& string,IO::File& sink) // Writes a C++ string to a sink using the old string protocol
+	{
+	/* Write the string's length as a 32-bit unsigned integer, followed by the string's characters: */
+	size_t length=string.length();
+	sink.write(Misc::UInt32(length));
+	sink.write(string.data(),length);
+	}
+
+void writeLegacyStringArray(const std::string* strings,size_t numStrings,IO::File& sink)
+	{
+	/* Write all strings in the array: */
+	for(size_t i=0;i<numStrings;++i)
+		writeLegacyString(strings[i],sink);
+	}
+
+void readLegacyString(IO::File& source,std::string& string)
+	{
+	/* Read the string's length as a 32-bit unsigned integer, followed by the string's characters: */
+	size_t length(source.read<Misc::UInt32>());
+	string.clear();
+	string.reserve(length);
+	while(length>0)
+		{
+		char buffer[256];
+		size_t readSize=Misc::min(length,sizeof(buffer));
+		source.read(buffer,readSize);
+		string.append(buffer,buffer+readSize);
+		length-=readSize;
+		}
+	}
+
+void readLegacyStringArray(IO::File& source,std::string* strings,size_t numStrings)
+	{
+	/* Read all strings in the array: */
+	for(size_t i=0;i<numStrings;++i)
+		readLegacyString(source,strings[i]);
+	}
+}
+
 void VRDeviceDescriptor::write(IO::File& sink,unsigned int protocolVersion) const
 	{
-	Misc::Marshaller<std::string>::write(name,sink);
-	sink.write<Misc::SInt32>(trackType);
-	Misc::Marshaller<Vector>::write(rayDirection,sink);
-	sink.write<Misc::Float32>(rayStart);
-	sink.write<Misc::SInt32>(trackerIndex);
-	sink.write<Misc::SInt32>(numButtons);
+	if(protocolVersion>=9U)
+		Misc::write(name,sink);
+	else
+		writeLegacyString(name,sink);
+	sink.write(Misc::SInt32(trackType));
+	Misc::write(rayDirection,sink);
+	sink.write(rayStart);
+	sink.write(Misc::SInt32(trackerIndex));
+	sink.write(Misc::SInt32(numButtons));
 	if(numButtons>0)
 		{
-		Misc::FixedArrayMarshaller<std::string>::write(buttonNames,numButtons,sink);
+		if(protocolVersion>=9U)
+			Misc::FixedArrayMarshaller<std::string>::write(buttonNames,numButtons,sink);
+		else
+			writeLegacyStringArray(buttonNames,numButtons,sink);
 		Misc::FixedArrayMarshaller<Misc::SInt32>::write(buttonIndices,numButtons,sink);
 		}
-	sink.write<Misc::SInt32>(numValuators);
+	sink.write(Misc::SInt32(numValuators));
 	if(numValuators>0)
 		{
-		Misc::FixedArrayMarshaller<std::string>::write(valuatorNames,numValuators,sink);
+		if(protocolVersion>=9U)
+			Misc::FixedArrayMarshaller<std::string>::write(valuatorNames,numValuators,sink);
+		else
+			writeLegacyStringArray(valuatorNames,numValuators,sink);
 		Misc::FixedArrayMarshaller<Misc::SInt32>::write(valuatorIndices,numValuators,sink);
 		}
 	if(protocolVersion>=5U)
-		sink.write<Misc::UInt8>(hasBattery);
+		sink.write(Misc::UInt8(hasBattery?1:0));
 	if(protocolVersion>=6U)
 		{
-		sink.write<Misc::UInt8>(canPowerOff);
-		sink.write<Misc::SInt32>(numHapticFeatures);
+		sink.write(Misc::UInt8(canPowerOff?1:0));
+		sink.write(Misc::SInt32(numHapticFeatures));
 		if(numHapticFeatures>0)
 			{
-			Misc::FixedArrayMarshaller<std::string>::write(hapticFeatureNames,numHapticFeatures,sink);
+			if(protocolVersion>=9U)
+				Misc::FixedArrayMarshaller<std::string>::write(hapticFeatureNames,numHapticFeatures,sink);
+			else
+				writeLegacyStringArray(hapticFeatureNames,numHapticFeatures,sink);
 			Misc::FixedArrayMarshaller<Misc::SInt32>::write(hapticFeatureIndices,numHapticFeatures,sink);
 			}
 		}
@@ -202,13 +261,16 @@ void VRDeviceDescriptor::write(IO::File& sink,unsigned int protocolVersion) cons
 
 void VRDeviceDescriptor::read(IO::File& source,unsigned int protocolVersion)
 	{
-	name=Misc::Marshaller<std::string>::read(source);
-	trackType=source.read<Misc::SInt32>();
-	rayDirection=Vector(Misc::Marshaller<Geometry::Vector<Misc::Float32,3> >::read(source));
+	if(protocolVersion>=9U)
+		Misc::read(source,name);
+	else
+		readLegacyString(source,name);
+	trackType=int(source.read<Misc::SInt32>());
+	Misc::read(source,rayDirection);
 	rayStart=source.read<Misc::Float32>();
-	trackerIndex=source.read<Misc::SInt32>();
+	trackerIndex=int(source.read<Misc::SInt32>());
 	
-	numButtons=source.read<Misc::SInt32>();
+	numButtons=int(source.read<Misc::SInt32>());
 	delete[] buttonNames;
 	buttonNames=0;
 	delete[] buttonIndices;
@@ -216,12 +278,15 @@ void VRDeviceDescriptor::read(IO::File& source,unsigned int protocolVersion)
 	if(numButtons>0)
 		{
 		buttonNames=new std::string[numButtons];
-		Misc::FixedArrayMarshaller<std::string>::read(buttonNames,numButtons,source);
+		if(protocolVersion>=9U)
+			Misc::FixedArrayMarshaller<std::string>::read(buttonNames,numButtons,source);
+		else
+			readLegacyStringArray(source,buttonNames,numButtons);
 		buttonIndices=new int[numButtons];
 		Misc::FixedArrayMarshaller<Misc::SInt32>::read(buttonIndices,numButtons,source);
 		}
 	
-	numValuators=source.read<Misc::SInt32>();
+	numValuators=int(source.read<Misc::SInt32>());
 	delete[] valuatorNames;
 	valuatorNames=0;
 	delete[] valuatorIndices;
@@ -229,13 +294,16 @@ void VRDeviceDescriptor::read(IO::File& source,unsigned int protocolVersion)
 	if(numValuators>0)
 		{
 		valuatorNames=new std::string[numValuators];
-		Misc::FixedArrayMarshaller<std::string>::read(valuatorNames,numValuators,source);
+		if(protocolVersion>=9U)
+			Misc::FixedArrayMarshaller<std::string>::read(valuatorNames,numValuators,source);
+		else
+			readLegacyStringArray(source,valuatorNames,numValuators);
 		valuatorIndices=new int[numValuators];
 		Misc::FixedArrayMarshaller<Misc::SInt32>::read(valuatorIndices,numValuators,source);
 		}
 	
 	if(protocolVersion>=5U)
-		hasBattery=source.read<Misc::UInt8>();
+		hasBattery=source.read<Misc::UInt8>()!=0;
 	
 	delete[] hapticFeatureNames;
 	hapticFeatureNames=0;
@@ -243,12 +311,15 @@ void VRDeviceDescriptor::read(IO::File& source,unsigned int protocolVersion)
 	hapticFeatureIndices=0;
 	if(protocolVersion>=6U)
 		{
-		canPowerOff=source.read<Misc::UInt8>();
-		numHapticFeatures=source.read<Misc::SInt32>();
+		canPowerOff=source.read<Misc::UInt8>()!=0;
+		numHapticFeatures=int(source.read<Misc::SInt32>());
 		if(numHapticFeatures>0)
 			{
 			hapticFeatureNames=new std::string[numHapticFeatures];
-			Misc::FixedArrayMarshaller<std::string>::read(hapticFeatureNames,numHapticFeatures,source);
+			if(protocolVersion>=9U)
+				Misc::FixedArrayMarshaller<std::string>::read(hapticFeatureNames,numHapticFeatures,source);
+			else
+				readLegacyStringArray(source,hapticFeatureNames,numHapticFeatures);
 			hapticFeatureIndices=new int[numHapticFeatures];
 			Misc::FixedArrayMarshaller<Misc::SInt32>::read(hapticFeatureIndices,numHapticFeatures,source);
 			}
@@ -282,7 +353,7 @@ void VRDeviceDescriptor::save(Misc::ConfigurationFileSection& configFileSection)
 	if(trackType&TRACK_DIR)
 		{
 		configFileSection.storeValue<Vector>("./rayDirection",rayDirection);
-		configFileSection.storeValue<float>("./rayStart",rayStart);
+		configFileSection.storeValue<Scalar>("./rayStart",rayStart);
 		}
 	configFileSection.storeValue<bool>("./hasBattery",hasBattery);
 	configFileSection.storeValue<bool>("./canPowerOff",canPowerOff);
@@ -328,7 +399,7 @@ void VRDeviceDescriptor::load(const Misc::ConfigurationFileSection& configFileSe
 		{
 		/* Update ray definition: */
 		rayDirection=configFileSection.retrieveValue<Vector>("./rayDirection",rayDirection);
-		rayStart=configFileSection.retrieveValue<float>("./rayStart",rayStart);
+		rayStart=configFileSection.retrieveValue<Scalar>("./rayStart",rayStart);
 		}
 	
 	/* Update other device state: */

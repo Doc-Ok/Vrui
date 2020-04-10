@@ -1,6 +1,6 @@
 /***********************************************************************
 AudioCaptureDevice - Base class for audio capture devices.
-Copyright (c) 2010-2015 Oliver Kreylos
+Copyright (c) 2010-2018 Oliver Kreylos
 
 This file is part of the Basic Sound Library (Sound).
 
@@ -42,6 +42,26 @@ AudioCaptureDevice::DeviceList AudioCaptureDevice::getDevices(void)
 	#if SOUND_CONFIG_HAVE_ALSA
 	ALSAAudioCaptureDevice::addDevices(result);
 	#endif
+	
+	return result;
+	}
+
+AudioCaptureDevice* AudioCaptureDevice::openDevice(const char* name)
+	{
+	/* Get the list of all existing audio devices: */
+	DeviceList devices=getDevices();
+	
+	/* Find the first device whose name matches the given name: */
+	AudioCaptureDevice* result=0;
+	for(DeviceList::iterator dIt=devices.begin();dIt!=devices.end();++dIt)
+		{
+		if((*dIt)->getName()==name)
+			{
+			/* Open the found audio device: */
+			result=(*dIt)->openDevice();
+			break;
+			}
+		}
 	
 	return result;
 	}

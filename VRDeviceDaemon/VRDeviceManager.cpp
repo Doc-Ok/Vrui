@@ -2,7 +2,7 @@
 VRDeviceManager - Class to gather position, button and valuator data
 from one or several VR devices and associate them with logical input
 devices.
-Copyright (c) 2002-2018 Oliver Kreylos
+Copyright (c) 2002-2020 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -49,11 +49,7 @@ VRDeviceManager::VRDeviceManager(Misc::ConfigurationFile& configFile)
 	 calibratorFactories(configFile.retrieveString("./calibratorDirectory",VRDEVICEDAEMON_CONFIG_VRCALIBRATORSDIR)),
 	 numDevices(0),
 	 devices(0),trackerIndexBases(0),buttonIndexBases(0),valuatorIndexBases(0),
-	 batteryStateUpdatedCallback(0),batteryStateUpdatedCallbackData(0),
-	 hmdConfigurationUpdatedCallback(0),hmdConfigurationUpdatedCallbackData(0),
-	 fullTrackerReportMask(0x0),trackerReportMask(0x0),trackerUpdateNotificationEnabled(false),
-	 trackerUpdateCompleteCond(0),
-	 trackerUpdateCompleteCallback(0),trackerUpdateCompleteCallbackData(0)
+	 fullTrackerReportMask(0x0),trackerReportMask(0x0),streamer(0)
 	{
 	/* Allocate device and base index arrays: */
 	typedef std::vector<std::string> StringList;
@@ -297,23 +293,19 @@ void VRDeviceManager::disableTracker(int trackerIndex)
 	state.setTrackerValid(trackerIndex,false);
 	
 	/* Check if update notifications are requested: */
-	if(trackerUpdateNotificationEnabled)
+	if(streamer!=0)
 		{
+		/* Notify streamer of single tracker update: */
+		streamer->trackerUpdated(trackerIndex);
+		
 		/* Update tracker report mask: */
 		trackerReportMask|=1<<trackerIndex;
 		if(trackerReportMask==fullTrackerReportMask)
 			{
-			if(trackerUpdateCompleteCond!=0)
-				{
-				/* Wake up all client threads in stream mode: */
-				trackerUpdateCompleteCond->broadcast();
-				}
-			else
-				{
-				/* Call a callback: */
-				trackerUpdateCompleteCallback(this,trackerUpdateCompleteCallbackData);
-				}
+			/* Notify streamer that device state has completed update: */
+			streamer->updateCompleted();
 			
+			/* Reset the tracker report mask: */
 			trackerReportMask=0x0;
 			}
 		}
@@ -329,23 +321,19 @@ void VRDeviceManager::setTrackerState(int trackerIndex,const Vrui::VRDeviceState
 	state.setTrackerValid(trackerIndex,true);
 	
 	/* Check if update notifications are requested: */
-	if(trackerUpdateNotificationEnabled)
+	if(streamer!=0)
 		{
+		/* Notify streamer of single tracker update: */
+		streamer->trackerUpdated(trackerIndex);
+		
 		/* Update tracker report mask: */
 		trackerReportMask|=1<<trackerIndex;
 		if(trackerReportMask==fullTrackerReportMask)
 			{
-			if(trackerUpdateCompleteCond!=0)
-				{
-				/* Wake up all client threads in stream mode: */
-				trackerUpdateCompleteCond->broadcast();
-				}
-			else
-				{
-				/* Call a callback: */
-				trackerUpdateCompleteCallback(this,trackerUpdateCompleteCallbackData);
-				}
+			/* Notify streamer that device state has completed update: */
+			streamer->updateCompleted();
 			
+			/* Reset the tracker report mask: */
 			trackerReportMask=0x0;
 			}
 		}
@@ -355,30 +343,39 @@ void VRDeviceManager::setButtonState(int buttonIndex,Vrui::VRDeviceState::Button
 	{
 	Threads::Mutex::Lock stateLock(stateMutex);
 	state.setButtonState(buttonIndex,newButtonState);
+	
+	/* Check if update notifications are requested: */
+	if(streamer!=0)
+		{
+		/* Notify streamer of single button update: */
+		streamer->buttonUpdated(buttonIndex);
+		}
 	}
 
 void VRDeviceManager::setValuatorState(int valuatorIndex,Vrui::VRDeviceState::ValuatorState newValuatorState)
 	{
 	Threads::Mutex::Lock stateLock(stateMutex);
 	state.setValuatorState(valuatorIndex,newValuatorState);
+	
+	/* Check if update notifications are requested: */
+	if(streamer!=0)
+		{
+		/* Notify streamer of single valuator update: */
+		streamer->valuatorUpdated(valuatorIndex);
+		}
 	}
 
 void VRDeviceManager::updateState(void)
 	{
 	Threads::Mutex::Lock stateLock(stateMutex);
-	if(trackerUpdateNotificationEnabled&&(trackerReportMask!=0x0||fullTrackerReportMask==0x0))
+	
+	/* Check if update notifications are requested and an update is necessary: */
+	if(streamer!=0&&(trackerReportMask!=0x0||fullTrackerReportMask==0x0))
 		{
-		if(trackerUpdateCompleteCond!=0)
-			{
-			/* Wake up all client threads in stream mode: */
-			trackerUpdateCompleteCond->broadcast();
-			}
-		else
-			{
-			/* Call a callback: */
-			trackerUpdateCompleteCallback(this,trackerUpdateCompleteCallbackData);
-			}
+		/* Notify streamer that device state has completed update: */
+		streamer->updateCompleted();
 		
+		/* Reset the tracker report mask: */
 		trackerReportMask=0x0;
 		}
 	}
@@ -397,16 +394,16 @@ void VRDeviceManager::updateBatteryState(unsigned int virtualDeviceIndex,const V
 		{
 		/* Update the battery state and call the state update callback: */
 		bs=newBatteryState;
-		if(batteryStateUpdatedCallback!=0)
-			batteryStateUpdatedCallback(this,virtualDeviceIndex,bs,batteryStateUpdatedCallbackData);
+		if(streamer!=0)
+			streamer->batteryStateUpdated(virtualDeviceIndex);
 		}
 	}
 
 void VRDeviceManager::updateHmdConfiguration(const Vrui::HMDConfiguration* hmdConfiguration)
 	{
-	/* Call the HMD configuration update callback: */
-	if(hmdConfigurationUpdatedCallback!=0)
-		hmdConfigurationUpdatedCallback(this,hmdConfiguration,hmdConfigurationUpdatedCallbackData);
+	/* Check if update notifications are requested: */
+	if(streamer!=0)
+		streamer->hmdConfigurationUpdated(hmdConfiguration);
 	}
 
 void VRDeviceManager::powerOff(unsigned int powerFeatureIndex)
@@ -420,58 +417,25 @@ void VRDeviceManager::powerOff(unsigned int powerFeatureIndex)
 		}
 	}
 
-void VRDeviceManager::hapticTick(unsigned int hapticFeatureIndex,unsigned int duration)
+void VRDeviceManager::hapticTick(unsigned int hapticFeatureIndex,unsigned int duration,unsigned int frequency,unsigned int amplitude)
 	{
 	/* Check if the feature exists: */
 	if(hapticFeatureIndex<hapticFeatures.size())
 		{
 		/* Forward request to managing device: */
 		Feature& f=hapticFeatures[hapticFeatureIndex];
-		f.device->hapticTick(f.deviceFeatureIndex,duration);
+		f.device->hapticTick(f.deviceFeatureIndex,duration,frequency,amplitude);
 		}
 	}
 
-void VRDeviceManager::enableTrackerUpdateNotification(Threads::MutexCond* sTrackerUpdateCompleteCond)
+void VRDeviceManager::setStreamer(VRStreamer* newStreamer)
 	{
 	Threads::Mutex::Lock stateLock(stateMutex);
-	trackerUpdateNotificationEnabled=true;
-	trackerUpdateCompleteCond=sTrackerUpdateCompleteCond;
-	trackerUpdateCompleteCallback=0;
-	trackerUpdateCompleteCallbackData=0;
-	trackerReportMask=0x0;
-	}
-
-void VRDeviceManager::enableTrackerUpdateNotification(VRDeviceManager::TrackerUpdateCompleteCallback newTrackerUpdateCompleteCallback,void* newTrackerUpdateCompleteCallbackData)
-	{
-	Threads::Mutex::Lock stateLock(stateMutex);
-	trackerUpdateNotificationEnabled=true;
-	trackerUpdateCompleteCond=0;
-	trackerUpdateCompleteCallback=newTrackerUpdateCompleteCallback;
-	trackerUpdateCompleteCallbackData=newTrackerUpdateCompleteCallbackData;
-	trackerReportMask=0x0;
-	}
-
-void VRDeviceManager::disableTrackerUpdateNotification(void)
-	{
-	Threads::Mutex::Lock stateLock(stateMutex);
-	trackerUpdateNotificationEnabled=false;
-	trackerUpdateCompleteCond=0;
-	trackerUpdateCompleteCallback=0;
-	trackerUpdateCompleteCallbackData=0;
-	}
-
-void VRDeviceManager::setBatteryStateUpdatedCallback(BatteryStateUpdatedCallback newBatteryStateUpdatedCallback,void* newBatteryStateUpdatedCallbackData)
-	{
 	Threads::Mutex::Lock batteryStateLock(batteryStateMutex);
-	batteryStateUpdatedCallback=newBatteryStateUpdatedCallback;
-	batteryStateUpdatedCallbackData=newBatteryStateUpdatedCallbackData;
-	}
-
-void VRDeviceManager::setHmdConfigurationUpdatedCallback(HMDConfigurationUpdatedCallback newHmdConfigurationUpdatedCallback,void* newHmdConfigurationUpdatedCallbackData)
-	{
 	Threads::Mutex::Lock hmdConfigurationLock(hmdConfigurationMutex);
-	hmdConfigurationUpdatedCallback=newHmdConfigurationUpdatedCallback;
-	hmdConfigurationUpdatedCallbackData=newHmdConfigurationUpdatedCallbackData;
+	
+	/* Set the streamer object: */
+	streamer=newStreamer;
 	}
 
 void VRDeviceManager::start(void)

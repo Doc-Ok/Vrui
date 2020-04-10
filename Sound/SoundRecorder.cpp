@@ -2,7 +2,7 @@
 SoundRecorder - Simple class to record sound from a capture device to a
 sound file on the local file system. Uses ALSA under Linux, and the Core
 Audio frameworks under Mac OS X.
-Copyright (c) 2008-2014 Oliver Kreylos
+Copyright (c) 2008-2019 Oliver Kreylos
 
 This file is part of the Basic Sound Library (Sound).
 
@@ -25,6 +25,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <unistd.h>
 #include <Misc/FileNameExtensions.h>
+#include <Misc/MessageLogger.h>
 #include <IO/OpenFile.h>
 #include <Sound/Config.h>
 
@@ -307,15 +308,29 @@ void* SoundRecorder::recordingThreadMethod(void)
 	Threads::Thread::setCancelState(Threads::Thread::CANCEL_ENABLE);
 	// Threads::Thread::setCancelType(Threads::Thread::CANCEL_ASYNCHRONOUS);
 	
-	/* Read buffers worth of sound data from the PCM device until interrupted: */
-	while(keepReading)
+	try
 		{
-		/* Read pending sound data, up to the buffer size: */
-		size_t numFramesRead=pcmDevice.read(sampleBuffer,sampleBufferSize);
+		/* Wait up to ten seconds for the first audio data packet to arrive: */
+		if(!pcmDevice.wait(10000))
+			{
+			Misc::consoleError("Sound::SoundRecorder: Recording terminated due to no audio data available");
+			return 0;
+			}
 		
-		/* Write the buffer to the file: */
-		outputFile->write(sampleBuffer,numFramesRead*bytesPerFrame);
-		numRecordedFrames+=numFramesRead;
+		/* Read buffers worth of sound data from the PCM device until interrupted: */
+		while(keepReading)
+			{
+			/* Read pending sound data, up to the buffer size: */
+			size_t numFramesRead=pcmDevice.read(sampleBuffer,sampleBufferSize);
+			
+			/* Write the buffer to the file: */
+			outputFile->write(sampleBuffer,numFramesRead*bytesPerFrame);
+			numRecordedFrames+=numFramesRead;
+			}
+		}
+	catch(const std::runtime_error& err)
+		{
+		Misc::formattedConsoleError("Sound::SoundRecorder: Recording terminated due to exception %s",err.what());
 		}
 	
 	return 0;
@@ -366,6 +381,7 @@ void SoundRecorder::init(const char* audioSource,const SoundDataFormat& sFormat,
 	/* Create a sample buffer holding a quarter second of sound: */
 	sampleBufferSize=(size_t(format.framesPerSecond)*250+500)/1000;
 	sampleBuffer=new char[sampleBufferSize*bytesPerFrame];
+	pcmDevice.setBufferSize(sampleBufferSize*2,sampleBufferSize);
 	
 	#endif
 	}

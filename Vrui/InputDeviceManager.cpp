@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDeviceManager - Class to manage physical and virtual input devices,
 tools associated to input devices, and the input device update graph.
-Copyright (c) 2004-2017 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -96,6 +96,7 @@ Methods of class InputDeviceManager:
 InputDeviceManager::InputDeviceManager(InputGraphManager* sInputGraphManager,TextEventDispatcher* sTextEventDispatcher)
 	:inputGraphManager(sInputGraphManager),textEventDispatcher(sTextEventDispatcher),
 	 numInputDeviceAdapters(0),inputDeviceAdapters(0),
+	 hapticFeatureMap(17),
 	 predictDeviceStates(false),predictionTime(0,0)
 	{
 	}
@@ -230,7 +231,7 @@ void InputDeviceManager::initialize(const Misc::ConfigurationFileSection& config
 			else
 				typeFound=false;
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			/* Print an error message: */
 			Misc::formattedConsoleError("InputDeviceManager: Ignoring input device adapter %s due to exception %s",inputDeviceAdapterNames[i].c_str(),err.what());
@@ -466,9 +467,25 @@ int InputDeviceManager::getFeatureIndex(InputDevice* device, const char* feature
 		}
 	}
 
+void InputDeviceManager::addHapticFeature(InputDevice* device,InputDeviceAdapter* adapter,unsigned int hapticFeatureIndex)
+	{
+	/* Add the given haptic feature to the map: */
+	HapticFeature hf;
+	hf.adapter=adapter;
+	hf.hapticFeatureIndex=hapticFeatureIndex;
+	hapticFeatureMap.setEntry(HapticFeatureMap::Entry(device,hf));
+	}
+
 void InputDeviceManager::disablePrediction(void)
 	{
 	predictDeviceStates=false;
+	}
+
+void InputDeviceManager::prepareMainLoop(void)
+	{
+	/* Notify all input device adapters: */
+	for(int i=0;i<numInputDeviceAdapters;++i)
+		inputDeviceAdapters[i]->prepareMainLoop();
 	}
 
 void InputDeviceManager::setPredictionTime(const Realtime::TimePointMonotonic& newPredictionTime)
@@ -494,6 +511,18 @@ void InputDeviceManager::glRenderAction(GLContextData& contextData) const
 	/* Render all input device adapters: */
 	for(int i=0;i<numInputDeviceAdapters;++i)
 		inputDeviceAdapters[i]->glRenderAction(contextData);
+	}
+
+void InputDeviceManager::hapticTick(InputDevice* device,unsigned int duration,unsigned int frequency,unsigned int amplitude)
+	{
+	/* Find the input device adapter and haptic feature index for the given device: */
+	HapticFeatureMap::Iterator hfmIt=hapticFeatureMap.findEntry(device);
+	if(!hfmIt.isFinished())
+		{
+		/* Forward the request to the input device adapter: */
+		HapticFeature& hf=hfmIt->getDest();
+		hf.adapter->hapticTick(hf.hapticFeatureIndex,duration,frequency,amplitude);
+		}
 	}
 
 }

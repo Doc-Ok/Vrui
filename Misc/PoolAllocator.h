@@ -1,7 +1,7 @@
 /***********************************************************************
 PoolAllocator - Class to quickly allocate and release large numbers of
 objects of identical size.
-Copyright (c) 2003-2005 Oliver Kreylos
+Copyright (c) 2003-2018 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -135,6 +135,29 @@ class PoolAllocator
 		newSlot->succ=firstSlot;
 		firstSlot=newSlot;
 		}
+	void destroy(ContentParam* item)
+		{
+		if(item!=0)
+			{
+			/* Call the item's destructor: */
+			item->~ContentParam();
+			
+			/* Put the new free item at the head of the list: */
+			AllocationSlot* newSlot=reinterpret_cast<AllocationSlot*>(item);
+			newSlot->succ=firstSlot;
+			firstSlot=newSlot;
+			}
+		}
+	};
+
+template <class ContentParam>
+class FPoolAllocator:public PoolAllocator<ContentParam> // Derived pool allocator class with fixed page size
+	{
+	/* Methods: */
+	public:
+	using PoolAllocator<ContentParam>::allocate;
+	using PoolAllocator<ContentParam>::free;
+	using PoolAllocator<ContentParam>::destroy;
 	};
 
 }

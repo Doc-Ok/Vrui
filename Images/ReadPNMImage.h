@@ -1,7 +1,7 @@
 /***********************************************************************
 ReadPNMImage - Functions to read RGB images from image files in PNM
 (Portable AnyMap) formats over an IO::File abstraction.
-Copyright (c) 2011-2017 Oliver Kreylos
+Copyright (c) 2011-2018 Oliver Kreylos
 
 This file is part of the Image Handling Library (Images).
 
@@ -34,8 +34,8 @@ class RGBImage;
 
 namespace Images {
 
-RGBImage readPNMImage(const char* imageName,IO::File& source); // Reads an RGB image in Portable AnyMap format from the given data source
-BaseImage readGenericPNMImage(const char* imageName,IO::File& source); // Reads a generic image in Portable AnyMap format from the given data source
+RGBImage readPNMImage(IO::File& source); // Reads an RGB image in Portable AnyMap format from the given data source
+BaseImage readGenericPNMImage(IO::File& source); // Reads a generic image in Portable AnyMap format from the given data source
 
 }
 

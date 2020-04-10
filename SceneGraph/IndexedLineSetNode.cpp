@@ -1,7 +1,7 @@
 /***********************************************************************
 IndexedLineSetNode - Class for sets of lines or polylines as renderable
 geometry.
-Copyright (c) 2009 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -302,7 +302,7 @@ void IndexedLineSetNode::glRenderAction(GLRenderState& renderState) const
 		typedef GLGeometry::Vertex<void,0,void,0,void,Scalar,3> Vertex;
 		
 		/* Bind the line set's vertex buffer object: */
-		glBindBufferARB(GL_ARRAY_BUFFER_ARB,dataItem->vertexBufferObjectId);
+		renderState.bindVertexBuffer(dataItem->vertexBufferObjectId);
 		
 		if(dataItem->version!=version)
 			{
@@ -319,16 +319,13 @@ void IndexedLineSetNode::glRenderAction(GLRenderState& renderState) const
 		/* Set up the vertex array: */
 		if(color.getValue()!=0)
 			{
-			GLVertexArrayParts::enable(ColorVertex::getPartsMask());
+			renderState.enableVertexArrays(ColorVertex::getPartsMask());
 			glVertexPointer(static_cast<ColorVertex*>(0));
 			}
 		else
 			{
-			GLVertexArrayParts::enable(Vertex::getPartsMask());
+			renderState.enableVertexArrays(Vertex::getPartsMask());
 			glVertexPointer(static_cast<Vertex*>(0));
-			
-			/* Use the current emissive color: */
-			glColor(renderState.emissiveColor);
 			}
 		
 		/* Draw the indexed line set: */
@@ -344,15 +341,6 @@ void IndexedLineSetNode::glRenderAction(GLRenderState& renderState) const
 			/* Go to the next line: */
 			baseVertexIndex+=*nvIt;
 			}
-		
-		/* Disable the vertex array: */
-		if(color.getValue()!=0)
-			GLVertexArrayParts::disable(ColorVertex::getPartsMask());
-		else
-			GLVertexArrayParts::disable(Vertex::getPartsMask());
-		
-		/* Protect the buffer: */
-		glBindBufferARB(GL_ARRAY_BUFFER_ARB,0);
 		}
 	else
 		{
@@ -402,9 +390,6 @@ void IndexedLineSetNode::glRenderAction(GLRenderState& renderState) const
 				}
 			else
 				{
-				/* Use the current emissive color: */
-				glColor(renderState.emissiveColor);
-				
 				MFInt::ValueList::const_iterator coordIt=coordIndices.begin();
 				while(coordIt!=coordIndices.end())
 					{

@@ -1,7 +1,7 @@
 /***********************************************************************
 TCPPipe - Pair of classes for high-performance cluster-transparent
 reading/writing from/to TCP sockets.
-Copyright (c) 2011-2017 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the Cluster Abstraction Library (Cluster).
 
@@ -52,13 +52,14 @@ Helper functions:
 
 void handleConstructionError(int errorType,int errorCode,const char* hostName,int portId)
 	{
+	char buffer[1024];
 	switch(errorType)
 		{
 		case 1:
-			throw IO::File::OpenError(Misc::printStdErrMsg("Cluster::TCPPipe::TCPPipe: Unable to resolve host name %s due to error %s",hostName,gai_strerror(errorCode)));
+			throw IO::File::OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Cluster::TCPPipe::TCPPipe: Unable to resolve host name %s due to error %s",hostName,gai_strerror(errorCode)));
 		
 		case 2:
-			throw IO::File::OpenError(Misc::printStdErrMsg("Cluster::TCPPipe::TCPPipe: Unable to connect to host %s on port %d",hostName,portId));
+			throw IO::File::OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Cluster::TCPPipe::TCPPipe: Unable to connect to host %s on port %d",hostName,portId));
 		
 		case 3:
 			throw IO::File::OpenError("Cluster::TCPPipe::TCPPipe: Unable to disable Nagle's algorithm on socket");
@@ -67,11 +68,13 @@ void handleConstructionError(int errorType,int errorCode,const char* hostName,in
 
 void handleReadError(int errorCode)
 	{
-	throw IO::File::Error(Misc::printStdErrMsg("Cluster::TCPPipe: Fatal error %d (%s) while reading from source",errorCode,strerror(errorCode)));
+	char buffer[512];
+	throw IO::File::Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Cluster::TCPPipe: Fatal error %d (%s) while reading from source",errorCode,strerror(errorCode)));
 	}
 
 void handleWriteError(int errorType,int errorCode)
 	{
+	char buffer[512];
 	switch(errorType)
 		{
 		case 1:
@@ -81,79 +84,85 @@ void handleWriteError(int errorType,int errorCode)
 			throw IO::File::WriteError(errorCode);
 		
 		case 3:
-			throw IO::File::Error(Misc::printStdErrMsg("Cluster::TCPPipe: Fatal error %d (%s) while writing to sink",errorCode,strerror(errorCode)));
+			throw IO::File::Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Cluster::TCPPipe: Fatal error %d (%s) while writing to sink",errorCode,strerror(errorCode)));
 		}
 	}
 
 void handleGetPortIdError(int errorType,int errorCode)
 	{
+	char buffer[512];
 	switch(errorType)
 		{
 		case 1:
 			throw IO::File::Error("Cluster::TCPPipe::getPortId: Unable to query socket address");
 		
 		case 2:
-			throw IO::File::Error(Misc::printStdErrMsg("Cluster::TCPPipe::getPortId: Unable to retrieve port ID due to error %s",gai_strerror(errorCode)));
+			throw IO::File::Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Cluster::TCPPipe::getPortId: Unable to retrieve port ID due to error %s",gai_strerror(errorCode)));
 		}
 	}
 
 void handleGetAddressError(int errorType,int errorCode)
 	{
+	char buffer[512];
 	switch(errorType)
 		{
 		case 1:
 			throw IO::File::Error("Cluster::TCPPipe::getAddress: Unable to query socket address");
 		
 		case 2:
-			throw IO::File::Error(Misc::printStdErrMsg("Cluster::TCPPipe::getAddress: Unable to retrieve address due to error %s",gai_strerror(errorCode)));
+			throw IO::File::Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Cluster::TCPPipe::getAddress: Unable to retrieve address due to error %s",gai_strerror(errorCode)));
 		}
 	}
 
 void handleGetHostNameError(int errorType,int errorCode)
 	{
+	char buffer[512];
 	switch(errorType)
 		{
 		case 1:
 			throw IO::File::Error("Cluster::TCPPipe::getHostName: Unable to query socket address");
 		
 		case 2:
-			throw IO::File::Error(Misc::printStdErrMsg("Cluster::TCPPipe::getHostName: Unable to retrieve host name due to error %s",gai_strerror(errorCode)));
+			throw IO::File::Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Cluster::TCPPipe::getHostName: Unable to retrieve host name due to error %s",gai_strerror(errorCode)));
 		}
 	}
 
 void handleGetPeerPortIdError(int errorType,int errorCode)
 	{
+	char buffer[512];
 	switch(errorType)
 		{
 		case 1:
 			throw IO::File::Error("Cluster::TCPPipe::getPeerPortId: Unable to query socket's peer address");
 		
 		case 2:
-			throw IO::File::Error(Misc::printStdErrMsg("Cluster::TCPPipe::getPeerPortId: Unable to retrieve peer port ID due to error %s",gai_strerror(errorCode)));
+			throw IO::File::Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Cluster::TCPPipe::getPeerPortId: Unable to retrieve peer port ID due to error %s",gai_strerror(errorCode)));
 		}
 	}
 
 void handleGetPeerAddressError(int errorType,int errorCode)
 	{
+	char buffer[512];
 	switch(errorType)
 		{
 		case 1:
 			throw IO::File::Error("Cluster::TCPPipe::getPeerAddress: Unable to query socket's peer address");
 		
 		case 2:
-			throw IO::File::Error(Misc::printStdErrMsg("Cluster::TCPPipe::getPeerAddress: Unable to retrieve peer address due to error %s",gai_strerror(errorCode)));
+			throw IO::File::Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Cluster::TCPPipe::getPeerAddress: Unable to retrieve peer address due to error %s",gai_strerror(errorCode)));
 		}
 	}
 
 void handleGetPeerHostNameError(int errorType,int errorCode)
 	{
+	char buffer[512];
 	switch(errorType)
 		{
 		case 1:
 			throw IO::File::Error("Cluster::TCPPipe::getPeerHostName: Unable to query socket's peer address");
 		
 		case 2:
-			throw IO::File::Error(Misc::printStdErrMsg("Cluster::TCPPipe::getPeerHostName: Unable to retrieve peer host name due to error %s",gai_strerror(errorCode)));
+			throw IO::File::Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Cluster::TCPPipe::getPeerHostName: Unable to retrieve peer host name due to error %s",gai_strerror(errorCode)));
 		}
 	}
 
@@ -332,7 +341,10 @@ TCPPipeMaster::TCPPipeMaster(Multiplexer* sMultiplexer,const char* hostName,int 
 	{
 	/* Convert port ID to string for getaddrinfo (awkward!): */
 	if(portId<0||portId>65535)
-		throw OpenError(Misc::printStdErrMsg("Cluster::TCPPipe::TCPPipe: Invalid port %d",portId));
+		{
+		char buffer[512];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Cluster::TCPPipe::TCPPipe: Invalid port %d",portId));
+		}
 	char portIdBuffer[6];
 	char* portIdString=Misc::print(portId,portIdBuffer+5);
 	
@@ -893,7 +905,10 @@ TCPPipeSlave::TCPPipeSlave(Multiplexer* sMultiplexer,const char* hostName,int po
 	{
 	/* Check the port ID: */
 	if(portId<0||portId>65535)
-		throw OpenError(Misc::printStdErrMsg("Comm::TCPPipe::TCPPipe: Invalid port %d",portId));
+		{
+		char buffer[512];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::TCPPipe::TCPPipe: Invalid port %d",portId));
+		}
 	
 	/* Read the status packet from the master node: */
 	Packet* statusPacket=multiplexer->receivePacket(pipeId);

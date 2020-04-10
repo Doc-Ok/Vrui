@@ -1,6 +1,6 @@
 /***********************************************************************
 ToolKillZone - Base class for "kill zones" for tools and input devices.
-Copyright (c) 2004-2015 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -57,6 +57,7 @@ class ToolKillZone:public GLObject
 	/* Elements: */
 	protected:
 	InputDevice* baseDevice; // Pointer to input device kill zone is attached to
+	bool active; // Flag if the kill zone is active, i.e., reacts to input devices entering
 	bool render; // Flag if the kill zone is supposed to be rendered
 	GLMaterial material; // Material to render the kill zone model
 	unsigned int modelVersion; // Version number of the current model
@@ -74,10 +75,15 @@ class ToolKillZone:public GLObject
 	virtual void initContext(GLContextData& contextData) const;
 	
 	/* New methods: */
+	bool isActive(void) const // Returns the tool kill zone's active flag
+		{
+		return active;
+		}
 	bool getRender(void) const // Returns the tool kill zone's render flag
 		{
 		return render;
 		}
+	void setActive(bool newActive); // Sets the tool kill zone's active flag
 	void setRender(bool newRender); // Sets the tool kill zone's render flag
 	virtual Size getSize(void) const =0; // Returns axis-aligned sizes of the kill zone
 	virtual Point getCenter(void) const =0; // Returns the current position of the kill zone

@@ -1,7 +1,7 @@
 /***********************************************************************
 GLEXTGeometryShader4 - OpenGL extension class for the
 GL_EXT_geometry_shader4 extension.
-Copyright (c) 2007-2014 Tony Bernardin, Oliver Kreylos
+Copyright (c) 2007-2018 Tony Bernardin, Oliver Kreylos
 
 This file is part of the OpenGL Support Library (GLSupport).
 
@@ -93,7 +93,7 @@ GLhandleARB glCompileEXTGeometryShader4FromString(const char* shaderSource)
 		/* Load and compile the shader source: */
 		glCompileShaderFromString(geometryShaderObject,shaderSource);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error&)
 		{
 		/* Clean up and re-throw the exception: */
 		glDeleteObjectARB(geometryShaderObject);
@@ -114,7 +114,7 @@ GLhandleARB glCompileEXTGeometryShader4FromFile(const char* shaderSourceFileName
 		/* Load and compile the shader source: */
 		glCompileShaderFromFile(geometryShaderObject,shaderSourceFileName);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error&)
 		{
 		/* Clean up and re-throw the exception: */
 		glDeleteObjectARB(geometryShaderObject);

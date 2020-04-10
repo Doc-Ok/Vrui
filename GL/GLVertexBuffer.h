@@ -24,87 +24,47 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #define GLVERTEXBUFFER_INCLUDED
 
 #include <GL/gl.h>
-#include <GL/GLObject.h>
-#include <GL/Extensions/GLARBVertexBufferObject.h>
-
-/* Forward declarations: */
-class GLContextData;
+#include <GL/GLBuffer.h>
 
 template <class VertexParam>
-class GLVertexBuffer:public GLObject
+class GLVertexBuffer:public GLBuffer
 	{
 	/* Embedded classes: */
 	public:
 	typedef VertexParam Vertex; // Type for vertices stored in the vertex buffer
 	
-	struct DataItem:public GLObject::DataItem
-		{
-		friend class GLVertexBuffer;
-		
-		/* Elements: */
-		private:
-		GLuint vertexBufferObjectId; // ID of the buffer object storing the vertex array in GPU memory
-		unsigned int parameterVersion; // Version number of the buffer's parameters (size and usage pattern)
-		unsigned int version; // Version number of the vertex data in GPU memory
-		
-		/* Constructors and destructors: */
-		DataItem(void);
-		virtual ~DataItem(void);
-		};
-	
-	/* Elements: */
-	private:
-	size_t numVertices; // Number of vertices in the buffer
-	const Vertex* sourceVertices; // Pointer to source vertex data in CPU memory
-	GLenum bufferUsage; // Usage pattern for the vertex data buffer
-	unsigned int parameterVersion; // Version number of buffer parameters (size and usage pattern)
-	unsigned int version; // Version number of the vertex data in CPU memory
-	
 	/* Constructors and destructors: */
 	public:
-	GLVertexBuffer(void) // Creates zero-sized buffer with default parameters
-		:numVertices(0),sourceVertices(0),
-		 bufferUsage(GL_DYNAMIC_DRAW_ARB),
-		 parameterVersion(0),version(0)
-		{
-		}
-	GLVertexBuffer(size_t sNumVertices,const Vertex* sSourceVertices,GLenum sBufferUsage =GL_DYNAMIC_DRAW_ARB) // Creates a buffer for the given source vertex array and usage pattern
-		:numVertices(sNumVertices),sourceVertices(sSourceVertices),
-		 bufferUsage(sBufferUsage),
-		 parameterVersion(0),version(0)
-		{
-		}
+	GLVertexBuffer(void); // Creates zero-sized buffer with default parameters
+	GLVertexBuffer(size_t sNumVertices,const Vertex* sSourceVertices,GLenum sBufferUsage =GL_DYNAMIC_DRAW_ARB); // Creates a buffer for the given source vertex array and usage pattern
 	
-	/* Methods from GLObject: */
-	virtual void initContext(GLContextData& contextData) const;
+	/* Methods from GLBuffer: */
+	size_t getNumVertices(void) const
+		{
+		/* Call the base class method: */
+		return GLBuffer::getNumElements();
+		}
+	const Vertex* getSourceVertices(void) const
+		{
+		/* Call the base class method and cast the result to a pointer of correct type: */
+		return static_cast<const Vertex*>(GLBuffer::getSourceElements());
+		}
+	void setSource(size_t newNumVertices,const Vertex* newSourceVertices)
+		{
+		/* Call the base class method: */
+		GLBuffer::setSource(newNumVertices,newSourceVertices);
+		}
+	DataItem* bind(GLContextData& contextData) const; // Binds the buffer and prepares for vertex rendering
+	Vertex* startUpdate(DataItem* dataItem) const
+		{
+		/* Call the base class method and cast the result to a pointer of correct type: */
+		return static_cast<Vertex*>(GLBuffer::startUpdate(dataItem));
+		}
+	void unbind(void) const; // Disables vertex rendering and unbinds the buffer
 	
 	/* New methods: */
-	
-	/* Methods to be called from application code: */
-	size_t getNumVertices(void) const // Returns the number of vertices in the buffer
-		{
-		return numVertices;
-		}
-	GLenum getBufferUsage(void) const // Returns the buffer usage pattern
-		{
-		return bufferUsage;
-		}
-	void invalidate(void); // Invalidates the buffer when the source vertex array is changed externally
-	void setSource(size_t newNumVertices,const Vertex* newSourceVertices); // Changes the source vertex data; causes a re-upload of buffer contents on the next bind()
-	void setBufferUsage(GLenum newBufferUsage); // Changes the buffer usage pattern; causes a re-upload of buffer contents on next bind()
-	
-	/* Methods to be called from inside an active OpenGL context: */
-	void bind(GLContextData& contextData) const; // Binds the vertex buffer to the current OpenGL context for subsequent drawing operations
-	static void unbind(void); // Unbinds any active vertex buffer from the current OpenGL context
-	DataItem* getDataItem(GLContextData& contextData) const; // Returns the buffer's per-context data item for further calls
-	bool needsUpdate(DataItem* dataItem) const // Returns true if the buffer's parameters or content are outdated
-		{
-		return dataItem->parameterVersion!=parameterVersion||dataItem->version!=version;
-		}
-	Vertex* startUpdate(DataItem* dataItem) const; // Returns a pointer to upload vertex data into the buffer
-	void finishUpdate(DataItem* dataItem) const; // Finishes updating the buffer and prepares it for subsequent drawing operations
-	void draw(GLenum mode,GLContextData& contextData) const; // Draws the buffer's vertices using the given primitive mode
-	void draw(GLenum mode,GLint first,GLsizei count,GLContextData& contextData) const; // Draws the given subset of the buffer's vertices using the given primitive mode
+	void draw(GLenum mode,DataItem* dataItem) const; // Draws the bound and up-to-date buffer's vertices using the given primitive mode
+	void draw(GLenum mode,GLint first,GLsizei count,DataItem* dataItem) const; // Draws the given subset of the bound and up-to-date buffer's vertices using the given primitive mode
 	};
 
 #ifndef GLVERTEXBUFFER_IMPLEMENTATION

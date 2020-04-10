@@ -1,7 +1,7 @@
 ########################################################################
 # Makefile template for inter-platform development with automatic
 # source dependency maintenance.
-# Copyright (c) 1999-2016 Oliver Kreylos
+# Copyright (c) 1999-2020 Oliver Kreylos
 #
 # This file is part of the WhyTools Build Environment.
 # 

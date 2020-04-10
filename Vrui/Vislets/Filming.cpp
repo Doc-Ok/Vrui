@@ -2,7 +2,7 @@
 Filming - Vislet class to assist shooting of video inside an immersive
 environment by providing run-time control over viewers and environment
 settings.
-Copyright (c) 2012-2017 Oliver Kreylos
+Copyright (c) 2012-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -25,14 +25,14 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/Vislets/Filming.h>
 
 #include <vector>
-#include <Misc/SelfDestructPointer.h>
-#include <Misc/SelfDestructArray.h>
+#include <Misc/SizedTypes.h>
 #include <Misc/PrintInteger.h>
 #include <Misc/StringPrintf.h>
 #include <Misc/StringMarshaller.h>
 #include <Misc/StandardValueCoders.h>
 #include <Misc/CompoundValueCoders.h>
 #include <Misc/ConfigurationFile.h>
+#include <Misc/ConfigurationFile.icpp>
 #include <Misc/MessageLogger.h>
 #include <Cluster/MulticastPipe.h>
 #include <Geometry/Point.h>
@@ -52,7 +52,6 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <GLMotif/Label.h>
 #include <GLMotif/Button.h>
 #include <GLMotif/FileSelectionHelper.h>
-#include <Vrui/OpenFile.h>
 #include <Vrui/InputDevice.h>
 #include <Vrui/Lightsource.h>
 #include <Vrui/Viewer.h>
@@ -117,7 +116,7 @@ GLMotif::FileSelectionHelper* FilmingFactory::getSettingsSelectionHelper(void)
 	{
 	/* Create a new file selection helper if there isn't one yet: */
 	if(settingsSelectionHelper==0)
-		settingsSelectionHelper=new GLMotif::FileSelectionHelper(getWidgetManager(),"FilmingSettings.cfg",".cfg",openDirectory("."));
+		settingsSelectionHelper=new GLMotif::FileSelectionHelper(getWidgetManager(),"FilmingSettings.cfg",".cfg");
 	
 	return settingsSelectionHelper;
 	}
@@ -336,9 +335,9 @@ void Filming::ToggleFilmingTool::buttonCallback(int buttonSlotIndex,InputDevice:
 	if(!cbData->newButtonState)
 		{
 		if(vislet->isActive())
-			vislet->disable();
+			vislet->disable(false);
 		else
-			vislet->enable();
+			vislet->enable(false);
 		}
 	}
 
@@ -494,16 +493,17 @@ void Filming::loadSettings(const char* settingsFileName)
 			if(getMainPipe()!=0)
 				{
 				/* Send the settings file to the slave nodes: */
-				Misc::writeCString(0,*getMainPipe());
+				getMainPipe()->write(Misc::UInt8(0));
 				settingsFile.writeToPipe(*getMainPipe());
 				getMainPipe()->flush();
 				}
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			/* Send an error message to the slave nodes: */
 			if(getMainPipe()!=0)
 				{
+				getMainPipe()->write(Misc::UInt8(1));
 				Misc::writeCString(err.what(),*getMainPipe());
 				getMainPipe()->flush();
 				}
@@ -514,14 +514,18 @@ void Filming::loadSettings(const char* settingsFileName)
 		}
 	else
 		{
-		/* Receive the selected settings file from the master node: */
-		Misc::SelfDestructArray<char> error(Misc::readCString(*getMainPipe()));
-		if(error.getArray()==0)
+		/* Check if there was an error on the master node: */
+		if(getMainPipe()->read<Misc::UInt8>()==Misc::UInt8(0))
+			{
+			/* Receive the selected settings file from the master node: */
 			settingsFile.readFromPipe(*getMainPipe());
+			}
 		else
 			{
-			/* Throw an exception: */
-			throw std::runtime_error(error.getArray());
+			/* Read the error message and throw an exception: */
+			std::string error;
+			Misc::readCppString(*getMainPipe(),error);
+			throw std::runtime_error(error.c_str());
 			}
 		}
 	
@@ -607,7 +611,7 @@ void Filming::loadSettingsCallback(GLMotif::FileSelectionDialog::OKCallbackData*
 		/* Load the selected settings file: */
 		loadSettings(cbData->getSelectedPath().c_str());
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Show an error message: */
 		Misc::formattedUserError("Load Settings...: Could not load settings from file %s due to exception %s",cbData->getSelectedPath().c_str(),err.what());
@@ -646,15 +650,16 @@ void Filming::saveSettingsCallback(GLMotif::FileSelectionDialog::OKCallbackData*
 				if(getMainPipe()!=0)
 					{
 					/* Send a status message to the slave nodes: */
-					Misc::writeCString(0,*getMainPipe());
+					getMainPipe()->write(Misc::UInt8(0));
 					getMainPipe()->flush();
 					}
 				}
-			catch(std::runtime_error err)
+			catch(const std::runtime_error& err)
 				{
 				if(getMainPipe()!=0)
 					{
 					/* Send an error message to the slaves: */
+					getMainPipe()->write(Misc::UInt8(1));
 					Misc::writeCString(err.what(),*getMainPipe());
 					getMainPipe()->flush();
 					}
@@ -665,16 +670,17 @@ void Filming::saveSettingsCallback(GLMotif::FileSelectionDialog::OKCallbackData*
 			}
 		else
 			{
-			/* Receive a status message from the master node: */
-			Misc::SelfDestructArray<char> error(Misc::readCString(*getMainPipe()));
-			if(error.getArray()!=0)
+			/* Check if there was an error on the master node: */
+			if(getMainPipe()->read<Misc::UInt8>()!=Misc::UInt8(0))
 				{
-				/* Throw an exception: */
-				throw std::runtime_error(error.getArray());
+				/* Read the error message and throw an exception: */
+				std::string error;
+				Misc::readCppString(*getMainPipe(),error);
+				throw std::runtime_error(error.c_str());
 				}
 			}
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Show an error message: */
 		Misc::formattedUserError("Save Settings...: Could not save settings to file %s due to exception %s",cbData->selectedFileName,err.what());
@@ -688,6 +694,8 @@ void Filming::buildFilmingControls(void)
 	
 	dialogWindow=new GLMotif::PopupWindow("FilmingControlDialog",getWidgetManager(),"Filming Controls");
 	dialogWindow->setHideButton(true);
+	dialogWindow->setCloseButton(true);
+	dialogWindow->popDownOnClose();
 	dialogWindow->setResizableFlags(true,false);
 	
 	GLMotif::RowColumn* filmingControls=new GLMotif::RowColumn("FilmingControls",dialogWindow,false);
@@ -823,6 +831,12 @@ void Filming::buildFilmingControls(void)
 	filmingControls->manageChild();
 	}
 
+void Filming::showDialogWindowCallback(Misc::CallbackData* cbData)
+	{
+	/* Pop up the filming controls dialog: */
+	popupPrimaryWidget(dialogWindow);
+	}
+
 void Filming::toolCreationCallback(ToolManager::ToolCreationCallbackData* cbData)
 	{
 	/* Check if the new tool is a filming tool: */
@@ -841,7 +855,7 @@ Filming::Filming(int numArguments,const char* const arguments[])
 	 drawGrid(false),gridDragger(0),
 	 drawDevices(false),
 	 autoActivate(false),
-	 dialogWindow(0)
+	 dialogWindow(0),showDialogWindowButton(0)
 	{
 	/* Parse the command line: */
 	for(int i=0;i<numArguments;++i)
@@ -871,6 +885,9 @@ Filming::~Filming(void)
 	{
 	delete dialogWindow;
 	
+	/* Remove the button to show the dialog window from Vrui's system menu: */
+	removeShowSettingsDialogButton(showDialogWindowButton);
+	
 	/* Uninstall tool manager callbacks: */
 	getToolManager()->getToolCreationCallbacks().remove(this,&Filming::toolCreationCallback);
 	
@@ -886,33 +903,10 @@ VisletFactory* Filming::getFactory(void) const
 	return factory;
 	}
 
-void Filming::disable(void)
+void Filming::enable(bool startup)
 	{
-	/* Reset the viewers of all filming windows: */
-	for(int windowIndex=0;windowIndex<getNumWindows();++windowIndex)
-		if(windowFilmings[windowIndex]&&getWindow(windowIndex)!=0)
-			{
-			for(int i=0;i<2;++i)
-				getWindow(windowIndex)->setViewer(i,windowViewers[windowIndex*2+i]);
-			}
-	
-	/* Reset all viewer's headlight states: */
-	viewer->setHeadlightState(false);
-	for(int viewerIndex=0;viewerIndex<getNumViewers();++viewerIndex)
-		getViewer(viewerIndex)->setHeadlightState(originalHeadlightStates[viewerIndex]);
-	
-	/* Restore the environment's background color: */
-	setBackgroundColor(originalBackgroundColor);
-	
-	/* Disable the vislet: */
-	Vislet::disable();
-	}
-
-void Filming::enable(void)
-	{
-	/* Check if the filming control GUI needs to be created: */
-	bool activate=true;
-	if(dialogWindow==0)
+	/* Check if this is the startup call: */
+	if(startup)
 		{
 		/* Initialize the filming viewer associations: */
 		windowViewers=new Viewer*[getNumWindows()*2];
@@ -933,22 +927,20 @@ void Filming::enable(void)
 		originalBackgroundColor=getBackgroundColor();
 		backgroundColor=originalBackgroundColor;
 		
-		/* Build and show the GUI: */
+		/* Build the GUI: */
 		buildFilmingControls();
-		popupPrimaryWidget(dialogWindow);
+		
+		/* Add a button to show the GUI to Vrui's system menu: */
+		showDialogWindowButton=addShowSettingsDialogButton("Show Filming Settings");
+		showDialogWindowButton->getSelectCallbacks().add(this,&Filming::showDialogWindowCallback);
 		
 		/* Load a settings file if requested: */
 		if(!settingsFileName.empty())
 			loadSettings(settingsFileName.c_str());
-		
-		/* Activate the vislet and hide the control dialog if so instructed: */
-		if(autoActivate)
-			getWidgetManager()->hide(dialogWindow);
-		else
-			activate=false;
 		}
 	
-	if(activate)
+	/* Activate the vislet unless this is the startup call and autoActivate is false: */
+	if(autoActivate||!startup)
 		{
 		/* Store the viewers currently attached to each window and override the viewers of filming windows: */
 		for(int windowIndex=0;windowIndex<getNumWindows();++windowIndex)
@@ -973,8 +965,33 @@ void Filming::enable(void)
 		setBackgroundColor(backgroundColor);
 		
 		/* Enable the vislet: */
-		Vislet::enable();
+		Vislet::enable(startup);
 		}
+	}
+
+void Filming::disable(bool shutdown)
+	{
+	if(!shutdown)
+		{
+		/* Reset the viewers of all filming windows: */
+		for(int windowIndex=0;windowIndex<getNumWindows();++windowIndex)
+			if(windowFilmings[windowIndex]&&getWindow(windowIndex)!=0)
+				{
+				for(int i=0;i<2;++i)
+					getWindow(windowIndex)->setViewer(i,windowViewers[windowIndex*2+i]);
+				}
+		
+		/* Reset all viewer's headlight states: */
+		viewer->setHeadlightState(false);
+		for(int viewerIndex=0;viewerIndex<getNumViewers();++viewerIndex)
+			getViewer(viewerIndex)->setHeadlightState(originalHeadlightStates[viewerIndex]);
+		
+		/* Restore the environment's background color: */
+		setBackgroundColor(originalBackgroundColor);
+		}
+	
+	/* Disable the vislet: */
+	Vislet::disable(shutdown);
 	}
 
 void Filming::frame(void)

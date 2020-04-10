@@ -1,6 +1,6 @@
 /***********************************************************************
 Algorithms - Implementations of common numerical algorithms.
-Copyright (c) 2015 Oliver Kreylos
+Copyright (c) 2015-2019 Oliver Kreylos
 
 This file is part of the Templatized Math Library (Math).
 
@@ -25,6 +25,10 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 namespace Math {
 
 unsigned int solveCubicEquation(const double coefficients[4],double solutions[3]); // Finds roots of cubic equation defined by coefficients in order from highest to lowest power of x; returns number of real roots (1 or 3)
+template <class ScalarParam>
+ScalarParam nudgeUp(ScalarParam value); // Returns the next-larger number: value<nudgeUp(value), value2>=value&&value2<nudgeUp(value) => value2==value; throws exception if not achievable
+template <class ScalarParam>
+ScalarParam nudgeDown(ScalarParam value); // Returns the next-smaller number: value>nudgeDown(value), value2<=value&&value2>nudgeDown(value) => value2==value; throws exception if not achievable
 
 }
 

@@ -1,7 +1,7 @@
 /***********************************************************************
 VRWindow - Class for OpenGL windows that are used to map one or two eyes
 of a viewer onto a VR screen.
-Copyright (c) 2004-2018 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 ZMap stereo mode additions copyright (c) 2011 Matthias Deller.
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
@@ -26,6 +26,8 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #define SAVE_SCREENSHOT_PROJECTION 0
 #define RENDERFRAMETIMES 0
 
+#define SAVE_MOUSEMOVEMENTS 1
+
 #include <Vrui/VRWindow.h>
 
 #include <unistd.h>
@@ -43,6 +45,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Misc/ConfigurationFile.h>
 #if SAVE_SCREENSHOT_PROJECTION
 #include <IO/File.h>
+#include <IO/OpenFile.h>
 #endif
 #include <Cluster/Multiplexer.h>
 #include <Math/Math.h>
@@ -78,15 +81,10 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Images/WriteImageFile.h>
 #include <GLMotif/WidgetManager.h>
 #include <Vrui/Vrui.h>
-#if SAVE_SCREENSHOT_PROJECTION
-#include <Vrui/OpenFile.h>
-#endif
-#include <Vrui/InputDevice.h>
 #include <Vrui/InputDeviceManager.h>
 #include <Vrui/Internal/InputDeviceAdapterMouse.h>
 #include <Vrui/Internal/InputDeviceAdapterMultitouch.h>
 #include <Vrui/Viewer.h>
-#include <Vrui/VRScreen.h>
 #include <Vrui/WindowProperties.h>
 #include <Vrui/ViewSpecification.h>
 #include <Vrui/Tool.h>
@@ -104,9 +102,12 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <X11/extensions/XInput2.h>
 #endif
 
-#if SAVE_SCREENSHOT_PROJECTION
-#include <Misc/File.h>
-#include <GL/GLTransformationWrappers.h>
+#if SAVE_MOUSEMOVEMENTS
+#include <Misc/SizedTypes.h>
+#include <IO/File.h>
+#include <IO/OpenFile.h>
+
+IO::FilePtr mouseMovementsFile;
 #endif
 
 namespace Misc {
@@ -244,7 +245,7 @@ class ValueCoder<GLWindow::WindowPos>
 				*decodeEnd=cPtr;
 			return result;
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to GLWindow::WindowPos due to ")+err.what());
 			}
@@ -264,6 +265,38 @@ extern int frameTimeIndex;
 /*************************
 Methods of class VRWindow:
 *************************/
+
+void VRWindow::screenSizeChangedCallback(VRScreen::SizeChangedCallbackData* cbData)
+	{
+	/* Adjust the viewport for all screens whose size changed: */
+	for(int screenIndex=0;screenIndex<2;++screenIndex)
+		if(screens[screenIndex]==cbData->screen)
+			{
+			/* Update the window's viewport: */
+			if(panningViewport)
+				{
+				viewports[screenIndex][0]=Scalar(getWindowOrigin()[0]-outputConfiguration.domainOrigin[0])*cbData->newScreenSize[0]/Scalar(outputConfiguration.domainSize[0]);
+				viewports[screenIndex][1]=Scalar(getWindowOrigin()[0]-outputConfiguration.domainOrigin[0]+getWindowWidth())*cbData->newScreenSize[0]/Scalar(outputConfiguration.domainSize[0]);
+				viewports[screenIndex][2]=Scalar(outputConfiguration.domainOrigin[1]+outputConfiguration.domainSize[1]-getWindowOrigin()[1]-getWindowHeight())*cbData->newScreenSize[1]/Scalar(outputConfiguration.domainSize[1]);
+				viewports[screenIndex][3]=Scalar(outputConfiguration.domainOrigin[1]+outputConfiguration.domainSize[1]-getWindowOrigin()[1])*cbData->newScreenSize[1]/Scalar(outputConfiguration.domainSize[1]);
+				}
+			else
+				{
+				viewports[screenIndex][0]=Scalar(0);
+				viewports[screenIndex][1]=cbData->newScreenSize[0];
+				viewports[screenIndex][2]=Scalar(0);
+				viewports[screenIndex][3]=cbData->newScreenSize[1];
+				}
+			}
+	}
+
+void VRWindow::enableButtonCallback(InputDevice::ButtonCallbackData* cbData)
+	{
+	if(invertEnableButton)
+		enabled=!cbData->newButtonState;
+	else
+		enabled=cbData->newButtonState;
+	}
 
 void VRWindow::moveWindow(const NavTransform& transform)
 	{
@@ -545,15 +578,50 @@ void VRWindow::render(const GLWindow::WindowPos& viewportPos,int screenIndex,con
 		}
 	}
 
-void VRWindow::initContext(GLContext* context,int screen,const WindowProperties& properties,const Misc::ConfigurationFileSection& configFileSection)
+int VRWindow::getVisualFlags(const Misc::ConfigurationFileSection& configFileSection)
 	{
-	/* Query flags that determine the window's required visual type: */
+	int result=0x0;
+	
+	/* Query visual flags from the given configuration file section: */
 	bool vsync=configFileSection.retrieveValue<bool>("./vsync",false);
 	bool lensCorrection=configFileSection.hasTag("./lensCorrectorName");
-	
 	bool frontBufferRendering=vsync&&lensCorrection&&!configFileSection.retrieveValue<bool>("./useBackBuffer",false);
 	bool renderToBuffer=lensCorrection;
 	
+	if(renderToBuffer)
+		{
+		if(!frontBufferRendering)
+			{
+			/* Request a back buffer: */
+			result|=BACKBUFFER;
+			
+			/* No multisampling needed: */
+			result|=1;
+			}
+		}
+	else
+		{
+		/* Request a direct-rendering visual, i.e., one with a back buffer and a depth buffer: */
+		result|=DIRECT|BACKBUFFER;
+		
+		/* Check if multisampling is requested: */
+		int multisamplingLevel=configFileSection.retrieveValue<int>("./multisamplingLevel",1);
+		if(multisamplingLevel<1)
+			multisamplingLevel=1;
+		if(multisamplingLevel>255)
+			multisamplingLevel=255;
+		result|=multisamplingLevel;
+		
+		/* Check if quadbuffer stereo is requested: */
+		if(configFileSection.retrieveValue<WindowType>("./windowType")==QUADBUFFER_STEREO)
+			result|=STEREO;
+		}
+	
+	return result;
+	}
+
+void VRWindow::initContext(GLContext* context,int screen,const WindowProperties& properties,int visualFlags)
+	{
 	/* Create a list of desired visual properties: */
 	int visualPropertyList[256];
 	int numProperties=0;
@@ -562,7 +630,7 @@ void VRWindow::initContext(GLContext* context,int screen,const WindowProperties&
 	visualPropertyList[numProperties++]=GLX_RGBA;
 	
 	/* Check if the requested rendering mode requires double buffering: */
-	if(!frontBufferRendering)
+	if(visualFlags&BACKBUFFER)
 		visualPropertyList[numProperties++]=GLX_DOUBLEBUFFER;
 	
 	/* Ask for the requested main buffer channel sizes: */
@@ -576,7 +644,7 @@ void VRWindow::initContext(GLContext* context,int screen,const WindowProperties&
 	visualPropertyList[numProperties++]=properties.colorBufferSize[3];
 	
 	/* All other properties apply to the render buffer, not necessarily the window's visual: */
-	if(!renderToBuffer)
+	if(visualFlags&DIRECT)
 		{
 		/* Ask for the requested depth buffer size: */
 		visualPropertyList[numProperties++]=GLX_DEPTH_SIZE;
@@ -597,13 +665,12 @@ void VRWindow::initContext(GLContext* context,int screen,const WindowProperties&
 			}
 		
 		/* Check for multisample requests: */
-		int multisamplingLevel=configFileSection.retrieveValue<int>("./multisamplingLevel",1);
-		if(multisamplingLevel>1)
+		if((visualFlags&MULTISAMPLEMASK)>1)
 			{
 			visualPropertyList[numProperties++]=GLX_SAMPLE_BUFFERS_ARB;
 			visualPropertyList[numProperties++]=1;
 			visualPropertyList[numProperties++]=GLX_SAMPLES_ARB;
-			visualPropertyList[numProperties++]=multisamplingLevel;
+			visualPropertyList[numProperties++]=visualFlags&MULTISAMPLEMASK;
 			}
 		}
 	
@@ -621,7 +688,7 @@ void VRWindow::initContext(GLContext* context,int screen,const WindowProperties&
 		}
 	
 	/* Check for quad buffering (active stereo) requests: */
-	if(configFileSection.retrieveValue<WindowType>("./windowType")==QUADBUFFER_STEREO)
+	if(visualFlags&STEREO)
 		visualPropertyList[numProperties++]=GLX_STEREO;
 	
 	/* Terminate the property list: */
@@ -669,6 +736,7 @@ VRWindow::VRWindow(GLContext* sContext,const OutputConfiguration& sOutputConfigu
 	 vruiState(sVruiState),windowGroup(0),
 	 mouseAdapter(sMouseAdapter),
 	 multitouchAdapter(0),
+	 enableButtonDevice(0),enableButtonIndex(-1),invertEnableButton(false),
 	 clearBufferMask(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT),
 	 vsync(configFileSection.retrieveValue<bool>("./vsync",false)),
 	 lowLatency(configFileSection.retrieveValue<bool>("./lowLatency",false)),
@@ -688,6 +756,7 @@ VRWindow::VRWindow(GLContext* sContext,const OutputConfiguration& sOutputConfigu
 	 screenshotKey(KeyMapper::getQualifiedKey(configFileSection.retrieveString("./screenshotKey","Super+Print"))),
 	 fullscreenToggleKey(KeyMapper::getQualifiedKey(configFileSection.retrieveString("./fullscreenToggleKey","F11"))),
 	 burnModeToggleKey(KeyMapper::getQualifiedKey(configFileSection.retrieveString("./burnModeToggleKey","Super+ScrollLock"))),
+	 pauseMovieSaverKey(KeyMapper::getQualifiedKey(configFileSection.retrieveString("./pauseMovieSaverKey","Super+Pause"))),
 	 ivEyeIndexOffset(0),
 	 ivRightViewportTextureID(0),ivRightDepthbufferObjectID(0),ivRightFramebufferObjectID(0),
 	 asNumViewZones(0),asViewZoneOffset(0),
@@ -700,10 +769,9 @@ VRWindow::VRWindow(GLContext* sContext,const OutputConfiguration& sOutputConfigu
 	 showFpsFont(0),
 	 showFps(configFileSection.retrieveValue<bool>("./showFps",false)),burnMode(false),
 	 trackToolKillZone(false),
-	 dirty(true),
-	 resizeViewport(true),
+	 dirty(true),resizeViewport(true),enabled(true),
 	 saveScreenshot(false),
-	 movieSaver(0)
+	 movieSaver(0),movieSaverRecording(configFileSection.retrieveValue<bool>("./saveMovieAutostart",false))
 	{
 	/* Update the X window's event mask: */
 	{
@@ -736,6 +804,11 @@ VRWindow::VRWindow(GLContext* sContext,const OutputConfiguration& sOutputConfigu
 		}
 	if(screens[0]==0||screens[1]==0)
 		throw std::runtime_error("VRWindow::VRWindow: No screen(s) provided");
+	
+	/* Install size change notification callbacks with both screens: */
+	screens[0]->getSizeChangedCallbacks().add(this,&VRWindow::screenSizeChangedCallback);
+	if(screens[1]!=screens[0])
+		screens[1]->getSizeChangedCallbacks().add(this,&VRWindow::screenSizeChangedCallback);
 	
 	/* Get the viewer(s) observing this window: */
 	viewers[0]=findViewer(configFileSection.retrieveString("./leftViewerName","").c_str());
@@ -988,6 +1061,31 @@ VRWindow::VRWindow(GLContext* sContext,const OutputConfiguration& sOutputConfigu
 	
 	#endif
 	
+	/* Check if there is an input device button to enable or disable rendering into this window: */
+	if(configFileSection.hasTag("./enableButtonDevice"))
+		{
+		/* Retrieve the enable button input device, button index, and mode: */
+		std::string enableButtonDeviceName=configFileSection.retrieveString("./enableButtonDevice");
+		enableButtonDevice=findInputDevice(enableButtonDeviceName.c_str());
+		if(enableButtonDevice==0)
+			Misc::throwStdErr("VRWindow::VRWindow: Enable button device %s not found",enableButtonDeviceName.c_str());
+		std::string enableButtonName=configFileSection.retrieveString("./enableButton");
+		int enableButtonFeatureIndex=getInputDeviceManager()->getFeatureIndex(enableButtonDevice,enableButtonName.c_str());
+		if(enableButtonFeatureIndex<0)
+			Misc::throwStdErr("VRWindow::VRWindow: Feature %s on device %s not found",enableButtonName.c_str(),enableButtonDeviceName.c_str());
+		if(!enableButtonDevice->isFeatureButton(enableButtonFeatureIndex))
+			Misc::throwStdErr("VRWindow::VRWindow: Feature %s on device %s is not a button",enableButtonName.c_str(),enableButtonDeviceName.c_str());
+		enableButtonIndex=enableButtonDevice->getFeatureTypeIndex(enableButtonFeatureIndex);
+		invertEnableButton=configFileSection.retrieveValue<bool>("./invertEnableButton",invertEnableButton);
+		
+		/* Get the enable button's initial value, and install a callback to be notified of changes: */
+		if(invertEnableButton)
+			enabled=!enableButtonDevice->getButtonState(enableButtonIndex);
+		else
+			enabled=enableButtonDevice->getButtonState(enableButtonIndex);
+		enableButtonDevice->getButtonCallbacks(enableButtonIndex).add(this,&VRWindow::enableButtonCallback);
+		}
+	
 	/* Hide mouse cursor and ignore mouse events if the mouse is not used as an input device: */
 	if(mouseAdapter==0||!mouseAdapter->needMouseCursor())
 		{
@@ -1094,7 +1192,7 @@ VRWindow::VRWindow(GLContext* sContext,const OutputConfiguration& sOutputConfigu
 			GLARBMultitexture::initExtension();
 			GLShader::initExtensions();
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			Misc::throwStdErr("VRWindow::VRWindow: Unable to set mode AutoStereoscopicStereo due to exception %s",err.what());
 			}
@@ -1302,12 +1400,36 @@ VRWindow::VRWindow(GLContext* sContext,const OutputConfiguration& sOutputConfigu
 		{
 		/* Create a movie saver object: */
 		movieSaver=MovieSaver::createMovieSaver(configFileSection);
+		Misc::formattedLogNote("VRWindow: Movie recording enabled; press %s to start recording",configFileSection.retrieveString("./pauseMovieSaverKey","Super+Pause").c_str());
 		}
+	
+	#if SAVE_MOUSEMOVEMENTS
+	/* Open a file to save mouse movements: */
+	std::string mouseMovementsFileName=configFileSection.retrieveString("./saveMouseEventsFileName","");
+	if(!mouseMovementsFileName.empty())
+		mouseMovementsFile=IO::openFile(mouseMovementsFileName.c_str(),IO::File::WriteOnly);
+	#endif
 	}
 
 VRWindow::~VRWindow(void)
 	{
 	delete movieSaver;
+	
+	#if SAVE_MOUSEMOVEMENTS
+	/* Close the mouse movement file: */
+	mouseMovementsFile=0;
+	#endif
+	
+	/* Remove size change notification callbacks from the window's screens: */
+	screens[0]->getSizeChangedCallbacks().remove(this,&VRWindow::screenSizeChangedCallback);
+	if(screens[1]!=screens[0])
+		screens[1]->getSizeChangedCallbacks().remove(this,&VRWindow::screenSizeChangedCallback);
+	
+	if(enableButtonDevice!=0)
+		{
+		/* Remove the enable button callback from the enable button device: */
+		enableButtonDevice->getButtonCallbacks(enableButtonIndex).remove(this,&VRWindow::enableButtonCallback);
+		}
 	}
 
 void VRWindow::setWindowIndex(int newWindowIndex)
@@ -1350,13 +1472,26 @@ void VRWindow::setWindowGroup(VruiWindowGroup* newWindowGroup)
 
 void VRWindow::setVRScreen(int screenIndex,VRScreen* newScreen)
 	{
-	screens[screenIndex]=newScreen;
+	if(newScreen!=screens[screenIndex])
+		{
+		/* Check if the size change notification callback with the old screen has to be removed: */
+		if(screens[screenIndex]!=screens[1-screenIndex])
+			screens[screenIndex]->getSizeChangedCallbacks().remove(this,&VRWindow::screenSizeChangedCallback);
+		
+		/* Replace the previous screen: */
+		screens[screenIndex]=newScreen;
+		
+		/* Check if a size change notification callback has to be installed with the new screen: */
+		if(screens[screenIndex]!=screens[1-screenIndex])
+			screens[screenIndex]->getSizeChangedCallbacks().add(this,&VRWindow::screenSizeChangedCallback);
+		}
 	}
 
 void VRWindow::setVRScreen(VRScreen* newScreen)
 	{
 	/* Set both screens to the given screen: */
-	screens[0]=screens[1]=newScreen;
+	setVRScreen(0,newScreen);
+	setVRScreen(1,newScreen);
 	}
 
 void VRWindow::setScreenViewport(const Scalar newViewport[4])
@@ -1473,8 +1608,8 @@ void VRWindow::updateScreenDevice(const Scalar windowPos[2],InputDevice* device)
 		{
 		/* Project the mouse using the dedicated mouse screen: */
 		screen=mouseScreen;
-		screenPos[0]=windowPos[0]*mouseScreen->getWidth()/getWindowWidth();
-		screenPos[1]=(Scalar(getWindowHeight())-windowPos[1])*mouseScreen->getHeight()/getWindowHeight();
+		screenPos[0]=windowPos[0]*mouseScreen->getWidth()/Scalar(getWindowWidth());
+		screenPos[1]=(Scalar(getWindowHeight())-windowPos[1])*mouseScreen->getHeight()/Scalar(getWindowHeight());
 		}
 	else if(windowType==SPLITVIEWPORT_STEREO)
 		{
@@ -1505,8 +1640,8 @@ void VRWindow::updateScreenDevice(const Scalar windowPos[2],InputDevice* device)
 		else
 			{
 			/* Project the mouse using the full viewport: */
-			screenPos[0]=windowPos[0]*screen->getWidth()/getWindowWidth();
-			screenPos[1]=(Scalar(getWindowHeight())-windowPos[1])*screen->getHeight()/getWindowHeight();
+			screenPos[0]=windowPos[0]*screen->getWidth()/Scalar(getWindowWidth());
+			screenPos[1]=(Scalar(getWindowHeight())-windowPos[1])*screen->getHeight()/Scalar(getWindowHeight());
 			}
 		}
 	
@@ -1532,12 +1667,11 @@ void VRWindow::updateScreenDevice(const Scalar windowPos[2],InputDevice* device)
 	deviceRayDir/=deviceRayDirLen;
 	Scalar deviceRayStart=-(deviceEyePos[1]+getFrontplaneDist())*deviceRayDirLen/deviceEyePos[1];
 	
-	/* Update the screen device: */
+	/* Update the device's ray: */
 	device->setDeviceRay(deviceRayDir,deviceRayStart);
-	device->setTransformation(deviceT);
 	
 	/* Let the UI manager modify the initial screen device position and orientation: */
-	getUiManager()->projectDevice(device);
+	getUiManager()->projectDevice(device,deviceT);
 	}
 
 ViewSpecification VRWindow::calcViewSpec(int eyeIndex) const
@@ -1843,6 +1977,17 @@ bool VRWindow::processEvent(const XEvent& event)
 		case MotionNotify:
 			if(mouseAdapter!=0)
 				{
+				#if SAVE_MOUSEMOVEMENTS
+				if(mouseMovementsFile!=0)
+					{
+					/* Write event time and new mouse position: */
+					mouseMovementsFile->write<Misc::UInt32>(0); // Motion event
+					mouseMovementsFile->write<Misc::UInt64>(event.xmotion.time);
+					mouseMovementsFile->write<Misc::SInt32>(event.xmotion.x);
+					mouseMovementsFile->write<Misc::SInt32>(event.xmotion.y);
+					}
+				#endif
+				
 				/* Set mouse position in input device adapter: */
 				mouseAdapter->setMousePosition(this,event.xmotion.x,event.xmotion.y);
 				}
@@ -1852,6 +1997,17 @@ bool VRWindow::processEvent(const XEvent& event)
 		case ButtonRelease:
 			if(mouseAdapter!=0)
 				{
+				#if SAVE_MOUSEMOVEMENTS
+				if(mouseMovementsFile!=0)
+					{
+					/* Write event time and new mouse position: */
+					mouseMovementsFile->write<Misc::UInt32>(1); // Button event
+					mouseMovementsFile->write<Misc::UInt64>(event.xbutton.time);
+					mouseMovementsFile->write<Misc::SInt32>(event.xbutton.x);
+					mouseMovementsFile->write<Misc::SInt32>(event.xbutton.y);
+					}
+				#endif
+				
 				/* Set mouse position in input device adapter: */
 				mouseAdapter->setMousePosition(this,event.xbutton.x,event.xbutton.y);
 				
@@ -1879,6 +2035,17 @@ bool VRWindow::processEvent(const XEvent& event)
 			{
 			if(mouseAdapter!=0)
 				{
+				#if SAVE_MOUSEMOVEMENTS
+				if(mouseMovementsFile!=0)
+					{
+					/* Write event time and new mouse position: */
+					mouseMovementsFile->write<Misc::UInt32>(2); // Key event
+					mouseMovementsFile->write<Misc::UInt64>(event.xkey.time);
+					mouseMovementsFile->write<Misc::SInt32>(event.xkey.x);
+					mouseMovementsFile->write<Misc::SInt32>(event.xkey.y);
+					}
+				#endif
+				
 				/* Set mouse position in input device adapter: */
 				mouseAdapter->setMousePosition(this,event.xkey.x,event.xkey.y);
 				}
@@ -1947,6 +2114,15 @@ bool VRWindow::processEvent(const XEvent& event)
 						burnModeNumFrames=0U;
 						burnModeMin=Math::Constants<double>::max;
 						burnModeMax=0.0;
+						}
+					}
+				else if(pauseMovieSaverKey.matches(keySym,keyEvent.state))
+					{
+					/* Toggle the movie saver's activation state if it exists: */
+					if(movieSaver!=0)
+						{
+						movieSaverRecording=!movieSaverRecording;
+						Misc::formattedLogNote("VRWindow: Movie recording %s",movieSaverRecording?"active":"paused");
 						}
 					}
 				
@@ -2068,7 +2244,7 @@ void VRWindow::draw(void)
 	getContextData().updateThings();
 	
 	/* Determine whether it is currently possible to render into this window: */
-	bool canRender=screens[0]->isEnabled()&&screens[1]->isEnabled()&&viewers[0]->isEnabled()&&viewers[1]->isEnabled();
+	bool canRender=enabled&&screens[0]->isEnabled()&&screens[1]->isEnabled()&&viewers[0]->isEnabled()&&viewers[1]->isEnabled();
 	
 	/* Draw the window's contents: */
 	GLWindow::WindowPos windowViewport(getWindowWidth(),getWindowHeight());
@@ -2138,6 +2314,7 @@ void VRWindow::draw(void)
 					displayState->eyeIndex=eye;
 					render(splitViewportPos[eye],eye,viewers[eye]->getEyePosition(eye==0?Viewer::LEFT:Viewer::RIGHT),canRender);
 					}
+				lensCorrector->cleanup();
 				
 				/* Check if we should warp now or right before vsync: */
 				if(preSwapDelay==0.0f)
@@ -2391,7 +2568,7 @@ void VRWindow::draw(void)
 		
 		/* Write the matrices to a projection file: */
 		{
-		IO::FilePtr projFile(Vrui::openFile((screenshotImageFileName+".proj").c_str(),Misc::BufferedFile::WriteOnly));
+		IO::FilePtr projFile(IO::openFile((screenshotImageFileName+".proj").c_str(),IO::File::WriteOnly));
 		projFile->setEndianness(IO::File::LittleEndian);
 		projFile->write(proj,16);
 		projFile->write(mv,16);
@@ -2402,8 +2579,8 @@ void VRWindow::draw(void)
 		saveScreenshot=false;
 		}
 	
-	/* Check if the window is supposed to save a movie: */
-	if(movieSaver!=0)
+	/* Check if the window is currently saving a movie: */
+	if(movieSaverRecording)
 		{
 		/* Get a fresh frame buffer: */
 		MovieSaver::FrameBuffer& frameBuffer=movieSaver->startNewFrame();

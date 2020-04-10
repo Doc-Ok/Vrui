@@ -1,0 +1,259 @@
+#VRML V2.0 utf8
+
+# Head model
+Inline
+	{
+	url "Head.wrl"
+	}
+
+# Neck transform
+DEF NT Transform
+	{
+	translation 0.0 0.0 0.0
+	rotation 0.0 0.0 1.0 0.0
+	
+	children
+		[
+		# Torso model
+		Inline
+			{
+			url "Torso.wrl"
+			}
+		
+		# Left sternoclavicular transform
+		DEF LCT Transform
+			{
+			translation -0.02 0.015 -0.197
+			rotation 0.0 0.0 1.0 0.0
+			
+			children
+				[
+				# Left clavicle model
+				Inline
+					{
+					url "LeftClavicle.wrl"
+					}
+				
+				# Left shoulder transform
+				DEF LST Transform
+					{
+					translation -0.145 0.0 0.0
+					rotation 1.0 0.0 0.0 0.0
+					
+					children
+						[
+						# Left upper arm model
+						Inline
+							{
+							url "LeftUpperArm.wrl"
+							}
+						
+						# Left elbow transform
+						DEF LET Transform
+							{
+							translation 0.0 0.325 0.0
+							rotation 1.0 0.0 0.0 0.0
+							
+							children
+								[
+								# Left lower arm model
+								Inline
+									{
+									url "LeftLowerArm.wrl"
+									}
+								
+								# Left wrist transform
+								DEF LWT Transform
+									{
+									translation 0.0 0.305 0.0
+									rotation 1.0 0.0 0.0 0.0
+									
+									children
+										[
+										Inline
+											{
+											url "LeftHand.wrl"
+											}
+										]
+									}
+								]
+							}
+						]
+					}
+				]
+			}
+		
+		# Right sternoclavicular transform
+		DEF RCT Transform
+			{
+			translation 0.02 0.015 -0.197
+			rotation 0.0 0.0 1.0 0.0
+			
+			children
+				[
+				# Right clavicle model
+				Inline
+					{
+					url "RightClavicle.wrl"
+					}
+				
+				# Right shoulder transform
+				DEF RST Transform
+					{
+					translation 0.145 0.0 0.0
+					rotation 1.0 0.0 0.0 0.0
+					
+					children
+						[
+						# Right upper arm model
+						Inline
+							{
+							url "RightUpperArm.wrl"
+							}
+						
+						# Right elbow transform
+						DEF RET Transform
+							{
+							translation 0.0 0.325 0.0
+							rotation 1.0 0.0 0.0 0.0
+							
+							children
+								[
+								# Right lower arm model
+								Inline
+									{
+									url "RightLowerArm.wrl"
+									}
+								
+								# Right wrist transform
+								DEF RWT Transform
+									{
+									translation 0.0 0.305 0.0
+									rotation 1.0 0.0 0.0 0.0
+									
+									children
+										[
+										Inline
+											{
+											url "RightHand.wrl"
+											}
+										]
+									}
+								]
+							}
+						]
+					}
+				]
+			}
+		
+		# Pelvis transform
+		DEF PT Transform
+			{
+			translation 0.0 0.015 -0.7
+			rotation 0.0 0.0 1.0 0.0
+			
+			children
+				[
+				# Pelvis model
+				Inline
+					{
+					url "Pelvis.wrl"
+					}
+				
+				# Left hip transform
+				DEF LHT Transform
+					{
+					translation -0.15 0.0 0.0
+					rotation 1.0 0.0 0.0 0.0
+					
+					children
+						[
+						# Left upper leg model
+						Inline
+							{
+							url "LeftUpperLeg.wrl"
+							}
+						
+						# Left knee transform
+						DEF LKT Transform
+							{
+							translation 0.0 0.0 -0.458
+							rotation 1.0 0.0 0.0 0.0
+							
+							children
+								[
+								# Left lower leg model
+								Inline
+									{
+									url "LeftLowerLeg.wrl"
+									}
+								
+								# Left ankle transform
+								DEF LAT Transform
+									{
+									translation 0.0 0.0 -0.432
+									rotation 1.0 0.0 0.0 0.0
+									
+									children
+										[
+										Inline
+											{
+											url "LeftFoot.wrl"
+											}
+										]
+									}
+								]
+							}
+						]
+					}
+				
+				# Right hip transform
+				DEF RHT Transform
+					{
+					translation 0.15 0.0 0.0
+					rotation 1.0 0.0 0.0 0.0
+					
+					children
+						[
+						# Right upper leg model
+						Inline
+							{
+							url "RightUpperLeg.wrl"
+							}
+						
+						# Right knee transform
+						DEF RKT Transform
+							{
+							translation 0.0 0.0 -0.458
+							rotation 1.0 0.0 0.0 0.0
+							
+							children
+								[
+								# Right lower leg model
+								Inline
+									{
+									url "RightLowerLeg.wrl"
+									}
+								
+								# Right ankle transform
+								DEF RAT Transform
+									{
+									translation 0.0 0.0 -0.432
+									rotation 1.0 0.0 0.0 0.0
+									
+									children
+										[
+										Inline
+											{
+											url "RightFoot.wrl"
+											}
+										]
+									}
+								]
+							}
+						]
+					}
+				]
+			}
+		]
+	}

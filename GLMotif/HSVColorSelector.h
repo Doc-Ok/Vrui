@@ -1,7 +1,7 @@
 /***********************************************************************
 HSVColorSelector - Class for widgets to display and select colors based
 on the HSV color model.
-Copyright (c) 2012-2013 Oliver Kreylos
+Copyright (c) 2012-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -62,10 +62,13 @@ class HSVColorSelector:public Container,public DragWidget
 	GLfloat currentValue; // Current value (brightness) of the color hexagon
 	GLfloat currentColorPos[2]; // Position of current color inside color hexagon, normalized to [-1, 1]^2
 	bool snapping; // Flag whether color values during the current dragging operation are snapped to 7 "pure" colors
+	Color* trackedColor; // Pointer to a color variable that tracks the widget's current value
 	Misc::CallbackList valueChangedCallbacks; // List of callbacks to be called when the slider value changes due to a user interaction
 	
 	/* Private methods: */
 	private:
+	void setColor(const Color& newColor); // Sets the color selector to the given color value
+	void updateColor(void); // Called when the color selector's value changes
 	void sliderDraggingCallback(DraggingCallbackData* cbData);
 	void sliderValueChangedCallback(Slider::ValueChangedCallbackData* cbData);
 	
@@ -78,6 +81,7 @@ class HSVColorSelector:public Container,public DragWidget
 	virtual Vector calcNaturalSize(void) const;
 	virtual ZRange calcZRange(void) const;
 	virtual void resize(const Box& newExterior);
+	virtual void updateVariables(void);
 	virtual void draw(GLContextData& contextData) const;
 	virtual bool findRecipient(Event& event);
 	virtual void pointerButtonDown(Event& event);
@@ -97,6 +101,7 @@ class HSVColorSelector:public Container,public DragWidget
 	void setIndicatorSize(GLfloat newIndicatorSize); // Sets the size of the current-color indicator
 	Color getCurrentColor(void) const; // Returns the currently selected color in RGB
 	void setCurrentColor(const Color& newColor); // Sets the current color as RGB
+	void track(Color& newTrackedColor); // Tracks the given color variable
 	Misc::CallbackList& getValueChangedCallbacks(void) // Returns list of value changed callbacks
 		{
 		return valueChangedCallbacks;

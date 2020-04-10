@@ -1,7 +1,7 @@
 /***********************************************************************
 FPSNavigationTool - Class encapsulating the navigation behaviour of a
 typical first-person shooter (FPS) game.
-Copyright (c) 2005-2015 Oliver Kreylos
+Copyright (c) 2005-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -64,7 +64,8 @@ FPSNavigationToolFactory::Configuration::Configuration(void)
 	 azimuthStep(0),
 	 fixAzimuth(false),
 	 levelOnExit(false),
-	 drawHud(true),hudColor(0.0f,1.0f,0.0f),
+	 drawHud(true),drawElevation(false),
+	 hudColor(0.0f,1.0f,0.0f),
 	 hudDist(Geometry::dist(getDisplayCenter(),getMainViewer()->getHeadPosition())),
 	 hudRadius(getDisplaySize()*0.5f),
 	 hudFontSize(float(getUiSize())*1.5f)
@@ -84,6 +85,7 @@ void FPSNavigationToolFactory::Configuration::load(const Misc::ConfigurationFile
 	fixAzimuth=cfs.retrieveValue<bool>("./fixAzimuth",fixAzimuth);
 	levelOnExit=cfs.retrieveValue<bool>("./levelOnExit",levelOnExit);
 	drawHud=cfs.retrieveValue<bool>("./drawHud",drawHud);
+	drawElevation=cfs.retrieveValue<bool>("./drawElevation",drawElevation);
 	hudColor=cfs.retrieveValue<Color>("./hudColor",hudColor);
 	hudDist=cfs.retrieveValue<float>("./hudDist",hudDist);
 	hudRadius=cfs.retrieveValue<float>("./hudRadius",hudRadius);
@@ -103,6 +105,7 @@ void FPSNavigationToolFactory::Configuration::save(Misc::ConfigurationFileSectio
 	cfs.storeValue<bool>("./fixAzimuth",fixAzimuth);
 	cfs.storeValue<bool>("./levelOnExit",levelOnExit);
 	cfs.storeValue<bool>("./drawHud",drawHud);
+	cfs.storeValue<bool>("./drawElevation",drawElevation);
 	cfs.storeValue<Color>("./hudColor",hudColor);
 	cfs.storeValue<float>("./hudDist",hudDist);
 	cfs.storeValue<float>("./hudRadius",hudRadius);
@@ -677,6 +680,59 @@ void FPSNavigationTool::display(GLContextData& contextData) const
 				{
 				pos[0]=dist*r/60.0f;
 				numberRenderer->drawNumber(pos,az,contextData,0,1);
+				}
+			}
+		
+		if(config.drawElevation)
+			{
+			float elevationDeg=Math::deg(elevation);
+			float x=r*1.25f;
+			
+			/* Draw the elevation ribbon: */
+			glBegin(GL_LINES);
+			glVertex2f(x,-r*0.5f);
+			glVertex2f(x,r*0.5f);
+			glEnd();
+			glBegin(GL_LINE_STRIP);
+			glVertex2f(x+s,-s*0.5f);
+			glVertex2f(x,0.0f);
+			glVertex2f(x+s,s*0.5f);
+			glEnd();
+			
+			/* Draw the elevation tick marks: */
+			glBegin(GL_LINES);
+			for(int el=-90;el<=90;el+=10)
+				{
+				float dist=elevationDeg-float(el);
+				if(dist<-180.0f)
+					dist+=360.0f;
+				if(dist>180.0f)
+					dist-=360.0f;
+				if(Math::abs(dist)<=45.0f)
+					{
+					float y=dist*r/90.0f;
+					glVertex2f(x,y);
+					glVertex2f(x-(el%30==0?s*1.5f:s),y);
+					}
+				}
+			glEnd();
+			
+			/* Draw the elevation labels: */
+			GLNumberRenderer::Vector pos;
+			pos[0]=x-s*2.0f;
+			pos[2]=0.0f;
+			for(int el=-90;el<=90;el+=30)
+				{
+				float dist=elevationDeg-float(el);
+				if(dist<-180.0f)
+					dist+=360.0f;
+				if(dist>180.0f)
+					dist-=360.0f;
+				if(Math::abs(dist)<=45.0f)
+					{
+					pos[1]=dist*r/90.0f;
+					numberRenderer->drawNumber(pos,-el,contextData,1,0);
+					}
 				}
 			}
 		

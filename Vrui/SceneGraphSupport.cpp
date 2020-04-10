@@ -1,7 +1,7 @@
 /***********************************************************************
 SceneGraphSupport - Helper functions to simplify adding scene graphs to
 Vrui applications.
-Copyright (c) 2013 Oliver Kreylos
+Copyright (c) 2013-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -68,11 +68,15 @@ void renderSceneGraph(const SceneGraph::GraphNode* root,bool navigational,GLCont
 	/* Get the initial transformation: */
 	const NavTransform& initial=navigational?getDisplayState(contextData).modelviewNavigational:mvp;
 	
+	{
+	
 	/* Create the render state object: */
 	SceneGraph::GLRenderState renderState(contextData,initial,mvp.transform(getMainViewer()->getHeadPosition()),mvp.transform(getUpDirection()));
 	
 	/* Render the scene graph: */
 	root->glRenderAction(renderState);
+	
+	}
 	
 	/* Restore the original modelview matrix: */
 	glPopMatrix();
@@ -91,11 +95,15 @@ void renderSceneGraph(const SceneGraph::GraphNode* root,const NavTransform& tran
 	initial*=transform;
 	initial.renormalize();
 	
+	{
+	
 	/* Create the render state object: */
 	SceneGraph::GLRenderState renderState(contextData,initial,mvp.transform(getMainViewer()->getHeadPosition()),mvp.transform(getUpDirection()));
 	
 	/* Render the scene graph: */
 	root->glRenderAction(renderState);
+	
+	}
 	
 	/* Restore the original modelview matrix: */
 	glPopMatrix();

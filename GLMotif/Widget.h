@@ -1,6 +1,6 @@
 /***********************************************************************
 Widget - Base class for GLMotif UI components.
-Copyright (c) 2001-2015 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -138,6 +138,7 @@ class Widget
 	virtual void setBorderColor(const Color& newBorderColor); // Changes a widget's border color
 	virtual void setBackgroundColor(const Color& newBackgroundColor); // Changes a widget's background color
 	virtual void setForegroundColor(const Color& newForegroundColor); // Changes a widget's foreground color
+	virtual void updateVariables(void); // Method to ask a widget and/or its children to update their internal state to that of potentially tracked variables
 	virtual void update(void); // Method called whenever a widget changes its visual representation, to facilitate render caching
 	virtual void draw(GLContextData& contextData) const; // Draws the widget
 	

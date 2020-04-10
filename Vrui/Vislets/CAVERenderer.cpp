@@ -1,7 +1,7 @@
 /***********************************************************************
 CAVERenderer - Vislet class to render the default KeckCAVES backround
 image seamlessly inside a VR application.
-Copyright (c) 2005-2018 Oliver Kreylos
+Copyright (c) 2005-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -20,6 +20,8 @@ with the Virtual Reality User Interface Library; if not, write to the
 Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 02111-1307 USA
 ***********************************************************************/
+
+#include <Vrui/Vislets/CAVERenderer.h>
 
 #include <string.h>
 #include <stdlib.h>
@@ -40,8 +42,6 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/Viewer.h>
 #include <Vrui/VisletManager.h>
 #include <Vrui/Vrui.h>
-
-#include <Vrui/Vislets/CAVERenderer.h>
 
 namespace Vrui {
 
@@ -329,19 +329,7 @@ VisletFactory* CAVERenderer::getFactory(void) const
 	return factory;
 	}
 
-void CAVERenderer::disable(void)
-	{
-	/* Trigger the folding animation: */
-	angleAnimStep=-90.0;
-	lastFrame=getApplicationTime();
-		
-	/* Request another frame: */
-	scheduleUpdate(getNextAnimationTime());
-	
-	/* Frame function will disable vislet when animation is done */
-	}
-
-void CAVERenderer::enable(void)
+void CAVERenderer::enable(bool startup)
 	{
 	/* Enable the static ceiling light sources: */
 	for(int i=0;i<4;++i)
@@ -356,14 +344,37 @@ void CAVERenderer::enable(void)
 		}
 	
 	/* Enable the vislet as far as the vislet manager is concerned: */
-	Vislet::enable();
+	Vislet::enable(startup);
 	
-	/* Trigger the unfolding animation: */
-	angleAnimStep=90.0;
-	lastFrame=getApplicationTime();
-	
-	/* Request another frame: */
-	scheduleUpdate(getNextAnimationTime());
+	if(!startup)
+		{
+		/* Trigger the unfolding animation: */
+		angleAnimStep=90.0;
+		lastFrame=getApplicationTime();
+		
+		/* Request another frame: */
+		scheduleUpdate(getNextAnimationTime());
+		}
+	}
+
+void CAVERenderer::disable(bool shutdown)
+	{
+	if(!shutdown)
+		{
+		/* Trigger the folding animation: */
+		angleAnimStep=-90.0;
+		lastFrame=getApplicationTime();
+			
+		/* Request another frame: */
+		scheduleUpdate(getNextAnimationTime());
+		
+		/* Frame function will disable vislet when animation is done */
+		}
+	else
+		{
+		/* Disable the vislet for reals: */
+		Vislet::disable(shutdown);
+		}
 	}
 
 void CAVERenderer::initContext(GLContextData& contextData) const
@@ -427,7 +438,7 @@ void CAVERenderer::frame(void)
 			viewerHeadlightStates=0;
 			
 			/* Disable the vislet: */
-			Vislet::disable();
+			Vislet::disable(false);
 			}
 		else if(angle>720.0)
 			{

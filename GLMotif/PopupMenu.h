@@ -1,7 +1,7 @@
 /***********************************************************************
 PopupMenu - Class for top-level GLMotif UI components that act as menus
 and only require a single down-motion-up sequence to select an entry.
-Copyright (c) 2001-2018 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 /* Forward declarations: */
 namespace GLMotif {
 class RowColumn;
+class Separator;
 class Button;
 }
 
@@ -67,7 +68,9 @@ class PopupMenu:public Popup
 	RowColumn* createMenu(void); // Creates an unmanaged root menu container if none exists yet
 	void manageMenu(void); // Shortcut to manage the root menu shell after it has been fully constructed
 	int getNumEntries(void); // Returns the total number of buttons in the menu, including sub-containers
+	Widget* getEntry(int entryIndex); // Returns the entry of the given index, counting through sub-containers
 	Button* addEntry(const char* newEntryLabel); // Adds a new simple menu entry and returns a pointer to the created button
+	Separator* addSeparator(void); // Adds a default horizontal separator
 	int getEntryIndex(Widget* entry); // Returns the index of the given menu entry, assumed to be a button, counting through sub-containers
 	void removeEntry(Widget* entry); // Removes the first instance of the given entry from the menu
 	Widget* removeEntry(int entryIndex); // Removes the entry of the given index from the menu; returns pointer to the removed entry

@@ -1,7 +1,7 @@
 /***********************************************************************
 Pager - Container class to arrange children as individual pages in a
 "flipbook" of sorts.
-Copyright (c) 2013-2014 Oliver Kreylos
+Copyright (c) 2013-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -175,6 +175,13 @@ void Pager::resize(const Box& newExterior)
 	childBox.doInset(Vector(marginWidth,marginWidth,0.0f));
 	for(WidgetList::iterator cIt=children.begin();cIt!=children.end();++cIt)
 		(*cIt)->resize(childBox);
+	}
+
+void Pager::updateVariables(void)
+	{
+	/* Update all child widgets: */
+	for(WidgetList::iterator cIt=children.begin();cIt!=children.end();++cIt)
+		(*cIt)->updateVariables();
 	}
 
 void Pager::draw(GLContextData& contextData) const

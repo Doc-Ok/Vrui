@@ -1,6 +1,6 @@
 /***********************************************************************
 Utility - Helper functions and classes for a variety of typical tasks.
-Copyright (c) 2007 Oliver Kreylos
+Copyright (c) 2007-2020 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -69,6 +69,26 @@ max(
 		return v2;
 	else
 		return v1;
+	}
+
+/****************************************
+Clamp a value to a range with operator<=:
+****************************************/
+
+template <class ValueParam>
+inline
+const ValueParam&
+clamp(
+	const ValueParam& value,
+	const ValueParam& min,
+	const ValueParam& max)
+	{
+	if(value<=min)
+		return min;
+	else if(value<=max)
+		return value;
+	else
+		return max;
 	}
 
 }

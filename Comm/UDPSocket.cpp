@@ -1,6 +1,6 @@
 /***********************************************************************
 UDPSocket - Wrapper class for UDP sockets ensuring exception safety.
-Copyright (c) 2004-2017 Oliver Kreylos
+Copyright (c) 2004-2018 Oliver Kreylos
 
 This file is part of the Portable Communications Library (Comm).
 
@@ -63,7 +63,7 @@ UDPSocket::UDPSocket(int localPortId,int)
 		}
 	}
 
-UDPSocket::UDPSocket(int localPortId,std::string hostname,int hostPortId)
+UDPSocket::UDPSocket(int localPortId,const std::string& hostname,int hostPortId)
 	{
 	/* Lookup host's IP address: */
 	IPv4SocketAddress hostSocketAddress(hostPortId,IPv4Address(hostname.c_str()));
@@ -127,11 +127,6 @@ UDPSocket::UDPSocket(const UDPSocket& source)
 	{
 	}
 
-UDPSocket::~UDPSocket(void)
-	{
-	close(socketFd);
-	}
-
 UDPSocket& UDPSocket::operator=(const UDPSocket& source)
 	{
 	if(this!=&source)
@@ -142,16 +137,34 @@ UDPSocket& UDPSocket::operator=(const UDPSocket& source)
 	return *this;
 	}
 
+UDPSocket::~UDPSocket(void)
+	{
+	close(socketFd);
+	}
+
+IPv4SocketAddress UDPSocket::getAddress(void) const
+	{
+	IPv4SocketAddress socketAddress;
+	#ifdef __SGI_IRIX__
+	int socketAddressLen=sizeof(IPv4SocketAddress);
+	#else
+	socklen_t socketAddressLen=sizeof(IPv4SocketAddress);
+	#endif
+	if(getsockname(socketFd,(struct sockaddr*)&socketAddress,&socketAddressLen)<0)
+		{
+		int myerrno=errno;
+		Misc::throwStdErr("Comm::UDPSocket: Unable to query socket address due to error %d (%s)",myerrno,strerror(myerrno));
+		}
+	if(socketAddressLen<sizeof(IPv4SocketAddress))
+		Misc::throwStdErr("Comm::UDPSocket: Returned address has wrong size; %u bytes instead of %u bytes",(unsigned int)socketAddressLen,(unsigned int)sizeof(IPv4SocketAddress));
+	
+	return socketAddress;
+	}
+
 int UDPSocket::getPortId(void) const
 	{
-	struct sockaddr_in socketAddress;
-	#ifdef __SGI_IRIX__
-	int socketAddressLen=sizeof(struct sockaddr_in);
-	#else
-	socklen_t socketAddressLen=sizeof(struct sockaddr_in);
-	#endif
-	getsockname(socketFd,(struct sockaddr*)&socketAddress,&socketAddressLen);
-	return ntohs(socketAddress.sin_port);
+	/* Retrieve the socket address and return only the port number: */
+	return getAddress().getPort();
 	}
 
 void UDPSocket::setMulticastLoopback(bool multicastLoopback)
@@ -212,7 +225,7 @@ void UDPSocket::leaveMulticastGroup(const IPv4Address& groupAddress,const IPv4Ad
 		}
 	}
 
-void UDPSocket::connect(std::string hostname,int hostPortId)
+void UDPSocket::connect(const std::string& hostname,int hostPortId)
 	{
 	/* Lookup host's IP address: */
 	IPv4SocketAddress hostSocketAddress(hostPortId,IPv4Address(hostname.c_str()));
@@ -279,7 +292,7 @@ size_t UDPSocket::receiveMessage(void* messageBuffer,size_t messageSize,IPv4Sock
 		{
 		/* Unknown error; probably a bad thing: */
 		int errorCode=errno;
-		Misc::throwStdErr("Comm::UDPSocket: Fatal error %d while receiving message",errorCode);
+		Misc::throwStdErr("Comm::UDPSocket: Fatal error %d (%s) while receiving message",errorCode,strerror(errorCode));
 		}
 	
 	/* If the sender address had a mismatching size, null it out: */
@@ -304,7 +317,7 @@ size_t UDPSocket::receiveMessage(void* messageBuffer,size_t messageSize)
 		{
 		/* Unknown error; probably a bad thing: */
 		int errorCode=errno;
-		Misc::throwStdErr("Comm::UDPSocket: Fatal error %d while receiving message",errorCode);
+		Misc::throwStdErr("Comm::UDPSocket: Fatal error %d (%s) while receiving message",errorCode,strerror(errorCode));
 		}
 	
 	return size_t(recvResult);
@@ -322,7 +335,7 @@ void UDPSocket::sendMessage(const void* messageBuffer,size_t messageSize,const I
 		{
 		/* Consider this a fatal error: */
 		int errorCode=errno;
-		Misc::throwStdErr("Comm::UDPSocket: Fatal error %d while sending message",errorCode);
+		Misc::throwStdErr("Comm::UDPSocket: Fatal error %d (%s) while sending message",errorCode,strerror(errorCode));
 		}
 	else if(size_t(sendResult)!=messageSize)
 		{
@@ -343,7 +356,7 @@ void UDPSocket::sendMessage(const void* messageBuffer,size_t messageSize)
 		{
 		/* Consider this a fatal error: */
 		int errorCode=errno;
-		Misc::throwStdErr("Comm::UDPSocket: Fatal error %d while sending message",errorCode);
+		Misc::throwStdErr("Comm::UDPSocket: Fatal error %d (%s) while sending message",errorCode,strerror(errorCode));
 		}
 	else if(size_t(sendResult)!=messageSize)
 		{

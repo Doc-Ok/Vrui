@@ -1,7 +1,7 @@
 /***********************************************************************
 StandardDirectory - Pair of classes to access cluster-transparent
 standard filesystem directories.
-Copyright (c) 2011-2018 Oliver Kreylos
+Copyright (c) 2011-2020 Oliver Kreylos
 
 This file is part of the Cluster Abstraction Library (Cluster).
 
@@ -26,7 +26,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <Misc/GetCurrentDirectory.h>
 #include <Misc/FileTests.h>
 #include <IO/StandardDirectory.h>
-#include <Cluster/OpenFile.h>
+#include <Cluster/Opener.h>
 
 namespace Cluster {
 
@@ -47,6 +47,24 @@ StandardDirectory::StandardDirectory(Multiplexer* sMultiplexer,const char* sPath
 		}
 	else
 		pathName=sPathName;
+	
+	/* Normalize the path name: */
+	normalizePath(pathName,1);
+	}
+
+StandardDirectory::StandardDirectory(Multiplexer* sMultiplexer,const char* sPathNameBegin,const char* sPathNameEnd)
+	:pipe(sMultiplexer),
+	 entryType(Misc::PATHTYPE_DOES_NOT_EXIST)
+	{
+	/* Prepend the current directory path to the path name if the given path name is relative: */
+	if(sPathNameBegin==sPathNameEnd||*sPathNameBegin!='/')
+		{
+		pathName=Misc::getCurrentDirectory();
+		pathName.push_back('/');
+		pathName.append(sPathNameBegin,sPathNameEnd);
+		}
+	else
+		pathName=std::string(sPathNameBegin,sPathNameEnd);
 	
 	/* Normalize the path name: */
 	normalizePath(pathName,1);
@@ -136,7 +154,7 @@ IO::FilePtr StandardDirectory::openFile(const char* fileName,IO::File::AccessMod
 	if(fileName[0]=='/')
 		{
 		/* Open and return the file using the absolute path: */
-		return Cluster::openFile(pipe.getMultiplexer(),fileName,accessMode);
+		return Opener::openFile(pipe.getMultiplexer(),fileName,accessMode);
 		}
 	else
 		{
@@ -147,7 +165,7 @@ IO::FilePtr StandardDirectory::openFile(const char* fileName,IO::File::AccessMod
 		filePath.append(fileName);
 		
 		/* Open and return the file: */
-		return Cluster::openFile(pipe.getMultiplexer(),filePath.c_str(),accessMode);
+		return Opener::openFile(pipe.getMultiplexer(),fileName,accessMode);
 		}
 	}
 
@@ -184,6 +202,18 @@ Methods of class StandardDirectoryMaster:
 
 StandardDirectoryMaster::StandardDirectoryMaster(Multiplexer* sMultiplexer,const char* sPathName)
 	:StandardDirectory(sMultiplexer,sPathName),
+	 directory(opendir(pathName.c_str())),
+	 entry(0)
+	{
+	/* Check for failure: */
+	pipe.write<char>(directory!=0?1:0);
+	pipe.flush();
+	if(directory==0)
+		throw OpenError(pathName.c_str());
+	}
+
+StandardDirectoryMaster::StandardDirectoryMaster(Multiplexer* sMultiplexer,const char* sPathNameBegin,const char* sPathNameEnd)
+	:StandardDirectory(sMultiplexer,sPathNameBegin,sPathNameEnd),
 	 directory(opendir(pathName.c_str())),
 	 entry(0)
 	{
@@ -339,6 +369,14 @@ StandardDirectorySlave::StandardDirectorySlave(Multiplexer* sMultiplexer,const c
 		throw OpenError(pathName.c_str());
 	}
 
+StandardDirectorySlave::StandardDirectorySlave(Multiplexer* sMultiplexer,const char* sPathNameBegin,const char* sPathNameEnd)
+	:StandardDirectory(sMultiplexer,sPathNameBegin,sPathNameEnd)
+	{
+	/* Check for failure: */
+	if(pipe.read<char>()==0)
+		throw OpenError(pathName.c_str());
+	}
+
 StandardDirectorySlave::StandardDirectorySlave(Multiplexer* sMultiplexer,const char* sPathName,int)
 	:StandardDirectory(sMultiplexer,sPathName,0)
 	{
@@ -365,7 +403,7 @@ bool StandardDirectorySlave::readNextEntry(void)
 	if(haveEntry)
 		{
 		/* Read the entry name: */
-		entryName=Misc::Marshaller<std::string>::read(pipe);
+		Misc::Marshaller<std::string>::read(pipe,entryName);
 		
 		/* Read the entry type: */
 		entryType=Misc::PathType(pipe.read<int>());

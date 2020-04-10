@@ -198,9 +198,9 @@ int main(int argc,char* argv[])
 			{
 			configFile=new Misc::ConfigurationFile(const_cast<const char*>(configFileName));
 			}
-		catch(std::runtime_error error)
+		catch(const std::runtime_error& err)
 			{
-			std::cerr<<"VRDeviceDaemon: Caught exception "<<error.what()<<" while reading configuration file"<<std::endl<<std::flush;
+			std::cerr<<"VRDeviceDaemon: Caught exception "<<err.what()<<" while reading configuration file"<<std::endl<<std::flush;
 			return 1;
 			}
 		
@@ -223,9 +223,9 @@ int main(int argc,char* argv[])
 			{
 			deviceManager=new VRDeviceManager(*configFile);
 			}
-		catch(std::runtime_error error)
+		catch(const std::runtime_error& err)
 			{
-			std::cerr<<"VRDeviceDaemon: Caught exception "<<error.what()<<" while initializing VR devices"<<std::endl<<std::flush;
+			std::cerr<<"VRDeviceDaemon: Caught exception "<<err.what()<<" while initializing VR devices"<<std::endl<<std::flush;
 			delete configFile;
 			return 1;
 			}
@@ -240,9 +240,9 @@ int main(int argc,char* argv[])
 			{
 			deviceServer=new VRDeviceServer(deviceManager,*configFile);
 			}
-		catch(std::runtime_error error)
+		catch(const std::runtime_error& err)
 			{
-			std::cerr<<"VRDeviceDaemon: Caught exception "<<error.what()<<" while initializing VR device server"<<std::endl<<std::flush;
+			std::cerr<<"VRDeviceDaemon: Caught exception "<<err.what()<<" while initializing VR device server"<<std::endl<<std::flush;
 			delete configFile;
 			delete deviceManager;
 			return 1;

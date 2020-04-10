@@ -1,7 +1,7 @@
 /***********************************************************************
 Event - Class to provide widgets with information they need to handle
 events.
-Copyright (c) 2001-2015 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -60,6 +60,10 @@ class Event
 			}
 		
 		/* Methods: */
+		Scalar getLambda(void) const // Returns the ray parameter, assuming the event's world location is a ray
+			{
+			return lambda;
+			}
 		const Point& getPoint(void) const // Returns the widget point
 			{
 			return point;
@@ -108,7 +112,11 @@ class Event
 		{
 		return widgetPoint;
 		}
-	bool setTargetWidget(Widget* newTargetWidget); // Sets the event's target widget; returns true if the setting was successful
+	bool setTargetWidget(Widget* newTargetWidget) // Sets the event's target widget; returns true if the setting was successful
+		{
+		/* Call the other method with a newly-calculated widget point: */
+		return setTargetWidget(newTargetWidget,calcWidgetPoint(newTargetWidget));
+		}
 	bool setTargetWidget(Widget* newTargetWidget,const WidgetPoint& newWidgetPoint); // Ditto, if the widget point is already known
 	Widget* overrideTargetWidget(Widget* newTargetWidget) // Overrides the target widget without changing the widget point; returns previous target widget
 		{

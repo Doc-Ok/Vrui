@@ -1,7 +1,7 @@
 /***********************************************************************
 StandardFile - Pair of classes for high-performance cluster-transparent
 reading/writing from/to standard operating system files.
-Copyright (c) 2011-2015 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the Cluster Abstraction Library (Cluster).
 
@@ -132,7 +132,10 @@ size_t StandardFileMaster::readData(IO::File::Byte* buffer,size_t bufferSize)
 		if(errorType==1)
 			throw SeekError(readPos);
 		else if(errorType==3)
-			throw Error(Misc::printStdErrMsg(fileReadErrorString,errorCode,strerror(errorCode)));
+			{
+			char buffer[512];
+			throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),fileReadErrorString,errorCode,strerror(errorCode)));
+			}
 		
 		/* Only reached in case of end-of-file: */
 		filePos=readPos;
@@ -210,7 +213,10 @@ void StandardFileMaster::writeData(const IO::File::Byte* buffer,size_t bufferSiz
 	else if(errorType==2)
 		throw WriteError(errorCode);
 	else if(errorType==3)
-		throw Error(Misc::printStdErrMsg(fileWriteErrorString,errorCode,strerror(errorCode)));
+		{
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),fileWriteErrorString,errorCode,strerror(errorCode)));
+		}
 	}
 
 size_t StandardFileMaster::writeDataUpTo(const IO::File::Byte* buffer,size_t bufferSize)
@@ -281,7 +287,10 @@ size_t StandardFileMaster::writeDataUpTo(const IO::File::Byte* buffer,size_t buf
 	else if(errorType==2)
 		throw WriteError(errorCode);
 	else if(errorType==3)
-		throw Error(Misc::printStdErrMsg(fileWriteErrorString,errorCode,strerror(errorCode)));
+		{
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),fileWriteErrorString,errorCode,strerror(errorCode)));
+		}
 	
 	return numBytesWritten;
 	}
@@ -327,8 +336,8 @@ void StandardFileMaster::openFile(const char* fileName,IO::File::AccessMode acce
 	/* Check for errors: */
 	if(errorCode!=0)
 		{
-		/* Throw an exception: */
-		throw OpenError(Misc::printStdErrMsg(fileOpenErrorString,fileName,getAccessModeName(accessMode),errorCode,strerror(errorCode)));
+		char buffer[1024];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),fileOpenErrorString,fileName,getAccessModeName(accessMode),errorCode,strerror(errorCode)));
 		}
 	
 	/* Install a read buffer the size of a multicast packet: */
@@ -405,7 +414,10 @@ IO::SeekableFile::Offset StandardFileMaster::getSize(void) const
 	
 	/* Check for errors: */
 	if(statResult<0)
-		throw Error(Misc::printStdErrMsg(fileGetSizeErrorString,errorCode,strerror(errorCode)));
+		{
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),fileGetSizeErrorString,errorCode,strerror(errorCode)));
+		}
 	
 	/* Return the file size: */
 	return fileSize;
@@ -450,7 +462,10 @@ size_t StandardFileSlave::readData(IO::File::Byte* buffer,size_t bufferSize)
 			if(errorType==1)
 				throw SeekError(readPos);
 			else if(errorType==3)
-				throw Error(Misc::printStdErrMsg(fileReadErrorString,errorCode,strerror(errorCode)));
+				{
+				char buffer[512];
+				throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),fileReadErrorString,errorCode,strerror(errorCode)));
+				}
 			
 			/* Only reached in case of end-of-file packet: */
 			return 0;
@@ -489,7 +504,10 @@ void StandardFileSlave::writeData(const IO::File::Byte* buffer,size_t bufferSize
 			if(errorType==2)
 				throw WriteError(errorCode);
 			else if(errorType==3)
-				throw Error(Misc::printStdErrMsg(fileWriteErrorString,errorCode));
+				{
+				char buffer[512];
+				throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),fileWriteErrorString,errorCode));
+				}
 			}
 		}
 	}
@@ -520,7 +538,10 @@ size_t StandardFileSlave::writeDataUpTo(const IO::File::Byte* buffer,size_t buff
 			if(errorType==2)
 				throw WriteError(errorCode);
 			else if(errorType==3)
-				throw Error(Misc::printStdErrMsg(fileWriteErrorString,errorCode));
+				{
+				char buffer[512];
+				throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),fileWriteErrorString,errorCode));
+				}
 			}
 		
 		return size_t(numBytesWritten);
@@ -542,8 +563,8 @@ StandardFileSlave::StandardFileSlave(Multiplexer* sMultiplexer,const char* fileN
 	/* Check for errors: */
 	if(errorCode!=0)
 		{
-		/* Throw an exception: */
-		throw OpenError(Misc::printStdErrMsg(fileOpenErrorString,fileName,getAccessModeName(accessMode),errorCode));
+		char buffer[1024];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),fileOpenErrorString,fileName,getAccessModeName(accessMode),errorCode));
 		}
 	
 	canReadThrough=false;
@@ -594,7 +615,8 @@ IO::SeekableFile::Offset StandardFileSlave::getSize(void) const
 		if(statResult<0)
 			{
 			int errorCode=int(fileSize);
-			throw Error(Misc::printStdErrMsg(fileGetSizeErrorString,errorCode,strerror(errorCode)));
+			char buffer[512];
+			throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),fileGetSizeErrorString,errorCode,strerror(errorCode)));
 			}
 		
 		/* Return the file size: */

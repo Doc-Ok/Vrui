@@ -1,7 +1,7 @@
 /***********************************************************************
 WidgetManager - Class to manage top-level GLMotif UI components and user
 events.
-Copyright (c) 2001-2016 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -23,10 +23,12 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <GLMotif/WidgetManager.h>
 
 #include <string.h>
+#include <Math/Constants.h>
 #include <GL/gl.h>
 #include <GL/GLLabel.h>
 #include <GL/GLTransformationWrappers.h>
 #include <GLMotif/WidgetArranger.h>
+#include <GLMotif/TextEntryMethod.h>
 #include <GLMotif/Event.h>
 #include <GLMotif/Widget.h>
 #include <GLMotif/WidgetAlgorithms.h>
@@ -109,7 +111,7 @@ WidgetManager::PopupBinding* WidgetManager::PopupBinding::findTopLevelWidget(con
 	return foundBinding;
 	}
 
-WidgetManager::PopupBinding* WidgetManager::PopupBinding::findTopLevelWidget(const Ray& ray)
+WidgetManager::PopupBinding* WidgetManager::PopupBinding::findTopLevelWidget(const Ray& ray,Scalar& lambda)
 	{
 	if(!visible)
 		return 0;
@@ -118,15 +120,23 @@ WidgetManager::PopupBinding* WidgetManager::PopupBinding::findTopLevelWidget(con
 	widgetRay.inverseTransform(widgetToWorld);
 	PopupBinding* foundBinding=0;
 	
-	/* Check if our widget intersects the given ray: */
+	/* Check if our widget intersects the given ray and is closer than the given lambda: */
 	Point intersection;
-	Scalar lambda=topLevelWidget->intersectRay(widgetRay,intersection);
-	if(lambda>=Scalar(0)&&topLevelWidget->isInside(intersection))
+	Scalar l=topLevelWidget->intersectRay(widgetRay,intersection);
+	if(l>=Scalar(0)&&l<lambda&&topLevelWidget->isInside(intersection))
+		{
 		foundBinding=this;
+		lambda=l;
+		}
 	
 	/* Traverse through all secondary bindings: */
-	for(PopupBinding* bPtr=firstSecondary;bPtr!=0&&foundBinding==0;bPtr=bPtr->succ)
-		foundBinding=bPtr->findTopLevelWidget(widgetRay);
+	for(PopupBinding* bPtr=firstSecondary;bPtr!=0;bPtr=bPtr->succ)
+		{
+		/* Find a top-level widget in the secondary binding and update our result if one is found: */
+		PopupBinding* fb=bPtr->findTopLevelWidget(widgetRay,lambda);
+		if(fb!=0)
+			foundBinding=fb;
+		}
 	
 	return foundBinding;
 	}
@@ -183,7 +193,7 @@ const WidgetManager::PopupBinding* WidgetManager::getRootBinding(const Widget* w
 	return pbmIt.isFinished()?0:pbmIt->getDest();
 	}
 
-WidgetManager::PopupBinding* WidgetManager::getRootBinding(Widget* widget)
+WidgetManager::PopupBinding* WidgetManager::getRootBinding(const Widget* widget)
 	{
 	PopupBindingMap::Iterator pbmIt=popupBindingMap.findEntry(widget->getRoot());
 	return pbmIt.isFinished()?0:pbmIt->getDest();
@@ -236,6 +246,28 @@ void WidgetManager::moveSecondaryWidgets(WidgetManager::PopupBinding* parent,con
 		}
 	}
 
+void WidgetManager::removeFocusFromChild(Widget* widget)
+	{
+	/* Bail out if there is no text focus widget: */
+	if(textFocusWidget==0)
+		return;
+	
+	/* Traverse upwards from the text focus widget until the given widget is reached: */
+	Widget* tfwParent=textFocusWidget;
+	while(tfwParent!=0)
+		{
+		if(tfwParent==widget)
+			{
+			/* Take text focus away from the widget: */
+			textFocusWidget->takeTextFocus();
+			textFocusWidget=0;
+			}
+		
+		/* Go up to the next parent: */
+		tfwParent=tfwParent->getParent();
+		}
+	}
+
 void WidgetManager::deleteWidgetImmediately(Widget* widget)
 	{
 	/* Release a pointer grab held by the widget: */
@@ -245,12 +277,8 @@ void WidgetManager::deleteWidgetImmediately(Widget* widget)
 		pointerGrabWidget=0;
 		}
 	
-	/* Release the focus if the widget had it: */
-	if(textFocusWidget==widget)
-		{
-		/* TODO: Move the text focus to the next widget: */
-		textFocusWidget=0;
-		}
+	/* Release the focus if the widget or one of its children had it: */
+	removeFocusFromChild(widget);
 	
 	/* Delete a widget attribute associated with the widget: */
 	WidgetAttributeMap::Iterator waIt=widgetAttributeMap.findEntry(widget);
@@ -272,7 +300,7 @@ void WidgetManager::deleteQueuedWidgets(void)
 	}
 
 WidgetManager::WidgetManager(void)
-	:styleSheet(0),arranger(0),
+	:styleSheet(0),arranger(0),textEntryMethod(0),
 	 timerEventScheduler(0),drawOverlayWidgets(false),
 	 widgetAttributeMap(101),
 	 firstBinding(0),popupBindingMap(31),
@@ -304,8 +332,9 @@ WidgetManager::~WidgetManager(void)
 	/* Delete the cut & paste buffer: */
 	delete[] textBuffer;
 	
-	/* Delete the widget arranger: */
+	/* Delete other helper objects: */
 	delete arranger;
+	delete textEntryMethod;
 	}
 
 void WidgetManager::setStyleSheet(const StyleSheet* newStyleSheet)
@@ -317,6 +346,12 @@ void WidgetManager::setArranger(WidgetArranger* newArranger)
 	{
 	delete arranger;
 	arranger=newArranger;
+	}
+
+void WidgetManager::setTextEntryMethod(TextEntryMethod* newTextEntryMethod)
+	{
+	delete textEntryMethod;
+	textEntryMethod=newTextEntryMethod;
 	}
 
 void WidgetManager::setTimerEventScheduler(Misc::TimerEventScheduler* newTimerEventScheduler)
@@ -359,7 +394,7 @@ void WidgetManager::popupPrimaryWidget(Widget* topLevelWidget,const WidgetManage
 	popupPrimaryWidgetAt(topLevelWidget,arranger->calcTopLevelTransform(topLevelWidget,widgetToWorld));
 	}
 
-void WidgetManager::popupSecondaryWidget(Widget* owner,Widget* topLevelWidget,const Vector& offset)
+void WidgetManager::popupSecondaryWidget(const Widget* owner,Widget* topLevelWidget,const Vector& offset)
 	{
 	/* Check if the widget is already popped up: */
 	if(!popupBindingMap.isEntry(topLevelWidget))
@@ -406,19 +441,8 @@ void WidgetManager::popdownWidget(Widget* widget)
 		while(binding->firstSecondary!=0)
 			popdownWidget(binding->firstSecondary->topLevelWidget);
 		
-		if(textFocusWidget!=0)
-			{
-			/* Check if the top-level widget contains the current focus widget: */
-			Widget* focusRoot=textFocusWidget->getRoot();
-			if(focusRoot==topLevelWidget)
-				{
-				/* Take focus away from the focus widget: */
-				textFocusWidget->takeTextFocus();
-				
-				/* Reset the focus widget (should be improved): */
-				textFocusWidget=0;
-				}
-			}
+		/* Take text focus away from any child of the popped-down widget: */
+		removeFocusFromChild(topLevelWidget);
 		
 		/* Call the pop-down callbacks: */
 		WidgetPopCallbackData cbData(this,false,topLevelWidget,binding->parent==0);
@@ -494,12 +518,19 @@ Widget* WidgetManager::findPrimaryWidget(const Point& point)
 	return foundBinding->topLevelWidget;
 	}
 
-Widget* WidgetManager::findPrimaryWidget(const Ray& ray)
+Widget* WidgetManager::findPrimaryWidget(const Ray& ray,Scalar& lambda)
 	{
+	/* Initialize lambda to the invalid value: */
+	lambda=Math::Constants<Scalar>::max;
+	
 	/* Find a recipient for this event amongst all primary bindings: */
 	PopupBinding* foundBinding=0;
-	for(PopupBinding* bPtr=firstBinding;bPtr!=0&&foundBinding==0;bPtr=bPtr->succ)
-		foundBinding=bPtr->findTopLevelWidget(ray);
+	for(PopupBinding* bPtr=firstBinding;bPtr!=0;bPtr=bPtr->succ)
+		{
+		PopupBinding* fb=bPtr->findTopLevelWidget(ray,lambda);
+		if(fb!=0)
+			foundBinding=fb;
+		}
 	
 	/* Bail out if no widget was found: */
 	if(foundBinding==0)
@@ -583,12 +614,14 @@ bool WidgetManager::pointerButtonDown(Event& event)
 	
 	bool result=false;
 	
+	/* Find a recipient for the event: */
 	if(pointerGrabWidget!=0)
 		{
-		/* Allow the grabbing widget to modify the event: */
+		/* Allow the grabbing widget to modify the event, or release its pointer grab: */
 		pointerGrabWidget->findRecipient(event);
 		}
-	else
+	
+	if(pointerGrabWidget==0)
 		{
 		/* Find a recipient for this event amongst the primary top-level windows: */
 		if(drawOverlayWidgets)
@@ -619,7 +652,7 @@ bool WidgetManager::pointerButtonDown(Event& event)
 			}
 		}
 	
-	if(event.getTargetWidget()!=0)
+	if(pointerGrabWidget!=0||event.getTargetWidget()!=0)
 		{
 		/* Initiate a "soft" pointer grab if there is no grab active: */
 		if(pointerGrabWidget==0)
@@ -640,17 +673,19 @@ bool WidgetManager::pointerButtonUp(Event& event)
 	
 	bool result=false;
 	
-	if(pointerGrabWidget!=0)
+	/* Deliver the event to the widget that holds the hard or "soft" pointer grab: */
+	Widget* targetWidget=pointerGrabWidget;
+	if(targetWidget!=0)
 		{
-		/* Allow the grabbing widget to modify the event: */
-		pointerGrabWidget->findRecipient(event);
-		
-		/* Pass the event to the grabbing widget: */
-		pointerGrabWidget->pointerButtonUp(event);
+		/* Allow the grabbing widget to modify the event, or release its pointer grab: */
+		targetWidget->findRecipient(event);
 		
 		/* Release a "soft" grab initiated by a pointerButtonDown event: */
 		if(!hardGrab)
 			pointerGrabWidget=0;
+		
+		/* Pass the event to the current or former grabbing widget: */
+		targetWidget->pointerButtonUp(event);
 		
 		result=true;
 		}
@@ -662,35 +697,47 @@ bool WidgetManager::pointerMotion(Event& event)
 	{
 	EventProcessingLocker epl(this);
 	
-	bool result=false;
-	
+	/* Find a recipient for the event: */
 	if(pointerGrabWidget!=0)
 		{
-		/* Allow the grabbing widget to modify the event: */
+		/* Allow the grabbing widget to modify the event, or release its pointer grab: */
 		pointerGrabWidget->findRecipient(event);
-		
-		/* Pass the event to the grabbing widget: */
-		pointerGrabWidget->pointerMotion(event);
-		
-		result=pointerGrabWidget!=0;
 		}
-	else
+	
+	if(pointerGrabWidget==0)
 		{
 		/* Find a recipient for this event amongst the primary top-level windows: */
-		for(PopupBinding* bPtr=firstBinding;bPtr!=0;bPtr=bPtr->succ)
-			if(bPtr->visible)
-				bPtr->topLevelWidget->findRecipient(event);
-		
-		if(event.getTargetWidget()!=0)
+		if(drawOverlayWidgets)
 			{
-			/* Pass the event to the found target: */
-			event.getTargetWidget()->pointerMotion(event);
-			
-			result=true;
+			/* Find the first visible top-level widget in the stacking order that is hit by the event: */
+			PopupBinding* bPtr;
+			for(bPtr=firstBinding;bPtr!=0&&!(bPtr->visible&&bPtr->topLevelWidget->findRecipient(event));bPtr=bPtr->succ)
+				;
+			}
+		else
+			{
+			/* Ask each visible top-level widget to inspect the event to find the closest hit: */
+			for(PopupBinding* bPtr=firstBinding;bPtr!=0;bPtr=bPtr->succ)
+				if(bPtr->visible)
+					bPtr->topLevelWidget->findRecipient(event);
 			}
 		}
 	
-	return result;
+	/* Check if a widget claimed the event: */
+	if(pointerGrabWidget!=0)
+		{
+		/* Pass the event to the grabbing widget: */
+		pointerGrabWidget->pointerMotion(event);
+		return true;
+		}
+	else if(event.getTargetWidget()!=0)
+		{
+		/* Pass the event to the found target: */
+		event.getTargetWidget()->pointerMotion(event);
+		return true;
+		}
+	else
+		return false;
 	}
 
 void WidgetManager::grabPointer(Widget* widget)
@@ -783,6 +830,27 @@ void WidgetManager::focusNextWidget(void)
 		while(textFocusWidget!=0&&!textFocusWidget->giveTextFocus())
 			textFocusWidget=getNextWidget(textFocusWidget);
 		}
+	}
+
+void WidgetManager::requestNumericEntry(Widget* widget)
+	{
+	/* Forward the request to the text entry method, using the widget's top-level transformation: */
+	if(textEntryMethod!=0)
+		textEntryMethod->requestNumericEntry(calcWidgetTransformation(widget),widget);
+	}
+
+void WidgetManager::requestAlphaNumericEntry(Widget* widget)
+	{
+	/* Forward the request to the text entry method, using the widget's top-level transformation: */
+	if(textEntryMethod!=0)
+		textEntryMethod->requestAlphaNumericEntry(calcWidgetTransformation(widget),widget);
+	}
+
+void WidgetManager::textEntryFinished(void)
+	{
+	/* Forward the notification to the text entry method: */
+	if(textEntryMethod!=0)
+		textEntryMethod->entryFinished();
 	}
 
 bool WidgetManager::text(const TextEvent& textEvent)

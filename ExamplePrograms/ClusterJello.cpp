@@ -4,7 +4,7 @@ simplified force interaction model based on the Nanotech Construction
 Kit. This version of Virtual Jell-O uses multithreading and explicit
 cluster communication to split the computation work and rendering work
 between the CPUs and nodes of a distributed rendering cluster.
-Copyright (c) 2007-2018 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 
 This file is part of the Virtual Jell-O interactive VR demonstration.
 
@@ -33,7 +33,6 @@ Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <Geometry/Plane.h>
 #include <GL/gl.h>
 #include <GLMotif/StyleSheet.h>
-#include <GLMotif/WidgetManager.h>
 #include <GLMotif/PopupMenu.h>
 #include <GLMotif/PopupWindow.h>
 #include <GLMotif/RowColumn.h>
@@ -129,7 +128,7 @@ GLMotif::PopupMenu* ClusterJello::createMainMenu(void)
 
 GLMotif::PopupWindow* ClusterJello::createSettingsDialog(void)
 	{
-	const GLMotif::StyleSheet& ss=*Vrui::getWidgetManager()->getStyleSheet();
+	const GLMotif::StyleSheet& ss=*Vrui::getUiStyleSheet();
 	
 	settingsDialog=new GLMotif::PopupWindow("SettingsDialog",Vrui::getWidgetManager(),"Settings Dialog");
 	settingsDialog->setCloseButton(true);

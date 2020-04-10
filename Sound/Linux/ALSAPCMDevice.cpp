@@ -1,7 +1,7 @@
 /***********************************************************************
 ALSAPCMDevice - Simple wrapper class around PCM devices as represented
 by the Advanced Linux Sound Architecture (ALSA) library.
-Copyright (c) 2009-2015 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the Basic Sound Library (Sound).
 
@@ -22,6 +22,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <Sound/Linux/ALSAPCMDevice.h>
 
+#include <poll.h>
+#include <Misc/ThrowStdErr.h>
 #include <Sound/SoundDataFormat.h>
 
 namespace Sound {
@@ -30,12 +32,58 @@ namespace Sound {
 Methods of class ALSAPCMDevice:
 ******************************/
 
-ALSAPCMDevice::ALSAPCMDevice(const char* pcmDeviceName,bool recording)
+void ALSAPCMDevice::throwException(const char* methodName,int error)
+	{
+	if(error==-EPIPE)
+		{
+		char buffer[512];
+		if(recording)
+			throw OverrunError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"ALSAPCMDevice::%s: Overrun detected",methodName));
+		else
+			throw UnderrunError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"ALSAPCMDevice::%s: Underrun detected",methodName));
+		}
+	else
+		Misc::throwStdErr("ALSAPCMDevice::%s: ALSA error %d (%s)",methodName,-error,snd_strerror(error));
+	}
+
+bool ALSAPCMDevice::pcmEventForwarder(Threads::EventDispatcher::ListenerKey eventKey,int eventTypeMask,void* userData)
+	{
+	ALSAPCMDevice* thisPtr=static_cast<ALSAPCMDevice*>(userData);
+	
+	/* Find the poll structure on whose file descriptor this event occurred: */
+	int index;
+	for(index=0;index<thisPtr->numPCMEventFds&&thisPtr->pcmEventListenerKeys[index]!=eventKey;++index)
+		;
+	struct pollfd& pfd=thisPtr->pcmEventPolls[index];
+		
+	/* Update the poll structure's event mask: */
+	pfd.revents=0x0;
+	if(eventTypeMask&Threads::EventDispatcher::Read)
+		pfd.revents|=POLLIN;
+	if(eventTypeMask&Threads::EventDispatcher::Write)
+		pfd.revents|=POLLOUT;
+	
+	/* Parse the event: */
+	unsigned short event;
+	if(snd_pcm_poll_descriptors_revents(thisPtr->pcmDevice,thisPtr->pcmEventPolls,thisPtr->numPCMEventFds,&event)==0&&(event&(POLLIN|POLLOUT)))
+		{
+		/* Call the event callback: */
+		thisPtr->pcmEventCallback(*thisPtr,thisPtr->pcmEventCallbackUserData);
+		}
+	
+	/* Keep listening for events: */
+	return false;
+	}
+
+ALSAPCMDevice::ALSAPCMDevice(const char* pcmDeviceName,bool sRecording,bool nonBlocking)
 	:pcmDevice(0),
-	 pcmHwParams(0)
+	 recording(sRecording),
+	 pcmHwParams(0),
+	 pcmEventCallback(0),pcmEventCallbackUserData(0),
+	 numPCMEventFds(0),pcmEventPolls(0),pcmEventListenerKeys(0)
 	{
 	/* Open the PCM device: */
-	int error=snd_pcm_open(&pcmDevice,pcmDeviceName,recording?SND_PCM_STREAM_CAPTURE:SND_PCM_STREAM_PLAYBACK,0);
+	int error=snd_pcm_open(&pcmDevice,pcmDeviceName,recording?SND_PCM_STREAM_CAPTURE:SND_PCM_STREAM_PLAYBACK,nonBlocking?SND_PCM_NONBLOCK:0);
 	if(error<0)
 		{
 		pcmDevice=0;
@@ -65,6 +113,10 @@ ALSAPCMDevice::~ALSAPCMDevice(void)
 		snd_pcm_hw_params_free(pcmHwParams);
 	if(pcmDevice!=0)
 		snd_pcm_close(pcmDevice);
+	
+	/* Delete the poll structure and listener key array just in case: */
+	delete[] pcmEventPolls;
+	delete[] pcmEventListenerKeys;
 	}
 
 snd_async_handler_t* ALSAPCMDevice::registerAsyncHandler(snd_async_callback_t callback,void* privateData)
@@ -209,37 +261,86 @@ void ALSAPCMDevice::prepare(void)
 
 void ALSAPCMDevice::link(ALSAPCMDevice& other)
 	{
-	int error;
-	if((error=snd_pcm_link(pcmDevice,other.pcmDevice))<0)
-		Misc::throwStdErr("ALSAPCMDevice::link: Error %s",snd_strerror(error));
+	int result=snd_pcm_link(pcmDevice,other.pcmDevice);
+	if(result<0)
+		throwException("link",result);
 	}
 
 void ALSAPCMDevice::unlink(void)
 	{
-	int error;
-	if((error=snd_pcm_unlink(pcmDevice))<0)
-		Misc::throwStdErr("ALSAPCMDevice::unlink: Error %s",snd_strerror(error));
+	int result=snd_pcm_unlink(pcmDevice);
+	if(result<0)
+		throwException("unlink",result);
+	}
+
+void ALSAPCMDevice::addPCMEventListener(Threads::EventDispatcher& dispatcher,ALSAPCMDevice::PCMEventCallback eventCallback,void* eventCallbackUserData)
+	{
+	/* Check if there is already a PCM event callback: */
+	if(pcmEventCallback!=0)
+		throw std::runtime_error("ALSAPCMDevice::addPCMEventListener: PCM event listener already registered");
+	
+	/* Store the callback: */
+	pcmEventCallback=eventCallback;
+	pcmEventCallbackUserData=eventCallbackUserData;
+	
+	/* Retrieve the set of file descriptors that need to be watched: */
+	numPCMEventFds=snd_pcm_poll_descriptors_count(pcmDevice);
+	pcmEventPolls=new struct pollfd[numPCMEventFds];
+	numPCMEventFds=snd_pcm_poll_descriptors(pcmDevice,pcmEventPolls,numPCMEventFds);
+	
+	/* Create IO event listeners for all PCM file descriptors: */
+	pcmEventListenerKeys=new Threads::EventDispatcher::ListenerKey[numPCMEventFds];
+	for(int i=0;i<numPCMEventFds;++i)
+		{
+		/* Assemble a proper event mask: */
+		int eventMask=0x0;
+		if(pcmEventPolls[i].events&POLLIN)
+			eventMask|=Threads::EventDispatcher::Read;
+		if(pcmEventPolls[i].events&POLLOUT)
+			eventMask|=Threads::EventDispatcher::Write;
+		pcmEventListenerKeys[i]=dispatcher.addIOEventListener(pcmEventPolls[i].fd,eventMask,pcmEventForwarder,this);
+		}
+	}
+
+void ALSAPCMDevice::removePCMEventListener(Threads::EventDispatcher& dispatcher)
+	{
+	/* Bail out if there is no PCM event callback: */
+	if(pcmEventCallback==0)
+		return;
+	
+	/* Remove the callback: */
+	pcmEventCallback=0;
+	pcmEventCallbackUserData=0;
+	
+	/* Remove all previously created IO event listeners: */
+	for(int i=0;i<numPCMEventFds;++i)
+		dispatcher.removeIOEventListener(pcmEventListenerKeys[i]);
+	numPCMEventFds=0;
+	delete[] pcmEventPolls;
+	pcmEventPolls=0;
+	delete[] pcmEventListenerKeys;
+	pcmEventListenerKeys=0;
 	}
 
 void ALSAPCMDevice::start(void)
 	{
-	int error;
-	if((error=snd_pcm_start(pcmDevice))<0)
-		Misc::throwStdErr("ALSAPCMDevice::start: Error %s",snd_strerror(error));
+	int result=snd_pcm_start(pcmDevice);
+	if(result<0)
+		throwException("start",result);
 	}
 
 void ALSAPCMDevice::drop(void)
 	{
-	int error;
-	if((error=snd_pcm_drop(pcmDevice))<0)
-		Misc::throwStdErr("ALSAPCMDevice::drop: Error %s",snd_strerror(error));
+	int result=snd_pcm_drop(pcmDevice);
+	if(result<0)
+		throwException("drop",result);
 	}
 
 void ALSAPCMDevice::drain(void)
 	{
-	int error;
-	if((error=snd_pcm_drain(pcmDevice))<0)
-		Misc::throwStdErr("ALSAPCMDevice::drain: Error %",snd_strerror(error));
+	int result=snd_pcm_drain(pcmDevice);
+	if(result<0)
+		throwException("drop",result);
 	}
 
 }

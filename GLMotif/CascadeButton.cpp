@@ -1,7 +1,7 @@
 /***********************************************************************
 CascadeButton - Class for buttons that pop up secondary top-level
 GLMotif UI components.
-Copyright (c) 2001-2015 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -56,6 +56,7 @@ void CascadeButton::setArmed(bool newArmed)
 		offset[1]+=getExterior().size[1];
 		#endif
 		Vector popupHotSpot=popup->getChild()->getExterior().getCorner(0);
+		popupHotSpot[0]=popup->getExterior().origin[0];
 		#if GLMOTIF_CASCADEBUTTON_CENTER_POPUPS
 		popupHotSpot[1]+=popup->getChild()->getExterior().size[1]*0.5f;
 		#else
@@ -63,7 +64,7 @@ void CascadeButton::setArmed(bool newArmed)
 		#endif
 		for(int i=0;i<3;++i)
 			offset[i]-=popupHotSpot[i];
-		offset[2]+=getZRange().second-popup->getChild()->getZRange().first;
+		offset[2]+=getZRange().second-popup->getZRange().first;
 		getManager()->popupSecondaryWidget(this,popup,offset);
 		isPopped=true;
 		
@@ -169,6 +170,13 @@ void CascadeButton::setBackgroundColor(const Color& newBackgroundColor)
 	arrow.setGlyphColor(newBackgroundColor);
 	}
 
+void CascadeButton::updateVariables(void)
+	{
+	/* Forward the call to the popup: */
+	if(popup!=0)
+		popup->updateVariables();
+	}
+
 bool CascadeButton::findRecipient(Event& event)
 	{
 	foundWidget=0;
@@ -187,19 +195,18 @@ bool CascadeButton::findRecipient(Event& event)
 	
 	/* Find the event's point in our coordinate system: */
 	Event::WidgetPoint wp=event.calcWidgetPoint(this);
-	foundPos=wp.getPoint();
 	
 	/* If the point is inside our bounding box, put us down as recipient: */
-	if(isInside(foundPos))
+	if(isInside(wp.getPoint()))
 		return event.setTargetWidget(this,wp);
 	
 	/* If the popup is popped up, check if the pointer is moving towards it: */
-	if(isPopped&&foundPos[0]>=lastEventPos[0])
+	if(isPopped&&wp.getPoint()[0]>=popupPos[0])
 		{
-		/* Calculate a plane orthogonal to the widget's plane containing the pointer's last movement line: */
-		Point::Vector dir=foundPos-lastEventPos;
+		/* Calculate a plane orthogonal to the widget's plane containing the initial pop-up position: */
+		Point::Vector dir=wp.getPoint()-popupPos;
 		Point::Vector normal(dir[1],dir[0],0); // 2D cross product
-		Scalar o=foundPos*normal;
+		Scalar o=popupPos*normal;
 		
 		/* The pointer is moving towards the popup if the top and bottom popup points are on different sides of the plane: */
 		if((popupBottom*normal-o)*(popupTop*normal-o)<=Scalar(0))
@@ -214,13 +221,15 @@ void CascadeButton::pointerButtonDown(Event& event)
 	/* Arm the button: */
 	setArmed(true);
 	
+	/* Remember the initial event position: */
+	popupPos=event.getWidgetPoint().getPoint();
+	popupPos[1]=getInterior().origin[1]+getInterior().size[1]*0.5f; // Set the y position to the middle of the button
+	
 	if(isPopped)
 		{
 		/* Repair the event and forward it to the popup: */
 		event.overrideTargetWidget(foundWidget);
 		popup->pointerButtonDown(event);
-		
-		lastEventPos=foundPos;
 		}
 	}
 
@@ -231,8 +240,6 @@ void CascadeButton::pointerButtonUp(Event& event)
 		/* Repair the event and forward it to the popup: */
 		event.overrideTargetWidget(foundWidget);
 		popup->pointerButtonUp(event);
-		
-		lastEventPos=foundPos;
 		}
 	
 	setArmed(false);
@@ -245,8 +252,6 @@ void CascadeButton::pointerMotion(Event& event)
 		/* Repair the event and forward it to the popup: */
 		event.overrideTargetWidget(foundWidget);
 		popup->pointerMotion(event);
-		
-		lastEventPos=foundPos;
 		}
 	}
 

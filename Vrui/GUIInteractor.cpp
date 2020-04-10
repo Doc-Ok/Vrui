@@ -1,7 +1,7 @@
 /***********************************************************************
 GUIInteractor - Helper class to implement tool classes that interact
 with graphical user interface elements.
-Copyright (c) 2010-2016 Oliver Kreylos
+Copyright (c) 2010-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -145,8 +145,13 @@ void GUIInteractor::move(void)
 	{
 	if(interacting||getUiManager()->canActivateGuiInteractor(this))
 		{
-		/* Check if the interactor is pointing at a widget: */
-		pointing=getWidgetManager()->findPrimaryWidget(ray)!=0;
+		if(!interacting)
+			{
+			/* Check if the interactor is pointing at a widget: */
+			GLMotif::Scalar lambda;
+			pointing=getWidgetManager()->findPrimaryWidget(ray,lambda)!=0;
+			pointingLambda=Scalar(lambda);
+			}
 		
 		/* Check if the interactor is dragging a top-level widget: */
 		if(interacting&&draggedWidget!=0)
@@ -163,6 +168,9 @@ void GUIInteractor::move(void)
 			/* Deliver the event: */
 			GLMotif::Event event(ray,interacting);
 			getWidgetManager()->pointerMotion(event);
+			
+			if(interacting)
+				pointingLambda=event.getWidgetPoint().getLambda();
 			}
 		}
 	else
@@ -204,7 +212,7 @@ void GUIInteractor::glRenderAction(GLfloat rayWidth,const GLColor<GLfloat,4>& ra
 		glBegin(GL_LINES);
 		glColor(rayColor);
 		glVertex(ray.getOrigin());
-		glVertex(ray(getDisplaySize()*Scalar(5)));
+		glVertex(ray(pointingLambda));
 		glEnd();
 		
 		/* Restore OpenGL state: */

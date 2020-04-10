@@ -84,13 +84,16 @@ void ImageExtractorRGB8::extractYpCbCr(const FrameBuffer* frame,void* image)
 void ImageExtractorRGB8::extractYpCbCr420(const FrameBuffer* frame,void* yp,unsigned int ypStride,void* cb,unsigned int cbStride,void* cr,unsigned int crStride)
 	{
 	/* Process pixels in 2x2 blocks: */
-	const unsigned char* fRowPtr=frame->start+(size[1]-1)*size[0]*3;
+	ptrdiff_t fStride=size[0]*3;
+	const unsigned char* fRowPtr=frame->start+(size[1]-1)*fStride;
 	unsigned char* ypRowPtr=static_cast<unsigned char*>(yp);
 	unsigned char* cbRowPtr=static_cast<unsigned char*>(cb);
 	unsigned char* crRowPtr=static_cast<unsigned char*>(cr);
 	for(unsigned int y=0;y<size[1];y+=2)
 		{
-		const unsigned char* fPtr=fRowPtr;
+		const unsigned char* fPtr0=fRowPtr;
+		fRowPtr-=fStride;
+		const unsigned char* fPtr1=fRowPtr;
 		unsigned char* ypPtr=ypRowPtr;
 		unsigned char* cbPtr=cbRowPtr;
 		unsigned char* crPtr=crRowPtr;
@@ -98,10 +101,10 @@ void ImageExtractorRGB8::extractYpCbCr420(const FrameBuffer* frame,void* yp,unsi
 			{
 			/* Convert the 2x2 pixel block to Y'CbCr: */
 			unsigned char ypcbcr[4][3];
-			Video::rgbToYpcbcr(fPtr,ypcbcr[0]);
-			Video::rgbToYpcbcr(fPtr+3,ypcbcr[1]);
-			Video::rgbToYpcbcr(fPtr-size[0]*3,ypcbcr[2]);
-			Video::rgbToYpcbcr(fPtr-size[0]*3+3,ypcbcr[3]);
+			Video::rgbToYpcbcr(fPtr0,ypcbcr[0]);
+			Video::rgbToYpcbcr(fPtr0+3,ypcbcr[1]);
+			Video::rgbToYpcbcr(fPtr1,ypcbcr[2]);
+			Video::rgbToYpcbcr(fPtr1+3,ypcbcr[3]);
 			
 			/* Subsample and store the Y'CbCr components: */
 			ypPtr[0]=ypcbcr[0][0];
@@ -112,14 +115,15 @@ void ImageExtractorRGB8::extractYpCbCr420(const FrameBuffer* frame,void* yp,unsi
 			*crPtr=(unsigned char)((int(ypcbcr[0][2])+int(ypcbcr[1][2])+int(ypcbcr[2][2])+int(ypcbcr[3][2])+2)>>2);
 			
 			/* Go to the next pixel: */
-			fPtr+=3*2;
+			fPtr0+=3*2;
+			fPtr1+=3*2;
 			ypPtr+=2;
 			++cbPtr;
 			++crPtr;
 			}
 		
 		/* Go to the next pixel row: */
-		fRowPtr-=size[0]*3*2;
+		fRowPtr-=fStride;
 		ypRowPtr+=ypStride*2;
 		cbRowPtr+=cbStride;
 		crRowPtr+=crStride;

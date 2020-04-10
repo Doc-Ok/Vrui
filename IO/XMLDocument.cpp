@@ -1,7 +1,7 @@
 /***********************************************************************
 XMLDocument - Class representing the structure and contents of an XML
 entity as a tree.
-Copyright (c) 2018 Oliver Kreylos
+Copyright (c) 2018-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -319,7 +319,7 @@ XMLElement::XMLElement(XMLSource& source)
 		}
 	}
 
-void XMLElement::setAttributeValue(const std::string& attributeName,const std::string attributeValue)
+void XMLElement::setAttributeValue(const std::string& attributeName,const std::string& attributeValue)
 	{
 	/* Add or replace the name/value association in the map: */
 	attributes[attributeName]=attributeValue;
@@ -341,6 +341,9 @@ const XMLElement* XMLElement::findNextElement(const char* name,const XMLNode* af
 		const XMLElement* element=dynamic_cast<const XMLElement*>(cPtr);
 		if(element!=0&&element->getName()==name)
 			return element;
+		
+		/* Go to the next child: */
+		cPtr=cPtr->getSibling();
 		}
 	
 	/* No matching element found: */
@@ -357,6 +360,9 @@ XMLElement* XMLElement::findNextElement(const char* name,XMLNode* afterChild)
 		XMLElement* element=dynamic_cast<XMLElement*>(cPtr);
 		if(element!=0&&element->getName()==name)
 			return element;
+		
+		/* Go to the next child: */
+		cPtr=cPtr->getSibling();
 		}
 	
 	/* No matching element found: */
@@ -390,11 +396,20 @@ XMLDocument::XMLDocument(IO::Directory& directory,const char* xmlFileName)
 			/* Read a processing instruction node: */
 			node=new XMLProcessingInstruction(source);
 			}
+		else if(source.isCharacterData())
+			{
+			/* Whitespace is allowed in the XML prolog; check for anything that's not: */
+			int c;
+			while((c=source.readCharacterData())>=0)
+				if(!XMLSource::isSpace(c))
+					throw XMLSource::WellFormedError(source,"Non-whitespace character data in XML prolog");
+			}
 		else
 			throw XMLSource::WellFormedError(source,"Illegal syntactic element in XML prolog");
 		
-		/* Add the read node to the prolog: */
-		prolog.push_back(node);
+		/* Add a read node to the prolog: */
+		if(node!=0)
+			prolog.push_back(node);
 		}
 	
 	/* Check if the tag is an opening tag: */
@@ -419,15 +434,24 @@ XMLDocument::XMLDocument(IO::Directory& directory,const char* xmlFileName)
 			/* Read a processing instruction node: */
 			node=new XMLProcessingInstruction(source);
 			}
+		else if(source.isCharacterData())
+			{
+			/* Whitespace is allowed in the XML epilog; check for anything that's not: */
+			int c;
+			while((c=source.readCharacterData())>=0)
+				if(!XMLSource::isSpace(c))
+					throw XMLSource::WellFormedError(source,"Non-whitespace character data in XML epilog");
+			}
 		else
 			throw XMLSource::WellFormedError(source,"Illegal syntactic element in XML epilog");
 		
-		/* Add the read node to the epilog: */
-		epilog.push_back(node);
+		/* Add a read node to the epilog: */
+		if(node!=0)
+			epilog.push_back(node);
 		}
 	
 	/* Retain the root element: */
-	root=tempRoot.getTarget();
+	root=tempRoot.releaseTarget();
 	}
 
 XMLDocument::~XMLDocument(void)

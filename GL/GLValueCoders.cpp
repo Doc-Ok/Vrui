@@ -1,6 +1,6 @@
 /***********************************************************************
 GLValueCoders - Value coder classes for OpenGL abstraction classes.
-Copyright (c) 2004-2013 Oliver Kreylos
+Copyright (c) 2004-2018 Oliver Kreylos
 
 This file is part of the OpenGL Support Library (GLSupport).
 
@@ -57,7 +57,7 @@ GLColor<ScalarParam,3> ValueCoder<GLColor<ScalarParam,3> >::decode(const char* s
 		/* Return result color: */
 		return GLColor<ScalarParam,3>(components);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to GLColor due to ")+err.what());
 		}
@@ -101,7 +101,7 @@ GLColor<ScalarParam,4> ValueCoder<GLColor<ScalarParam,4> >::decode(const char* s
 		/* Return result color: */
 		return GLColor<ScalarParam,4>(components);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to GLColor due to ")+err.what());
 		}
@@ -127,7 +127,7 @@ GLVector<ScalarParam,numComponentsParam> ValueCoder<GLVector<ScalarParam,numComp
 		CFixedArrayValueCoder<ScalarParam,numComponentsParam>(result.getXyzw()).decode(start,end,decodeEnd);
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to GLVector due to ")+err.what());
 		}
@@ -173,7 +173,7 @@ GLBox<ScalarParam,numComponentsParam> ValueCoder<GLBox<ScalarParam,numComponents
 			*decodeEnd=cPtr;
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to GLBox due to ")+err.what());
 		}
@@ -281,7 +281,7 @@ GLMaterial ValueCoder<GLMaterial>::decode(const char* start,const char* end,cons
 			*decodeEnd=cPtr;
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert \"")+std::string(start,end)+std::string("\" to GLMaterial due to ")+err.what());
 		}

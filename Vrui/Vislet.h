@@ -1,7 +1,7 @@
 /***********************************************************************
 Vislet - Abstract base class for application-independent visualization
 plug-ins that can be loaded into Vrui applications on demand.
-Copyright (c) 2006-2012 Oliver Kreylos
+Copyright (c) 2006-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -65,8 +65,8 @@ class Vislet
 		{
 		return active;
 		}
-	virtual void disable(void); // Disables the vislet; called for the last time after the end of Vrui's main loop if vislet is active at that time
-	virtual void enable(void); // Enables the vislet; called for the first time before the start of Vrui's main loop
+	virtual void enable(bool startup); // Enables the vislet; called for the first time, with startup==true, before the start of Vrui's main loop
+	virtual void disable(bool shutdown); // Disables the vislet; called for the last time, with shutdown==true, after the end of Vrui's main loop if vislet is active at that time
 	virtual void frame(void); // Method called exactly once every frame
 	virtual void display(GLContextData& contextData) const; // Method for rendering the vislet's current state into the given OpenGL context
 	virtual void sound(ALContextData& contextData) const; // Method for rendering the vislet's current sound state into the given OpenAL context

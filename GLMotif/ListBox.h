@@ -1,6 +1,6 @@
 /***********************************************************************
 ListBox - Class for widgets containing lists of text strings.
-Copyright (c) 2008-2016 Oliver Kreylos
+Copyright (c) 2008-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -111,12 +111,14 @@ class ListBox:public Widget,public GLObject
 		public:
 		int oldSelectedItem; // Previously selected list item
 		int newSelectedItem; // Newly selected list item
+		bool interactive; // Flag if the callback is in response to a direct user action
 		
 		/* Constructors and destructors: */
-		ValueChangedCallbackData(ListBox* sListBox,int sOldSelectedItem,int sNewSelectedItem)
+		ValueChangedCallbackData(ListBox* sListBox,int sOldSelectedItem,int sNewSelectedItem,bool sInteractive)
 			:CallbackData(sListBox),
 			 oldSelectedItem(sOldSelectedItem),
-			 newSelectedItem(sNewSelectedItem)
+			 newSelectedItem(sNewSelectedItem),
+			 interactive(sInteractive)
 			{
 			}
 		};
@@ -147,11 +149,12 @@ class ListBox:public Widget,public GLObject
 		/* Elements: */
 		ChangeReason reason; // Reason for the selection change
 		int item; // Index of selected or deselected item
+		bool interactive; // Flag if the callback is in response to a direct user action
 		
 		/* Constructors and destructors: */
-		SelectionChangedCallbackData(ListBox* sListBox,ChangeReason sReason,int sItem)
+		SelectionChangedCallbackData(ListBox* sListBox,ChangeReason sReason,int sItem,bool sInteractive)
 			:CallbackData(sListBox),
-			 reason(sReason),item(sItem)
+			 reason(sReason),item(sItem),interactive(sInteractive)
 			{
 			}
 		};
@@ -220,6 +223,8 @@ class ListBox:public Widget,public GLObject
 	/* Private methods: */
 	void calcMaxVisibleItemWidth(void); // Updates the maximum width of any visible items
 	void updatePageSlots(void); // Update the currently visible list items
+	void selectItem(int index,bool moveToPage,bool interactive); // Selects the given list item
+	void deselectItem(int index,bool moveToPage,bool interactive); // De-selects the given list item
 	
 	/* Constructors and destructors: */
 	public:
@@ -307,8 +312,16 @@ class ListBox:public Widget,public GLObject
 		}
 	int getNumSelectedItems(void) const; // Returns the number of currently selected items
 	std::vector<int> getSelectedItems(void) const; // Returns list of indices of all currently selected items
-	void selectItem(int index,bool moveToPage =false); // Selects the given list item and moves it to the page if it is not visible and the flag is true; in single-selection list boxes, deselects previously selected item
-	void deselectItem(int index,bool moveToPage =false); // Deselects the given list item and moves it to the page if it is not visible and the flag is true; ignored if selection mode is ALWAYS_ONE
+	void selectItem(int index,bool moveToPage =false) // Selects the given list item and moves it to the page if it is not visible and the flag is true; in single-selection list boxes, deselects previously selected item
+		{
+		/* Select an item non-interactively: */
+		selectItem(index,moveToPage,false);
+		}
+	void deselectItem(int index,bool moveToPage =false) // Deselects the given list item and moves it to the page if it is not visible and the flag is true; ignored if selection mode is ALWAYS_ONE
+		{
+		/* De-select an item non-interactively: */
+		deselectItem(index,moveToPage,false);
+		}
 	void clearSelection(void); // Deselects all selected items; ignored if selection mode is ALWAYS_ONE
 	
 	/* Methods to query the list box's callbacks: */

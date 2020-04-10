@@ -1,7 +1,7 @@
 /***********************************************************************
 SerialPort - Class for high-performance reading/writing from/to serial
 ports.
-Copyright (c) 2001-2015 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the Portable Communications Library (Comm).
 
@@ -62,8 +62,8 @@ size_t SerialPort::readData(IO::File::Byte* buffer,size_t bufferSize)
 	if(readResult<0)
 		{
 		/* Unknown error; probably a bad thing: */
-		int error=errno;
-		throw Error(Misc::printStdErrMsg("Comm::SerialPort: Fatal error %d (%s) while reading from source",error,strerror(error)));
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::SerialPort: Fatal error %d (%s) while reading from source",errno,strerror(errno)));
 		}
 	
 	return size_t(readResult);
@@ -88,8 +88,8 @@ void SerialPort::writeData(const IO::File::Byte* buffer,size_t bufferSize)
 		else if(errno!=EAGAIN&&errno!=EWOULDBLOCK&&errno!=EINTR)
 			{
 			/* Unknown error; probably a bad thing: */
-			int error=errno;
-			throw Error(Misc::printStdErrMsg("Comm::SerialPort: Fatal error %d (%s) while writing to sink",error,strerror(error)));
+			char buffer[512];
+			throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::SerialPort: Fatal error %d (%s) while writing to sink",errno,strerror(errno)));
 			}
 		}
 	}
@@ -113,8 +113,8 @@ size_t SerialPort::writeDataUpTo(const IO::File::Byte* buffer,size_t bufferSize)
 	else
 		{
 		/* Unknown error; probably a bad thing: */
-		int error=errno;
-		throw Error(Misc::printStdErrMsg("Comm::SerialPort: Fatal error %d (%s) while writing to sink",error,strerror(error)));
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::SerialPort: Fatal error %d (%s) while writing to sink",errno,strerror(errno)));
 		}
 	}
 
@@ -128,7 +128,10 @@ SerialPort::SerialPort(const char* deviceName,bool nonBlocking)
 		openFlags|=O_NONBLOCK;
 	fd=open(deviceName,openFlags);
 	if(fd<0)
-		throw OpenError(Misc::printStdErrMsg("Comm::SerialPort: Unable to open device %s",deviceName));
+		{
+		char buffer[512];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::SerialPort: Unable to open device %s due to error %d (%s)",deviceName,errno,strerror(errno)));
+		}
 	
 	/* Configure as "raw" port: */
 	struct termios term;
@@ -139,7 +142,10 @@ SerialPort::SerialPort(const char* deviceName,bool nonBlocking)
 	term.c_cc[VMIN]=1; // Block read() until at least a single byte is read
 	term.c_cc[VTIME]=0; // No timeout on read()
 	if(tcsetattr(fd,TCSANOW,&term)!=0)
-		throw OpenError(Misc::printStdErrMsg("Comm::SerialPort: Unable to configure device %s",deviceName));
+		{
+		char buffer[512];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::SerialPort: Unable to configure device %s due to error %d (%s)",deviceName,errno,strerror(errno)));
+		}
 	
 	/* Flush both queues: */
 	tcflush(fd,TCIFLUSH);

@@ -1,6 +1,6 @@
 /***********************************************************************
 ImageTextureNode - Class for textures loaded from external image files.
-Copyright (c) 2009-2017 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -24,6 +24,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <string.h>
 #include <GL/gl.h>
 #include <GL/GLContextData.h>
+#include <GL/Extensions/GLEXTFramebufferObject.h>
 #include <Images/BaseImage.h>
 #include <Images/ReadImageFile.h>
 #include <SceneGraph/VRMLFile.h>
@@ -52,7 +53,7 @@ Methods of class ImageTextureNode:
 *********************************/
 
 ImageTextureNode::ImageTextureNode(void)
-	:repeatS(true),repeatT(true),
+	:repeatS(true),repeatT(true),filter(true),mipmapLevel(0),
 	 version(0)
 	{
 	}
@@ -73,9 +74,8 @@ void ImageTextureNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 		{
 		vrmlFile.parseField(url);
 		
-		/* Fully qualify all URLs: */
-		for(size_t i=0;i<url.getNumValues();++i)
-			url.setValue(i,vrmlFile.getFullUrl(url.getValue(i)));
+		/* Remember the VRML file's base directory: */
+		baseDirectory=&vrmlFile.getBaseDirectory();
 		}
 	else if(strcmp(fieldName,"repeatS")==0)
 		{
@@ -85,12 +85,24 @@ void ImageTextureNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 		{
 		vrmlFile.parseField(repeatT);
 		}
+	else if(strcmp(fieldName,"filter")==0)
+		{
+		vrmlFile.parseField(filter);
+		}
+	else if(strcmp(fieldName,"mipmapLevel")==0)
+		{
+		vrmlFile.parseField(mipmapLevel);
+		}
 	else
 		TextureNode::parseField(fieldName,vrmlFile);
 	}
 
 void ImageTextureNode::update(void)
 	{
+	/* Clamp the mipmap level: */
+	if(mipmapLevel.getValue()<0)
+		mipmapLevel.setValue(0);
+	
 	/* Bump up the texture's version number: */
 	++version;
 	}
@@ -106,26 +118,45 @@ void ImageTextureNode::setGLState(GLRenderState& renderState) const
 		DataItem* dataItem=renderState.contextData.retrieveDataItem<DataItem>(this);
 		
 		/* Bind the texture object: */
-		glBindTexture(GL_TEXTURE_2D,dataItem->textureObjectId);
+		renderState.bindTexture2D(dataItem->textureObjectId);
 		
 		/* Check if the texture object needs to be updated: */
 		if(dataItem->version!=version)
 			{
 			/* Load the texture image: */
-			Images::BaseImage texture=Images::readGenericImageFile(url.getValue(0).c_str());
+			Images::BaseImage texture=Images::readGenericImageFile(*baseDirectory,url.getValue(0).c_str());
 			
 			/* Upload the texture image: */
+			int mml=mipmapLevel.getValue();
 			texture.glTexImage2D(GL_TEXTURE_2D,0,false);
 			glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_BASE_LEVEL,0);
-			glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
-			glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,mml);
+			glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,filter.getValue()?(mml>0?GL_LINEAR_MIPMAP_LINEAR:GL_LINEAR):GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,filter.getValue()?GL_LINEAR:GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,repeatS.getValue()?GL_REPEAT:GL_CLAMP);
 			glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,repeatT.getValue()?GL_REPEAT:GL_CLAMP);
+			
+			/* Check if mipmapping was requested and mipmap generation is supported: */
+			if(mml>0&&GLEXTFramebufferObject::isSupported())
+				{
+				/* Initialize the framebuffer extension: */
+				GLEXTFramebufferObject::initExtension();
+				
+				/* Auto-generate all requested mipmap levels: */
+				glGenerateMipmapEXT(GL_TEXTURE_2D);
+				}
 			
 			/* Mark the texture object as up-to-date: */
 			dataItem->version=version;
 			}
+		
+		#if 0
+		
+		/* Enable alpha testing for now: */
+		glEnable(GL_ALPHA_TEST);
+		glAlphaFunc(GL_GEQUAL,0.5f);
+		
+		#endif
 		}
 	else
 		{
@@ -136,13 +167,14 @@ void ImageTextureNode::setGLState(GLRenderState& renderState) const
 
 void ImageTextureNode::resetGLState(GLRenderState& renderState) const
 	{
-	if(url.getNumValues()>0)
-		{
-		/* Unbind the texture object: */
-		glBindTexture(GL_TEXTURE_2D,0);
-		}
+	#if 0
 	
-	/* Don't do anything else; next guy cleans up */
+	/* Disable alpha testing for now: */
+	glDisable(GL_ALPHA_TEST);
+	
+	#endif
+	
+	/* Don't do anything; next guy cleans up */
 	}
 
 void ImageTextureNode::initContext(GLContextData& contextData) const
@@ -150,6 +182,20 @@ void ImageTextureNode::initContext(GLContextData& contextData) const
 	/* Create a data item and store it in the GL context: */
 	DataItem* dataItem=new DataItem;
 	contextData.addDataItem(this,dataItem);
+	}
+
+void ImageTextureNode::setUrl(const std::string& newUrl,IO::Directory& newBaseDirectory)
+	{
+	/* Store the URL and its base directory: */
+	url.setValue(newUrl);
+	baseDirectory=&newBaseDirectory;
+	}
+
+void ImageTextureNode::setUrl(const std::string& newUrl)
+	{
+	/* Store the URL and the current directory: */
+	url.setValue(newUrl);
+	baseDirectory=IO::Directory::getCurrent();
 	}
 
 }

@@ -1,7 +1,7 @@
 /***********************************************************************
 InlineNode - Class for group nodes that read their children from an
 external VRML file.
-Copyright (c) 2009-2011 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -23,7 +23,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <SceneGraph/InlineNode.h>
 
 #include <string.h>
-#include <Cluster/OpenFile.h>
+#include <stdexcept>
+#include <Misc/MessageLogger.h>
 #include <SceneGraph/VRMLFile.h>
 
 namespace SceneGraph {
@@ -52,10 +53,18 @@ void InlineNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 		{
 		vrmlFile.parseField(url);
 		
-		/* Load the external VRML file: */
-		std::string externalFileName=vrmlFile.getFullUrl(url.getValue(0));
-		SceneGraph::VRMLFile externalVrmlFile(externalFileName,Cluster::openFile(vrmlFile.getMultiplexer(),externalFileName.c_str()),vrmlFile.getNodeCreator(),vrmlFile.getMultiplexer());
-		externalVrmlFile.parse(this);
+		try
+			{
+			/* Load the external VRML file: */
+			VRMLFile externalVrmlFile(vrmlFile.getBaseDirectory(),url.getValue(0),vrmlFile.getNodeCreator());
+			externalVrmlFile.parse(this);
+			}
+		catch(const std::runtime_error& err)
+			{
+			/* Show an error message and delete all partially-read file contents: */
+			Misc::formattedUserError("SceneGraph::InlineNode: Unable to load file %s due to exception %s",url.getValue(0).c_str(),err.what());
+			children.clearValues();
+			}
 		}
 	else
 		GroupNode::parseField(fieldName,vrmlFile);

@@ -1,7 +1,7 @@
 /***********************************************************************
 ViconTarsusRaw - Class for Vicon optical trackers using the raw
 real-time streaming protocol.
-Copyright (c) 2007-2011 Oliver Kreylos
+Copyright (c) 2007-2018 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -25,6 +25,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 #include <stdio.h>
 #include <Misc/Endianness.h>
+#include <Misc/Time.h>
 #include <Misc/StandardValueCoders.h>
 #include <Misc/ConfigurationFile.h>
 #include <Geometry/GeometryValueCoders.h>

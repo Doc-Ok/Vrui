@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDeviceAdapterHID - Linux-specific version of HID input device
 adapter.
-Copyright (c) 2009-2017 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -422,19 +422,25 @@ void InputDeviceAdapterHID::createInputDevice(int deviceIndex,const Misc::Config
 	inputDevices[deviceIndex]=newDevice.device=inputDeviceManager->createInputDevice(name.c_str(),newTrackType,newDevice.numButtons,newDevice.numValuators,true);
 	
 	/* Initialize the device tracking state: */
+	TrackerState newTransform;
 	if(newDevice.axisPosition)
 		{
-		inputDevices[deviceIndex]->setTransformation(TrackerState::translateFromOriginTo(newDevice.positionOrigin));
+		newTransform=TrackerState::translateFromOriginTo(newDevice.positionOrigin);
 		inputDevices[deviceIndex]->setLinearVelocity(Vector::zero);
 		inputDevices[deviceIndex]->setAngularVelocity(Vector::zero);
 		}
 	else if(newDevice.trackingDevice!=0)
+		{
 		inputDevices[deviceIndex]->copyTrackingState(newDevice.trackingDevice);
+		newTransform=inputDevices[deviceIndex]->getTransformation();
+		}
 	
 	/* Determine whether the new input device should be projected by the UI manager: */
 	newDevice.projectDevice=newTrackType!=InputDevice::TRACK_NONE&&configFileSection.retrieveValue<bool>("./projectDevice",newDevice.projectDevice);
 	if(newDevice.projectDevice)
-		getUiManager()->projectDevice(newDevice.device);
+		getUiManager()->projectDevice(newDevice.device,newTransform);
+	else
+		newDevice.device->setTransformation(newTransform);
 	
 	/* Read the names of all button features: */
 	typedef std::vector<std::string> StringList;
@@ -688,6 +694,7 @@ void InputDeviceAdapterHID::updateInputDevices(void)
 	
 	for(std::vector<Device>::iterator dIt=devices.begin();dIt!=devices.end();++dIt)
 		{
+		TrackerState newTransform;
 		if(dIt->axisPosition)
 			{
 			/* Calculate the device position: */
@@ -695,7 +702,7 @@ void InputDeviceAdapterHID::updateInputDevices(void)
 			size_t numAxes=dIt->positionAxes.size();
 			for(size_t i=0;i<numAxes;++i)
 				devicePos+=dIt->positionAxes[i]*dIt->positionValues[i];
-			dIt->device->setTransformation(TrackerState::translateFromOriginTo(devicePos));
+			newTransform=TrackerState::translateFromOriginTo(devicePos);
 			
 			if(getMainViewer()!=0)
 				{
@@ -709,11 +716,14 @@ void InputDeviceAdapterHID::updateInputDevices(void)
 			{
 			/* Copy the source device's tracking state: */
 			dIt->device->copyTrackingState(dIt->trackingDevice);
+			newTransform=dIt->device->getTransformation();
 			}
 		
 		/* Let the UI manager project the device if requested: */
 		if(dIt->projectDevice)
-			getUiManager()->projectDevice(dIt->device);
+			getUiManager()->projectDevice(dIt->device,newTransform);
+		else
+			dIt->device->setTransformation(newTransform);
 		
 		/* Set the device's button and valuator states: */
 		for(int i=0;i<dIt->numButtons;++i)

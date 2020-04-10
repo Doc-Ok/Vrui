@@ -1,6 +1,6 @@
 /***********************************************************************
 TextField - Class for labels displaying values as text.
-Copyright (c) 2006-2014 Oliver Kreylos
+Copyright (c) 2006-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -24,14 +24,20 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <Misc/CallbackData.h>
 #include <Misc/CallbackList.h>
+#include <GLMotif/VariableTracker.h>
 #include <GLMotif/Label.h>
 
 namespace GLMotif {
 
-class TextField:public Label
+class TextField:public Label,public VariableTracker
 	{
 	/* Embedded classes: */
 	public:
+	enum ValueType // Enumerated type for types of values accepted in a text field
+		{
+		ALPHA,UINT,INT,FLOAT
+		};
+	
 	enum FloatFormat // Enumerated type for floating-point number formatting modes
 		{
 		FIXED,SCIENTIFIC,SMART
@@ -70,6 +76,7 @@ class TextField:public Label
 	protected:
 	GLint charWidth; // Fixed width of the text field's interior in average character widths
 	GLint fieldWidth,precision; // Field width and precision for numerical values (negative values disable that formatting feature)
+	ValueType valueType; // Type of values accepted in this text field
 	FloatFormat floatFormat; // Formatting mode for floating-point numbers (default is smart)
 	bool editable; // Flag whether the text field reacts to text and text control events
 	bool focus; // Flag if an editable text field is currently ready to receive text entry events
@@ -85,6 +92,8 @@ class TextField:public Label
 	char* createFormatString(char* buffer); // Creates a printf format string for floating-point numbers in the given buffer
 	void setCursorPos(int newCursorPos); // Sets the cursor position
 	void insert(int insertLength,const char* insert); // Replaces the current selection with the given string
+	template <class ValueParam>
+	void setValue(const ValueParam& value,bool updateTracked); // Sets the text field to the given value; works for int, unsigned int, float, double, and std::string
 	
 	/* Constructors and destructors: */
 	public:
@@ -92,9 +101,10 @@ class TextField:public Label
 	TextField(const char* sName,Container* sParent,GLint sCharWidth,bool manageChild =true);
 	virtual ~TextField(void);
 	
-	/* Methods inherited from Widget: */
+	/* Methods from class Widget: */
 	virtual Vector calcNaturalSize(void) const;
 	virtual void resize(const Box& newExterior);
+	virtual void updateVariables(void);
 	virtual void draw(GLContextData& contextData) const;
 	virtual void pointerButtonDown(Event& event);
 	virtual void pointerButtonUp(Event& event);
@@ -104,9 +114,17 @@ class TextField:public Label
 	virtual void textEvent(const TextEvent& event);
 	virtual void textControlEvent(const TextControlEvent& event);
 	
-	/* Methods inherited from Label: */
+	/* Methods from class Label: */
 	using Label::setString;
 	virtual void setString(const char* newLabelBegin,const char* newLabelEnd);
+	
+	/* Methods from class VariableTracker: */
+	template <class VariableTypeParam>
+	void track(VariableTypeParam& newVariable) // Tracks the given variable and sets its initial value
+		{
+		setValue(const_cast<const VariableTypeParam&>(newVariable),false);
+		VariableTracker::track(newVariable);
+		}
 	
 	/* New methods: */
 	GLint getCharWidth(void) const // Returns current text field size in characters
@@ -124,6 +142,11 @@ class TextField:public Label
 		return precision;
 		}
 	void setPrecision(GLint newPrecision); // Sets precision for numerical values
+	ValueType getValueType(void) const // Returns the value type
+		{
+		return valueType;
+		}
+	void setValueType(ValueType newValueType); // Sets new value type
 	FloatFormat getFloatFormat(void) const // Returns floating-point formatting mode
 		{
 		return floatFormat;
@@ -140,7 +163,11 @@ class TextField:public Label
 		}
 	void setSelection(int newAnchorPos,int newCursorPos); // Sets the selection range or cursor position of an editable text field
 	template <class ValueParam>
-	void setValue(const ValueParam& value); // Sets the text field to the given value; works for int, unsigned int, float, and double
+	void setValue(const ValueParam& value) // Sets the text field to the given value; works for int, unsigned int, float, double, and std::string
+		{
+		/* Call the internal method: */
+		setValue(value,true);
+		}
 	Misc::CallbackList& getLayoutChangedCallbacks(void) // Returns list of callbacks called when the text field's displayed field width changes
 		{
 		return layoutChangedCallbacks;

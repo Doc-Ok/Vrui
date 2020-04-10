@@ -2,7 +2,7 @@
 ThrowStdErr - Helper function to create std::runtime_error error
 descriptions using the printf() interface. The function obviously never
 returns...
-Copyright (c) 2005 Oliver Kreylos
+Copyright (c) 2005-2019 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -25,11 +25,15 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #ifndef MISC_THROWSTDERR_INCLUDED
 #define MISC_THROWSTDERR_INCLUDED
 
+#include <stddef.h>
+
 namespace Misc {
 
-const char* printStdErrMsg(const char* formatString,...);
+void throwStdErr(const char* formatString,...); // Uses an on-stack buffer; re-entrant
 
-void throwStdErr(const char* formatString,...);
+/* Functions to print a standard error message, to pass into custom exception class constructors: */
+const char* printStdErrMsg(const char* formatString,...); // Uses static buffer; not re-entrant
+char* printStdErrMsgReentrant(char* buffer,size_t bufferSize,const char* formatString,...); // Re-entrant version of above; returns pointer to supplied buffer
 
 }
 

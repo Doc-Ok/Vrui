@@ -1,6 +1,6 @@
 /***********************************************************************
 SphereNode - Class for spheres as renderable geometry.
-Copyright (c) 2013 Oliver Kreylos
+Copyright (c) 2013-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -108,32 +108,12 @@ void SphereNode::createList(GLContextData& renderState) const
 		const GLfloat cz=center.getValue()[2];
 		const GLfloat r=radius.getValue();
 		
-		GLfloat texY1=1.0f/ns;
-		GLfloat lat1=1.0f*pi/ns-0.5f*pi;
+		/* Draw quad strips: */
+		GLfloat texY1=0.0f;
+		GLfloat lat1=-0.5f*pi;
 		GLfloat r1=cosf(lat1);
 		GLfloat y1=sinf(lat1);
-		
-		/* Draw "southern polar cap": */
-		glBegin(GL_TRIANGLE_FAN);
-		glNormal3f(0.0f,-1.0f,0.0f);
-		if(texCoords.getValue())
-			glTexCoord2f(0.5f,0.0f);
-		glVertex3f(cx,cy-r,cz);
-		for(int j=numSegments.getValue()*2;j>=0;--j)
-			{
-			GLfloat texX=GLfloat(j)/nq;
-			GLfloat lng=GLfloat(j)*(2.0f*pi)/nq;
-			GLfloat x1=-sinf(lng)*r1;
-			GLfloat z1=-cosf(lng)*r1;
-			glNormal3f(x1,y1,z1);
-			if(texCoords.getValue())
-				glTexCoord2f(texX,texY1);
-			glVertex3f(cx+x1*r,cy+y1*r,cz+z1*r);
-			}
-		glEnd();
-		
-		/* Draw quad strips: */
-		for(int i=2;i<numSegments.getValue();++i)
+		for(int i=1;i<=numSegments.getValue();++i)
 			{
 			GLfloat r0=r1;
 			GLfloat y0=y1;
@@ -163,25 +143,6 @@ void SphereNode::createList(GLContextData& renderState) const
 				}
 			glEnd();
 			}
-		
-		/* Draw "northern polar cap": */
-		glBegin(GL_TRIANGLE_FAN);
-		glNormal3f(0.0f,1.0f,0.0f);
-		if(texCoords.getValue())
-			glTexCoord2f(0.5f,1.0f);
-		glVertex3f(cx,cy+r,cz);
-		for(int j=0;j<=numSegments.getValue()*2;++j)
-			{
-			GLfloat texX=GLfloat(j)/nq;
-			GLfloat lng=GLfloat(j)*(2.0f*pi)/nq;
-			GLfloat x1=-sinf(lng)*r1;
-			GLfloat z1=-cosf(lng)*r1;
-			glNormal3f(x1,y1,z1);
-			if(texCoords.getValue())
-				glTexCoord2f(texX,texY1);
-			glVertex3f(cx+x1*r,cy+y1*r,cz+z1*r);
-			}
-		glEnd();
 		}
 	else
 		{
@@ -269,9 +230,10 @@ void SphereNode::createList(GLContextData& renderState) const
 SphereNode::SphereNode(void)
 	:center(Point::origin),
 	 radius(1.0f),
-	 numSegments(32),
+	 numSegments(12),
 	 latLong(true),
-	 texCoords(true)
+	 texCoords(true),
+	 ccw(true)
 	{
 	}
 
@@ -297,6 +259,8 @@ EventOut* SphereNode::getEventOut(const char* fieldName) const
 		return makeEventOut(this,latLong);
 	else if(strcmp(fieldName,"texCoords")==0)
 		return makeEventOut(this,texCoords);
+	else if(strcmp(fieldName,"ccw")==0)
+		return makeEventOut(this,ccw);
 	else
 		return GeometryNode::getEventOut(fieldName);
 	}
@@ -313,6 +277,8 @@ EventIn* SphereNode::getEventIn(const char* fieldName)
 		return makeEventIn(this,latLong);
 	else if(strcmp(fieldName,"texCoords")==0)
 		return makeEventIn(this,texCoords);
+	else if(strcmp(fieldName,"ccw")==0)
+		return makeEventIn(this,ccw);
 	else
 		return GeometryNode::getEventIn(fieldName);
 	}
@@ -329,6 +295,8 @@ void SphereNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 		vrmlFile.parseField(latLong);
 	else if(strcmp(fieldName,"texCoords")==0)
 		vrmlFile.parseField(texCoords);
+	else if(strcmp(fieldName,"ccw")==0)
+		vrmlFile.parseField(ccw);
 	else
 		GeometryNode::parseField(fieldName,vrmlFile);
 	}
@@ -355,6 +323,7 @@ Box SphereNode::calcBoundingBox(void) const
 void SphereNode::glRenderAction(GLRenderState& renderState) const
 	{
 	/* Set up OpenGL state: */
+	renderState.setFrontFace(ccw.getValue()?GL_CCW:GL_CW);
 	renderState.enableCulling(GL_BACK);
 	
 	/* Render the display list: */

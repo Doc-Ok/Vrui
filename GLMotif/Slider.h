@@ -1,6 +1,6 @@
 /***********************************************************************
 Slider - Class for horizontal or vertical sliders.
-Copyright (c) 2001-2012 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -26,12 +26,13 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <Misc/CallbackData.h>
 #include <Misc/CallbackList.h>
 #include <Misc/TimerEventScheduler.h>
+#include <GLMotif/VariableTracker.h>
 #include <GLMotif/Widget.h>
 #include <GLMotif/DragWidget.h>
 
 namespace GLMotif {
 
-class Slider:public Widget,public DragWidget
+class Slider:public Widget,public DragWidget,public VariableTracker
 	{
 	/* Embedded classes: */
 	public:
@@ -52,10 +53,10 @@ class Slider:public Widget,public DragWidget
 		/* Elements: */
 		Slider* slider; // Pointer to the slider widget causing the event
 		ChangeReason reason; // Reason for this value change
-		GLfloat value; // Current slider value
+		double value; // Current slider value
 		
 		/* Constructors and destructors: */
-		ValueChangedCallbackData(Slider* sSlider,ChangeReason sReason,GLfloat sValue)
+		ValueChangedCallbackData(Slider* sSlider,ChangeReason sReason,double sValue)
 			:slider(sSlider),reason(sReason),value(sValue)
 			{
 			}
@@ -75,16 +76,16 @@ class Slider:public Widget,public DragWidget
 	Color sliderColor; // Color of slider handle
 	Box shaftBox; // Position and size of shaft
 	Color shaftColor; // Color of shaft
-	GLfloat valueMin,valueMax,valueIncrement; // Value range and increment
-	std::vector<GLfloat> notchValues; // Values of "notches" along the slider to simplify selection of special values
+	double valueMin,valueMax,valueIncrement; // Value range and increment
+	std::vector<double> notchValues; // Values of "notches" along the slider to simplify selection of special values
 	std::vector<GLfloat> notchPositions; // Positions of notches
-	GLfloat value; // Currently selected value
+	double value; // Currently selected value
 	Misc::CallbackList valueChangedCallbacks; // List of callbacks to be called when the slider value changes due to a user interaction
 	
 	int isClicking; // Flag if the slider is currently waiting for click repeat timer events, and whether it's decrementing (<0) or incrementing (>0)
 	double nextClickEventTime; // Time at which the next click-repeat event was scheduled
 	GLfloat dragOffset; // Offset between pointer position and slider origin during dragging
-	GLfloat lastDragPos; // Position of dragged slider handle at last frame
+	GLfloat dragZone[2]; // Range of slider handle positions that is ignored for dragging updates, to implement notch "stickiness"
 	
 	/* Protected methods: */
 	void positionShaft(void); // Positions the shaft inside the widget
@@ -100,15 +101,24 @@ class Slider:public Widget,public DragWidget
 	Slider(const char* sName,Container* sParent,Orientation sOrientation,GLfloat sShaftLength,bool sManageChild =true);
 	virtual ~Slider(void);
 	
-	/* Methods inherited from Widget: */
+	/* Methods from class Widget: */
 	virtual Vector calcNaturalSize(void) const;
 	virtual ZRange calcZRange(void) const;
 	virtual void resize(const Box& newExterior);
+	virtual void updateVariables(void);
 	virtual void draw(GLContextData& contextData) const;
 	virtual bool findRecipient(Event& event);
 	virtual void pointerButtonDown(Event& event);
 	virtual void pointerButtonUp(Event& event);
 	virtual void pointerMotion(Event& event);
+	
+	/* Methods from class VariableTracker: */
+	template <class VariableTypeParam>
+	void track(VariableTypeParam& newVariable) // Tracks the given variable and sets its initial value
+		{
+		setValue(newVariable);
+		VariableTracker::track(newVariable);
+		}
 	
 	/* New methods: */
 	void setMarginWidth(GLfloat newMarginWidth); // Changes the margin width
@@ -120,14 +130,14 @@ class Slider:public Widget,public DragWidget
 		{
 		shaftColor=newShaftColor;
 		}
-	GLfloat getValue(void) const // Returns the current slider value
+	double getValue(void) const // Returns the current slider value
 		{
 		return value;
 		}
-	void addNotch(GLfloat newNotchValue); // Adds a notch to the slider
-	void removeNotch(GLfloat notchValue); // Removes a notch from the slider
-	void setValue(GLfloat newValue); // Changes the current slider value
-	void setValueRange(GLfloat newValueMin,GLfloat newValueMax,GLfloat newValueIncrement); // Changes the slider value range
+	void addNotch(double newNotchValue); // Adds a notch to the slider
+	void removeNotch(double notchValue); // Removes a notch from the slider
+	void setValue(double newValue); // Changes the current slider value
+	void setValueRange(double newValueMin,double newValueMax,double newValueIncrement); // Changes the slider value range
 	Misc::CallbackList& getValueChangedCallbacks(void) // Returns list of value changed callbacks
 		{
 		return valueChangedCallbacks;

@@ -1,7 +1,7 @@
 /***********************************************************************
 Texture - Base class for widgets displaying dynamically-generated
 textures.
-Copyright (c) 2011-2017 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -59,6 +59,7 @@ class Texture:public Widget,public GLObject
 	Box textureBox; // Extents of texture display area inside the widget's interior
 	unsigned int regionVersion; // Version number of displayed texture region
 	GLenum interpolationMode; // Interpolation mode for texture display
+	GLint mipmapLevel; // Maximum Mipmap level for texture
 	unsigned int settingsVersion; // Version number of texture display settings
 	bool illuminated; // Flag whether the texture is illuminated by light sources, or emits its own light
 	
@@ -117,6 +118,11 @@ class Texture:public Widget,public GLObject
 		return interpolationMode;
 		}
 	void setInterpolationMode(GLenum newInterpolationMode); // Sets the interpolation mode for image display
+	int getMipmapLevel(void) const // Returns the maximum mipmap level for the texture image
+		{
+		return mipmapLevel;
+		}
+	void setMipmapLevel(int newMipmapLevel); // Sets the maximum mipmap level for the texture image; it is a derived class's responsibility to actually upload a mipmap
 	bool getIlluminated(void) const // Returns true if the image is illuminated by light sources
 		{
 		return illuminated;

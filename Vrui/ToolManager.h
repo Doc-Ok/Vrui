@@ -1,7 +1,7 @@
 /***********************************************************************
 ToolManager - Class to manage tool classes, and dynamic assignment of
 tools to input devices.
-Copyright (c) 2004-2018 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -128,6 +128,7 @@ class ToolManager:public Plugins::FactoryManager<ToolFactory>
 	MutexMenu* toolMenu; // Shell for tool selection menu
 	ToolManagerToolCreationState* toolCreationState; // Current state of tool creation procedure
 	Misc::CallbackList toolCreationCallbacks; // List of callbacks to be called after a new tool has been created
+	bool callCreatedToolFrame; // Flag whether the frame method of a newly-created tool must be called
 	
 	/* Tool destruction state: */
 	ToolKillZone* toolKillZone; // Pointer to tool "kill zone"
@@ -137,6 +138,7 @@ class ToolManager:public Plugins::FactoryManager<ToolFactory>
 	GLMotif::PopupMenu* createToolSubmenu(const Plugins::Factory& factory); // Returns submenu containing all subclasses of the given class
 	GLMotif::PopupMenu* createToolMenu(void); // Returns top level of tool selection menu
 	void addClassToMenu(ToolFactory* newFactory); // Adds a new tool class to the tool selection menu
+	void removeClassFromMenu(ToolFactory* factory); // Removes a tool class from the tool selection menu
 	void inputDeviceDestructionCallback(Misc::CallbackData* cbData); // Callback called when an input device is destroyed
 	void toolMenuSelectionCallback(Misc::CallbackData* cbData); // Callback called when a tool class is selected from the selection menu; continues tool creation process
 	void toolCreationDeviceMotionCallback(Misc::CallbackData* cbData); // Callback called when the device for which a tool is being created moves during tool creation
@@ -148,7 +150,12 @@ class ToolManager:public Plugins::FactoryManager<ToolFactory>
 	
 	/* Methods from Plugins::FactoryManager: */
 	void addClass(ToolFactory* newFactory,DestroyFactoryFunction newDestroyFactoryFunction =0); // Overrides base class method; adds new tool class to tool selection menu
-	void releaseClass(const char* className); // Overrides base class method; destroys all tools of the given class before destroying the class
+	void releaseClass(ToolFactory* factory); // Overrides base class method; destroys all tools of the given class before destroying the class
+	void releaseClass(const char* className) // Ditto, identifying tool class by name
+		{
+		/* Find the tool factory and delegate to the other method: */
+		releaseClass(getFactory(className));
+		}
 	
 	/* Methods: */
 	void addClass(const char* className); // Adds a tool class from a tool DSO and adds it to tool selection menu
@@ -161,6 +168,7 @@ class ToolManager:public Plugins::FactoryManager<ToolFactory>
 		}
 	void loadToolBinding(const char* toolSectionName); // Loads a tool binding from a configuration file section; names are relative to tool manager's section
 	void loadDefaultTools(void); // Creates default tool associations
+	void enterMainLoop(void); // Tells the tool manager that from now on newly-created tools' frame methods need to be called
 	bool isCreatingTool(void) const // Returns true if the tool manager is in the middle of the interactive tool creation process
 		{
 		return toolCreationState!=0;
@@ -171,6 +179,7 @@ class ToolManager:public Plugins::FactoryManager<ToolFactory>
 	Tool* createTool(ToolFactory* factory,const ToolInputAssignment& tia,const Misc::ConfigurationFileSection* cfg =0); // Programmatically creates a new tool of the given class and input assignment; optionally lets tool initialize itself by reading from the given configuration file section
 	void destroyTool(Tool* tool,bool destroyImmediately =true); // Destroys a tool programmatically, either right away or during the next call to update()
 	void update(void); // Called once every frame so that the tool manager has a well-defined place to create new tools
+	void destroyTools(void); // Destroys all current tools cleanly, i.e., calls tool destruction callbacks etc.
 	ToolList::const_iterator beginTools(void) const // Returns iterator to first instantiated tool
 		{
 		return tools.begin();

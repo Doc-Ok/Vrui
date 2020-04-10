@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDeviceAdapterPlayback - Class to read input device states from a
 pre-recorded file for playback and/or movie generation.
-Copyright (c) 2004-2018 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -28,14 +28,16 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <iostream>
 #include <Misc/PrintfTemplateTests.h>
 #include <Misc/Time.h>
 #include <Misc/ThrowStdErr.h>
 #include <Misc/Endianness.h>
+#include <Misc/MessageLogger.h>
 #include <Misc/StandardValueCoders.h>
 #include <Misc/ConfigurationFile.h>
+#include <Misc/StringMarshaller.h>
 #include <IO/File.h>
+#include <IO/Directory.h>
 #include <IO/OpenFile.h>
 #include <Math/Constants.h>
 #include <Geometry/OrthonormalTransformation.h>
@@ -45,6 +47,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/InputDevice.h>
 #include <Vrui/InputDeviceFeature.h>
 #include <Vrui/InputDeviceManager.h>
+#include <Vrui/InputGraphManager.h>
 #include <Vrui/TextEventDispatcher.h>
 #include <Vrui/InputGraphManager.h>
 #include <Vrui/Internal/MouseCursorFaker.h>
@@ -61,9 +64,120 @@ namespace Vrui {
 Methods of class InputDeviceAdapterPlayback:
 *******************************************/
 
+void InputDeviceAdapterPlayback::readDeviceStates(void)
+	{
+	/* Update all input devices: */
+	for(int deviceIndex=0;deviceIndex<numInputDevices;++deviceIndex)
+		{
+		/* Get a handle on the device: */
+		InputDevice* device=inputDevices[deviceIndex];
+		
+		/* Data file version 5 and later contain per-device valid flags: */
+		bool deviceValid=fileVersion>=5?inputDeviceDataFile->read<unsigned char>()!=0U:true;
+		
+		if(deviceValid)
+			{
+			/* Update tracker state: */
+			if(device->getTrackType()!=InputDevice::TRACK_NONE)
+				{
+				/* Data file version 3 and later contain per-time step device ray data: */
+				if(fileVersion>=3)
+					{
+					/* Read device ray data: */
+					Vector deviceRayDir;
+					inputDeviceDataFile->read(deviceRayDir.getComponents(),3);
+					Scalar deviceRayStart=inputDeviceDataFile->read<Scalar>();
+					device->setDeviceRay(deviceRayDir,deviceRayStart);
+					}
+				
+				/* Read 6-DOF tracker state: */
+				TrackerState::Vector translation;
+				inputDeviceDataFile->read(translation.getComponents(),3);
+				Scalar quat[4];
+				inputDeviceDataFile->read(quat,4);
+				TrackerState::Rotation rotation(quat);
+				if(applyPreTransform)
+					{
+					/* Apply the pre-transformation to the 6-DOF tracker state: */
+					translation=preTransform.getTranslation()+preTransform.getRotation().transform(translation*preTransform.getScaling());
+					rotation.leftMultiply(preTransform.getRotation());
+					}
+				
+				/* Data file version 3 and later contain linear and angular velocities: */
+				if(fileVersion>=3)
+					{
+					/* Read velocity data: */
+					Vector linearVelocity,angularVelocity;
+					inputDeviceDataFile->read(linearVelocity.getComponents(),3);
+					inputDeviceDataFile->read(angularVelocity.getComponents(),3);
+					
+					/* Set full device tracking state: */
+					device->setTrackingState(TrackerState(translation,rotation),linearVelocity,angularVelocity);
+					}
+				else
+					{
+					/* Update the device's transformation: */
+					device->setTransformation(TrackerState(translation,rotation));
+					}
+				}
+			
+			/* Update button states: */
+			if(fileVersion>=3)
+				{
+				/* Extract button data from 8-bit bit masks: */
+				unsigned char buttonBits=0x00U;
+				int numBits=0;
+				for(int i=0;i<device->getNumButtons();++i)
+					{
+					if(numBits==0)
+						{
+						buttonBits=inputDeviceDataFile->read<unsigned char>();
+						numBits=8;
+						}
+					device->setButtonState(i,(buttonBits&0x80U)!=0x00U);
+					buttonBits<<=1;
+					--numBits;
+					}
+				}
+			else
+				{
+				/* Read button data as sequence of 32-bit integers (oh my!): */
+				for(int i=0;i<device->getNumButtons();++i)
+					{
+					int buttonState=inputDeviceDataFile->read<int>();
+					device->setButtonState(i,buttonState);
+					}
+				}
+			
+			/* Update valuator states: */
+			for(int i=0;i<device->getNumValuators();++i)
+				{
+				double valuatorState=inputDeviceDataFile->read<double>();
+				device->setValuator(i,valuatorState);
+				}
+			}
+		
+		/* Check if the device's valid flag changed: */
+		if(validFlags[deviceIndex]!=deviceValid)
+			{
+			/* Enable or disable the device in the input graph manager: */
+			inputDeviceManager->getInputGraphManager()->setEnabled(device,deviceValid);
+			
+			/* Update the device's valid flag: */
+			validFlags[deviceIndex]=deviceValid;
+			}
+		}
+	
+	/* Data file version 4 and later contain text event data: */
+	if(fileVersion>=4)
+		{
+		/* Read and enqueue all text and text control events: */
+		inputDeviceManager->getTextEventDispatcher()->readEventQueues(*inputDeviceDataFile);
+		}
+	}
+
 InputDeviceAdapterPlayback::InputDeviceAdapterPlayback(InputDeviceManager* sInputDeviceManager,const Misc::ConfigurationFileSection& configFileSection)
 	:InputDeviceAdapter(sInputDeviceManager),
-	 inputDeviceDataFile(IO::openSeekableFile(configFileSection.retrieveString("./inputDeviceDataFileName").c_str())),
 	 applyPreTransform(false),
 	 mouseCursorFaker(0),
 	 synchronizePlayback(configFileSection.retrieveValue<bool>("./synchronizePlayback",false)),
@@ -75,14 +189,21 @@ InputDeviceAdapterPlayback::InputDeviceAdapterPlayback(InputDeviceManager* sInpu
 	 saveMovie(configFileSection.retrieveValue<bool>("./saveMovie",false)),
 	 movieWindowIndex(0),movieWindow(0),movieFrameTimeInterval(1.0/30.0),
 	 movieFrameStart(0),movieFrameOffset(0),
-	 firstFrameCountdown(2),timeStamp(0.0),timeStampOffset(0.0),
+	 timeStamp(0.0),timeStampOffset(0.0),
 	 nextTimeStamp(0.0),
+	 validFlags(0),
 	 nextMovieFrameTime(0.0),nextMovieFrameCounter(0),
 	 done(false)
 	{
+	/* Open the common base directory: */
+	IO::DirectoryPtr baseDirectory=IO::openDirectory(configFileSection.retrieveString("./baseDirectory",".").c_str());
+	
+	/* Open the input device data file: */
+	inputDeviceDataFile=baseDirectory->openFile(configFileSection.retrieveString("./inputDeviceDataFileName").c_str());
+	
 	/* Read file header: */
 	inputDeviceDataFile->setEndianness(Misc::LittleEndian);
-	static const char* fileHeader="Vrui Input Device Data File v4.0\n";
+	static const char* fileHeader="Vrui Input Device Data File v5.0\n";
 	char header[34];
 	inputDeviceDataFile->read<char>(header,34);
 	header[33]='\0';
@@ -92,8 +213,8 @@ InputDeviceAdapterPlayback::InputDeviceAdapterPlayback(InputDeviceManager* sInpu
 		/* Pre-versioning file version: */
 		fileVersion=1;
 		
-		/* Old file format doesn't have the header text: */
-		inputDeviceDataFile->setReadPosAbs(0);
+		/* Old file format doesn't have the header text; open it again to start over: */
+		inputDeviceDataFile=baseDirectory->openFile(configFileSection.retrieveString("./inputDeviceDataFileName").c_str());
 		}
 	else if(strcmp(header+29,"2.0\n")==0)
 		{
@@ -110,6 +231,11 @@ InputDeviceAdapterPlayback::InputDeviceAdapterPlayback(InputDeviceManager* sInpu
 		/* File version with text and text control events: */
 		fileVersion=4;
 		}
+	else if(strcmp(header+29,"5.0\n")==0)
+		{
+		/* File version with valid flags: */
+		fileVersion=5;
+		}
 	else
 		{
 		header[32]='\0';
@@ -124,6 +250,7 @@ InputDeviceAdapterPlayback::InputDeviceAdapterPlayback(InputDeviceManager* sInpu
 	numInputDevices=inputDeviceDataFile->read<int>();
 	inputDevices=new InputDevice*[numInputDevices];
 	deviceFeatureBaseIndices=new int[numInputDevices];
+	validFlags=new bool[numInputDevices];
 	
 	/* Initialize devices: */
 	for(int i=0;i<numInputDevices;++i)
@@ -179,6 +306,9 @@ InputDeviceAdapterPlayback::InputDeviceAdapterPlayback(InputDeviceManager* sInpu
 			for(int j=0;j<newDevice->getNumFeatures();++j)
 				deviceFeatureNames.push_back(getDefaultFeatureName(InputDeviceFeature(newDevice,j)));
 			}
+		
+		/* Initialize the device as valid: */
+		validFlags[i]=true;
 		}
 	
 	/* Check if the user wants to pre-transform stored device data: */
@@ -205,15 +335,13 @@ InputDeviceAdapterPlayback::InputDeviceAdapterPlayback(InputDeviceManager* sInpu
 		mouseCursorFaker->setCursorHotspot(configFileSection.retrieveValue<Vector>("./mouseCursorHotspot",mouseCursorFaker->getCursorHotspot()));
 		}
 	
-	/* Read time stamp of first data frame: */
+	/* Read the initial application time stamp: */
 	try
 		{
-		nextTimeStamp=inputDeviceDataFile->read<double>();
-		
-		/* Request an update for the next frame: */
-		requestUpdate();
+		timeStamp=inputDeviceDataFile->read<double>();
+		synchronize(timeStamp);
 		}
-	catch(IO::File::ReadError)
+	catch(const IO::File::ReadError&)
 		{
 		done=true;
 		nextTimeStamp=Math::Constants<double>::max;
@@ -232,12 +360,12 @@ InputDeviceAdapterPlayback::InputDeviceAdapterPlayback(InputDeviceManager* sInpu
 		try
 			{
 			/* Create a sound player for the given sound file name: */
-			soundPlayer=new Sound::SoundPlayer(soundFileName.c_str());
+			soundPlayer=new Sound::SoundPlayer(baseDirectory->getPath(soundFileName.c_str()).c_str());
 			}
-		catch(std::runtime_error error)
+		catch(const std::runtime_error& err)
 			{
 			/* Print a message, but carry on: */
-			std::cerr<<"InputDeviceAdapterPlayback: Disabling sound playback due to exception "<<error.what()<<std::endl;
+			Misc::formattedConsoleWarning("InputDeviceAdapterPlayback: Disabling sound recording due to exception %s",err.what());
 			}
 		}
 	
@@ -256,10 +384,10 @@ InputDeviceAdapterPlayback::InputDeviceAdapterPlayback(InputDeviceManager* sInpu
 	if(saveMovie)
 		{
 		/* Read the movie image file name template: */
-		movieFileNameTemplate=configFileSection.retrieveString("./movieFileNameTemplate");
+		movieFileNameTemplate=baseDirectory->getPath(configFileSection.retrieveString("./movieFileNameTemplate").c_str());
 		
 		/* Check if the name template has the correct format: */
-		if(!Misc::isValidIntTemplate(movieFileNameTemplate,1024))
+		if(!Misc::isValidTemplate(movieFileNameTemplate,'d',1024))
 			Misc::throwStdErr("InputDeviceAdapterPlayback::InputDeviceAdapterPlayback: movie file name template \"%s\" does not have exactly one %%d conversion",movieFileNameTemplate.c_str());
 		
 		/* Get the index of the window from which to save the frames: */
@@ -284,6 +412,7 @@ InputDeviceAdapterPlayback::~InputDeviceAdapterPlayback(void)
 	delete kinectPlayer;
 	#endif
 	delete[] deviceFeatureBaseIndices;
+	delete[] validFlags;
 	}
 
 std::string InputDeviceAdapterPlayback::getFeatureName(const InputDeviceFeature& feature) const
@@ -328,6 +457,33 @@ int InputDeviceAdapterPlayback::getFeatureIndex(InputDevice* device,const char* 
 	return -1;
 	}
 
+void InputDeviceAdapterPlayback::prepareMainLoop(void)
+	{
+	if(synchronizePlayback)
+		{
+		/* Calculate the offset between the saved timestamps and the system's wall clock time: */
+		Misc::Time rt=Misc::Time::now();
+		double realTime=double(rt.tv_sec)+double(rt.tv_nsec)/1000000000.0;
+		timeStampOffset=nextTimeStamp-realTime;
+		}
+	
+	/* Start the sound player, if there is one: */
+	if(soundPlayer!=0)
+		soundPlayer->start();
+	
+	if(saveMovie)
+		{
+		/* Get a pointer to the window from which to save movie frames: */
+		if(movieWindowIndex>=0&&movieWindowIndex<getNumWindows())
+			movieWindow=getWindow(movieWindowIndex);
+		else
+			Misc::formattedConsoleWarning("InputDeviceAdapterPlayback: Not saving movie due to invalid movie window index %d",movieWindowIndex);
+		
+		/* Calculate the first time at which to save a frame: */
+		nextMovieFrameTime=nextTimeStamp+movieFrameTimeInterval*0.5;
+		}
+	}
+
 void InputDeviceAdapterPlayback::updateInputDevices(void)
 	{
 	/* Do nothing if at end of file: */
@@ -335,38 +491,6 @@ void InputDeviceAdapterPlayback::updateInputDevices(void)
 		return;
 	
 	timeStamp=nextTimeStamp;
-	
-	/* Check if this is the first real Vrui frame: */
-	if(firstFrameCountdown>0U)
-		{
-		--firstFrameCountdown;
-		if(firstFrameCountdown==0U)
-			{
-			if(synchronizePlayback)
-				{
-				/* Calculate the offset between the saved timestamps and the system's wall clock time: */
-				Misc::Time rt=Misc::Time::now();
-				double realTime=double(rt.tv_sec)+double(rt.tv_nsec)/1000000000.0;
-				timeStampOffset=nextTimeStamp-realTime;
-				}
-			
-			/* Start the sound player, if there is one: */
-			if(soundPlayer!=0)
-				soundPlayer->start();
-			
-			if(saveMovie)
-				{
-				/* Get a pointer to the window from which to save movie frames: */
-				if(movieWindowIndex>=0&&movieWindowIndex<getNumWindows())
-					movieWindow=getWindow(movieWindowIndex);
-				else
-					std::cerr<<"InputDeviceAdapterPlayback: Not saving movie due to invalid movie window index "<<movieWindowIndex<<std::endl;
-				
-				/* Calculate the first time at which to save a frame: */
-				nextMovieFrameTime=nextTimeStamp+movieFrameTimeInterval*0.5;
-				}
-			}
-		}
 	
 	if(synchronizePlayback)
 		{
@@ -381,94 +505,8 @@ void InputDeviceAdapterPlayback::updateInputDevices(void)
 			}
 		}
 	
-	/* Update all input devices: */
-	for(int device=0;device<numInputDevices;++device)
-		{
-		/* Update tracker state: */
-		if(inputDevices[device]->getTrackType()!=InputDevice::TRACK_NONE)
-			{
-			/* Data file version 3 and later contain per-time step device ray data: */
-			if(fileVersion>=3)
-				{
-				/* Read device ray data: */
-				Vector deviceRayDir;
-				inputDeviceDataFile->read(deviceRayDir.getComponents(),3);
-				Scalar deviceRayStart=inputDeviceDataFile->read<Scalar>();
-				inputDevices[device]->setDeviceRay(deviceRayDir,deviceRayStart);
-				}
-			
-			/* Read 6-DOF tracker state: */
-			TrackerState::Vector translation;
-			inputDeviceDataFile->read(translation.getComponents(),3);
-			Scalar quat[4];
-			inputDeviceDataFile->read(quat,4);
-			if(applyPreTransform)
-				{
-				/* Apply the pre-transformation and set the device state: */
-				OGTransform t=preTransform;
-				t*=OGTransform(translation,OGTransform::Rotation(quat),Scalar(1));
-				inputDevices[device]->setTransformation(TrackerState(t.getTranslation(),t.getRotation()));
-				}
-			else
-				{
-				/* Set the device state: */
-				inputDevices[device]->setTransformation(TrackerState(translation,TrackerState::Rotation(quat)));
-				}
-			
-			/* Data file version 3 and later contain linear and angular velocities: */
-			if(fileVersion>=3)
-				{
-				/* Read velocity data: */
-				Vector linearVelocity,angularVelocity;
-				inputDeviceDataFile->read(linearVelocity.getComponents(),3);
-				inputDeviceDataFile->read(angularVelocity.getComponents(),3);
-				inputDevices[device]->setLinearVelocity(linearVelocity);
-				inputDevices[device]->setAngularVelocity(angularVelocity);
-				}
-			}
-		
-		/* Update button states: */
-		if(fileVersion>=3)
-			{
-			/* Extract button data from 8-bit bit masks: */
-			unsigned char buttonBits=0x00U;
-			int numBits=0;
-			for(int i=0;i<inputDevices[device]->getNumButtons();++i)
-				{
-				if(numBits==0)
-					{
-					buttonBits=inputDeviceDataFile->read<unsigned char>();
-					numBits=8;
-					}
-				inputDevices[device]->setButtonState(i,(buttonBits&0x80U)!=0x00U);
-				buttonBits<<=1;
-				--numBits;
-				}
-			}
-		else
-			{
-			/* Read button data as sequence of 32-bit integers (oh my!): */
-			for(int i=0;i<inputDevices[device]->getNumButtons();++i)
-				{
-				int buttonState=inputDeviceDataFile->read<int>();
-				inputDevices[device]->setButtonState(i,buttonState);
-				}
-			}
-		
-		/* Update valuator states: */
-		for(int i=0;i<inputDevices[device]->getNumValuators();++i)
-			{
-			double valuatorState=inputDeviceDataFile->read<double>();
-			inputDevices[device]->setValuator(i,valuatorState);
-			}
-		}
-	
-	/* Data file version 4 and later contain text event data: */
-	if(fileVersion>=4)
-		{
-		/* Read and enqueue all text and text control events: */
-		inputDeviceManager->getTextEventDispatcher()->readEventQueues(*inputDeviceDataFile);
-		}
+	/* Read new device states: */
+	readDeviceStates();
 	
 	/* Read time stamp of next data frame: */
 	try
@@ -479,7 +517,7 @@ void InputDeviceAdapterPlayback::updateInputDevices(void)
 		synchronize(nextTimeStamp,false);
 		requestUpdate();
 		}
-	catch(IO::File::ReadError)
+	catch(const IO::File::ReadError&)
 		{
 		done=true;
 		nextTimeStamp=Math::Constants<double>::max;

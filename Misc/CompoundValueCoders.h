@@ -1,7 +1,7 @@
 /***********************************************************************
 CompoundValueCoders - Generic value coder classes for vectors and lists
 of other data types.
-Copyright (c) 2004-2010 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -27,6 +27,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <utility>
 #include <list>
 #include <vector>
+#include <Misc/Vector.h>
 #include <Misc/ValueCoder.h>
 
 namespace Misc {
@@ -60,6 +61,15 @@ class ValueCoder<std::vector<ValueParam> >
 	public:
 	static std::string encode(const std::vector<ValueParam>& value);
 	static std::vector<ValueParam> decode(const char* start,const char* end,const char** decodeEnd =0);
+	};
+
+template <class ValueParam>
+class ValueCoder<Vector<ValueParam> >
+	{
+	/* Methods: */
+	public:
+	static std::string encode(const Vector<ValueParam>& value);
+	static Vector<ValueParam> decode(const char* start,const char* end,const char** decodeEnd =0);
 	};
 
 }

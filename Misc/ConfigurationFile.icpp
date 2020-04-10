@@ -1,7 +1,7 @@
 /***********************************************************************
 ConfigurationFile - Class to handle permanent storage of configuration
 data in human-readable text files.
-Copyright (c) 2002-2015 Oliver Kreylos
+Copyright (c) 2002-2020 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -100,7 +100,7 @@ template <class PipeParam>
 inline
 ConfigurationFileBase::ConfigurationFileBase(
 	PipeParam& pipe)
-	:fileName(Misc::readCppString(pipe)),
+	:fileName(readCppString(pipe)),
 	 rootSection(0)
 	{
 	/* Read the root section: */
@@ -121,7 +121,7 @@ ConfigurationFileBase::readFromPipe(
 	rootSection=0;
 	
 	/* Read the new file name: */
-	fileName=Misc::readCppString(pipe);
+	fileName=readCppString(pipe);
 	
 	/* Read the new root section: */
 	rootSection=new Section(0,pipe);
@@ -137,7 +137,7 @@ ConfigurationFileBase::writeToPipe(
 	PipeParam& pipe) const
 	{
 	/* Write the file name: */
-	Misc::writeCppString(fileName,pipe);
+	writeCppString(fileName,pipe);
 	
 	/* Write the root section: */
 	rootSection->writeToPipe(pipe);

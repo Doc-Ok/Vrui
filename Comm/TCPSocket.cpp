@@ -1,6 +1,6 @@
 /***********************************************************************
 TCPSocket - Wrapper class for TCP sockets ensuring exception safety.
-Copyright (c) 2002-2016 Oliver Kreylos
+Copyright (c) 2002-2018 Oliver Kreylos
 
 This file is part of the Portable Communications Library (Comm).
 
@@ -20,6 +20,8 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 02111-1307 USA
 ***********************************************************************/
 
+#include <Comm/TCPSocket.h>
+
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
@@ -32,8 +34,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <netdb.h>
 #include <Misc/ThrowStdErr.h>
 #include <Misc/Time.h>
-
-#include <Comm/TCPSocket.h>
+#include <Comm/IPv4SocketAddress.h>
 
 namespace Comm {
 
@@ -47,72 +48,41 @@ TCPSocket::TCPSocket(int portId,int backlog)
 	/* Create the socket file descriptor: */
 	socketFd=socket(PF_INET,SOCK_STREAM,0);
 	if(socketFd<0)
-		Misc::throwStdErr("TCPSocket: Unable to create socket");
-	
-	/* Bind the socket file descriptor to the port ID: */
-	struct sockaddr_in socketAddress;
-	socketAddress.sin_family=AF_INET;
-	socketAddress.sin_port=portId>=0?htons(portId):0;
-	socketAddress.sin_addr.s_addr=htonl(INADDR_ANY);
-	if(bind(socketFd,(struct sockaddr*)&socketAddress,sizeof(struct sockaddr_in))==-1)
 		{
+		int myerrno=errno;
+		Misc::throwStdErr("Comm::TCPSocket: Unable to create socket due to error %d (%s)",myerrno,strerror(myerrno));
+		}
+	
+	/* Bind the socket to an address that accepts any incoming address on the given port: */
+	IPv4SocketAddress socketAddress(portId>=0?(unsigned int)(portId):0);
+	if(bind(socketFd,(struct sockaddr*)&socketAddress,sizeof(IPv4SocketAddress))<0)
+		{
+		int myerrno=errno;
 		close(socketFd);
-		socketFd=-1;
-		Misc::throwStdErr("TCPSocket: Unable to bind socket to port %d",portId);
+		Misc::throwStdErr("Comm::TCPSocket: Unable to bind socket to port %d due to error %d (%s)",portId,myerrno,strerror(myerrno));
 		}
 	
 	/* Start listening on the socket: */
-	if(listen(socketFd,backlog)==-1)
+	if(listen(socketFd,backlog)<0)
 		{
+		int myerrno=errno;
 		close(socketFd);
-		socketFd=-1;
-		Misc::throwStdErr("TCPSocket: Unable to start listening on socket");
+		Misc::throwStdErr("Comm::TCPSocket: Unable to start listening on socket due to error %d (%s)",portId,myerrno,strerror(myerrno));
 		}
 	}
 
-TCPSocket::TCPSocket(std::string hostname,int portId)
+TCPSocket::TCPSocket(const std::string& hostname,int portId)
 	:socketFd(-1)
 	{
-	/* Create the socket file descriptor: */
-	socketFd=socket(PF_INET,SOCK_STREAM,0);
-	if(socketFd<0)
-		Misc::throwStdErr("TCPSocket: Unable to create socket");
-	
-	/* Bind the socket file descriptor: */
-	struct sockaddr_in mySocketAddress;
-	mySocketAddress.sin_family=AF_INET;
-	mySocketAddress.sin_port=0;
-	mySocketAddress.sin_addr.s_addr=htonl(INADDR_ANY);
-	if(bind(socketFd,(struct sockaddr*)&mySocketAddress,sizeof(struct sockaddr_in))==-1)
-		{
-		close(socketFd);
-		socketFd=-1;
-		Misc::throwStdErr("TCPSocket: Unable to bind socket to port");
-		}
-	
-	/* Lookup host's IP address: */
-	struct hostent* hostEntry=gethostbyname(hostname.c_str());
-	if(hostEntry==0)
-		{
-		close(socketFd);
-		socketFd=-1;
-		Misc::throwStdErr("TCPSocket: Unable to resolve host name %s",hostname.c_str());
-		}
-	struct in_addr hostNetAddress;
-	hostNetAddress.s_addr=ntohl(((struct in_addr*)hostEntry->h_addr_list[0])->s_addr);
-	
-	/* Connect to the remote host: */
-	struct sockaddr_in hostAddress;
-	hostAddress.sin_family=AF_INET;
-	hostAddress.sin_port=htons(portId);
-	hostAddress.sin_addr.s_addr=htonl(hostNetAddress.s_addr);
-	if(::connect(socketFd,(const struct sockaddr*)&hostAddress,sizeof(struct sockaddr_in))==-1)
-		{
-		int error=errno;
-		close(socketFd);
-		socketFd=-1;
-		Misc::throwStdErr("TCPSocket: Unable to connect to host %s on port %d due to error %d (%s)",hostname.c_str(),portId,error,strerror(error));
-		}
+	/* Call the connect() method: */
+	connect(hostname,portId);
+	}
+
+TCPSocket::TCPSocket(const IPv4SocketAddress& hostAddress)
+	:socketFd(-1)
+	{
+	/* Call the connect() method: */
+	connect(hostAddress);
 	}
 
 TCPSocket::TCPSocket(const TCPSocket& source)
@@ -137,7 +107,26 @@ TCPSocket::~TCPSocket(void)
 		close(socketFd);
 	}
 
-TCPSocket& TCPSocket::connect(std::string hostname,int portId)
+IPv4SocketAddress TCPSocket::getAddress(void) const
+	{
+	IPv4SocketAddress socketAddress;
+	#ifdef __SGI_IRIX__
+	int socketAddressLen=sizeof(IPv4SocketAddress);
+	#else
+	socklen_t socketAddressLen=sizeof(IPv4SocketAddress);
+	#endif
+	if(getsockname(socketFd,(struct sockaddr*)&socketAddress,&socketAddressLen)<0)
+		{
+		int myerrno=errno;
+		Misc::throwStdErr("Comm::TCPSocket::getAddress: Unable to query local socket address due to error %d (%s)",myerrno,strerror(myerrno));
+		}
+	if(socketAddressLen<sizeof(IPv4SocketAddress))
+		Misc::throwStdErr("Comm::TCPSocket::getAddress: Returned address has wrong size; %u bytes instead of %u bytes",(unsigned int)socketAddressLen,(unsigned int)sizeof(IPv4SocketAddress));
+	
+	return socketAddress;
+	}
+
+TCPSocket& TCPSocket::connect(const std::string& hostname,int portId)
 	{
 	/* Close a previous connection: */
 	if(socketFd>=0)
@@ -146,166 +135,106 @@ TCPSocket& TCPSocket::connect(std::string hostname,int portId)
 		socketFd=-1;
 		}
 	
-	/* Create a new socket file descriptor: */
+	/* Create the socket file descriptor: */
 	socketFd=socket(PF_INET,SOCK_STREAM,0);
 	if(socketFd<0)
-		Misc::throwStdErr("TCPSocket::connect: Unable to create socket");
-	
-	/* Bind the socket file descriptor: */
-	struct sockaddr_in mySocketAddress;
-	mySocketAddress.sin_family=AF_INET;
-	mySocketAddress.sin_port=0;
-	mySocketAddress.sin_addr.s_addr=htonl(INADDR_ANY);
-	if(bind(socketFd,(struct sockaddr*)&mySocketAddress,sizeof(struct sockaddr_in))==-1)
 		{
-		close(socketFd);
-		socketFd=-1;
-		Misc::throwStdErr("TCPSocket::connect: Unable to bind socket to port");
+		int myerrno=errno;
+		Misc::throwStdErr("Comm::TCPSocket::connect Unable to create socket due to error %d (%s)",myerrno,strerror(myerrno));
 		}
 	
-	/* Lookup host's IP address: */
-	struct hostent* hostEntry=gethostbyname(hostname.c_str());
-	if(hostEntry==0)
+	/* Bind the socket to an address that accepts any incoming address on a system-assigned port: */
+	IPv4SocketAddress socketAddress(0);
+	if(bind(socketFd,(struct sockaddr*)&socketAddress,sizeof(IPv4SocketAddress))<0)
 		{
+		int myerrno=errno;
 		close(socketFd);
 		socketFd=-1;
-		Misc::throwStdErr("TCPSocket::connect: Unable to resolve host name %s",hostname.c_str());
+		Misc::throwStdErr("Comm::TCPSocket::connect: Unable to bind socket due to error %d (%s)",myerrno,strerror(myerrno));
 		}
-	struct in_addr hostNetAddress;
-	hostNetAddress.s_addr=ntohl(((struct in_addr*)hostEntry->h_addr_list[0])->s_addr);
 	
-	/* Connect to the remote host: */
-	struct sockaddr_in hostAddress;
-	hostAddress.sin_family=AF_INET;
-	hostAddress.sin_port=htons(portId);
-	hostAddress.sin_addr.s_addr=htonl(hostNetAddress.s_addr);
-	if(::connect(socketFd,(const struct sockaddr*)&hostAddress,sizeof(struct sockaddr_in))==-1)
+	/* Connect to the given host on the given port: */
+	IPv4SocketAddress remoteAddress(portId,IPv4Address(hostname.c_str()));
+	if(::connect(socketFd,(const struct sockaddr*)&remoteAddress,sizeof(IPv4SocketAddress))<0)
 		{
+		int myerrno=errno;
 		close(socketFd);
 		socketFd=-1;
-		Misc::throwStdErr("TCPSocket::connect: Unable to connect to host %s on port %d",hostname.c_str(),portId);
+		Misc::throwStdErr("Comm::TCPSocket::connect Unable to connect to host %s on port %d due to error %d (%s)",hostname.c_str(),portId,myerrno,strerror(myerrno));
 		}
 	
 	return *this;
 	}
 
-int TCPSocket::getPortId(void) const
+TCPSocket& TCPSocket::connect(const IPv4SocketAddress& hostAddress)
 	{
-	struct sockaddr_in socketAddress;
-	#ifdef __SGI_IRIX__
-	int socketAddressLen=sizeof(struct sockaddr_in);
-	#else
-	socklen_t socketAddressLen=sizeof(struct sockaddr_in);
-	#endif
-	getsockname(socketFd,(struct sockaddr*)&socketAddress,&socketAddressLen);
-	return ntohs(socketAddress.sin_port);
-	}
-
-std::string TCPSocket::getAddress(void) const
-	{
-	struct sockaddr_in socketAddress;
-	#ifdef __SGI_IRIX__
-	int socketAddressLen=sizeof(struct sockaddr_in);
-	#else
-	socklen_t socketAddressLen=sizeof(struct sockaddr_in);
-	#endif
-	getsockname(socketFd,(struct sockaddr*)&socketAddress,&socketAddressLen);
-	char resultBuffer[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET,&socketAddress.sin_addr,resultBuffer,INET_ADDRSTRLEN);
-	return std::string(resultBuffer);
-	}
-
-std::string TCPSocket::getHostname(bool throwException) const
-	{
-	struct sockaddr_in socketAddress;
-	#ifdef __SGI_IRIX__
-	int socketAddressLen=sizeof(struct sockaddr_in);
-	#else
-	socklen_t socketAddressLen=sizeof(struct sockaddr_in);
-	#endif
-	getsockname(socketFd,(struct sockaddr*)&socketAddress,&socketAddressLen);
-	
-	/* Lookup host's name: */
-	std::string result;
-	struct hostent* hostEntry=gethostbyaddr((const char*)&socketAddress.sin_addr,sizeof(struct in_addr),AF_INET);
-	if(hostEntry==0)
+	/* Close a previous connection: */
+	if(socketFd>=0)
 		{
-		/* Fall back to returning address in dotted notation or throwing exception: */
-		char addressBuffer[INET_ADDRSTRLEN];
-		inet_ntop(AF_INET,&socketAddress.sin_addr,addressBuffer,INET_ADDRSTRLEN);
-		if(throwException)
-			Misc::throwStdErr("TCPSocket::getHostname: Cannot resolve host address %s",addressBuffer);
-		else
-			result=std::string(addressBuffer);
+		close(socketFd);
+		socketFd=-1;
 		}
-	else
-		result=std::string(hostEntry->h_name);
 	
-	return result;
+	/* Create the socket file descriptor: */
+	socketFd=socket(PF_INET,SOCK_STREAM,0);
+	if(socketFd<0)
+		{
+		int myerrno=errno;
+		Misc::throwStdErr("Comm::TCPSocket::connect: Unable to create socket due to error %d (%s)",myerrno,strerror(myerrno));
+		}
+	
+	/* Bind the socket to an address that accepts any incoming address on a system-assigned port: */
+	IPv4SocketAddress socketAddress(0);
+	if(bind(socketFd,(struct sockaddr*)&socketAddress,sizeof(IPv4SocketAddress))<0)
+		{
+		int myerrno=errno;
+		close(socketFd);
+		socketFd=-1;
+		Misc::throwStdErr("Comm::TCPSocket::connect: Unable to bind socket due to error %d (%s)",myerrno,strerror(myerrno));
+		}
+	
+	/* Connect to the given host on the given port: */
+	if(::connect(socketFd,(const struct sockaddr*)&hostAddress,sizeof(IPv4SocketAddress))<0)
+		{
+		int myerrno=errno;
+		close(socketFd);
+		socketFd=-1;
+		Misc::throwStdErr("Comm::TCPSocket::connect: Unable to connect to host %s on port %u due to error %d (%s)",hostAddress.getAddress().getHostname().c_str(),hostAddress.getPort(),myerrno,strerror(myerrno));
+		}
+	
+	return *this;
 	}
 
 TCPSocket TCPSocket::accept(void) const
 	{
 	/* Wait for connection attempts: */
 	int newSocketFd=::accept(socketFd,0,0);
-	if(newSocketFd==-1)
-		Misc::throwStdErr("TCPSocket: Unable to accept connection");
+	if(newSocketFd<0)
+		{
+		int myerrno=errno;
+		Misc::throwStdErr("Comm::TCPSocket::accept: Unable to accept connection due to error %d (%s)",myerrno,strerror(myerrno));
+		}
+	
 	return TCPSocket(newSocketFd);
 	}
 
-int TCPSocket::getPeerPortId(void) const
+IPv4SocketAddress TCPSocket::getPeerAddress(void) const
 	{
-	struct sockaddr_in peerAddress;
+	IPv4SocketAddress peerAddress;
 	#ifdef __SGI_IRIX__
-	int peerAddressLen=sizeof(struct sockaddr_in);
+	int peerAddressLen=sizeof(IPv4SocketAddress);
 	#else
-	socklen_t peerAddressLen=sizeof(struct sockaddr_in);
+	socklen_t peerAddressLen=sizeof(IPv4SocketAddress);
 	#endif
-	getpeername(socketFd,(struct sockaddr*)&peerAddress,&peerAddressLen);
-	return ntohs(peerAddress.sin_port);
-	}
-
-std::string TCPSocket::getPeerAddress(void) const
-	{
-	struct sockaddr_in peerAddress;
-	#ifdef __SGI_IRIX__
-	int peerAddressLen=sizeof(struct sockaddr_in);
-	#else
-	socklen_t peerAddressLen=sizeof(struct sockaddr_in);
-	#endif
-	getpeername(socketFd,(struct sockaddr*)&peerAddress,&peerAddressLen);
-	char resultBuffer[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET,&peerAddress.sin_addr,resultBuffer,INET_ADDRSTRLEN);
-	return std::string(resultBuffer);
-	}
-
-std::string TCPSocket::getPeerHostname(bool throwException) const
-	{
-	struct sockaddr_in peerAddress;
-	#ifdef __SGI_IRIX__
-	int peerAddressLen=sizeof(struct sockaddr_in);
-	#else
-	socklen_t peerAddressLen=sizeof(struct sockaddr_in);
-	#endif
-	getpeername(socketFd,(struct sockaddr*)&peerAddress,&peerAddressLen);
-	
-	/* Lookup host's name: */
-	std::string result;
-	struct hostent* hostEntry=gethostbyaddr((const char*)&peerAddress.sin_addr,sizeof(struct in_addr),AF_INET);
-	if(hostEntry==0)
+	if(getpeername(socketFd,(struct sockaddr*)&peerAddress,&peerAddressLen)<0)
 		{
-		/* Fall back to returning address in dotted notation or throwing exception: */
-		char addressBuffer[INET_ADDRSTRLEN];
-		inet_ntop(AF_INET,&peerAddress.sin_addr,addressBuffer,INET_ADDRSTRLEN);
-		if(throwException)
-			Misc::throwStdErr("TCPSocket::getPeerHostname: Cannot resolve host address %s",addressBuffer);
-		else
-			result=std::string(addressBuffer);
+		int myerrno=errno;
+		Misc::throwStdErr("Comm::TCPSocket::getPeerAddress: Unable to query remote socket address due to error %d (%s)",myerrno,strerror(myerrno));
 		}
-	else
-		result=std::string(hostEntry->h_name);
+	if(peerAddressLen<sizeof(IPv4SocketAddress))
+		Misc::throwStdErr("Comm::TCPSocket::getPeerAddress: Returned address has wrong size; %u bytes instead of %u bytes",(unsigned int)peerAddressLen,(unsigned int)sizeof(IPv4SocketAddress));
 	
-	return result;
+	return peerAddress;
 	}
 
 void TCPSocket::shutdown(bool shutdownRead,bool shutdownWrite)
@@ -313,17 +242,17 @@ void TCPSocket::shutdown(bool shutdownRead,bool shutdownWrite)
 	if(shutdownRead&&shutdownWrite)
 		{
 		if(::shutdown(socketFd,SHUT_RDWR)!=0)
-			Misc::throwStdErr("TCPSocket:: Error while shutting down read and write");
+			Misc::throwStdErr("Comm::TCPSocket:: Error while shutting down read and write");
 		}
 	else if(shutdownRead)
 		{
 		if(::shutdown(socketFd,SHUT_RD)!=0)
-			Misc::throwStdErr("TCPSocket:: Error while shutting down read");
+			Misc::throwStdErr("Comm::TCPSocket:: Error while shutting down read");
 		}
 	else if(shutdownWrite)
 		{
 		if(::shutdown(socketFd,SHUT_WR)!=0)
-			Misc::throwStdErr("TCPSocket:: Error while shutting down write");
+			Misc::throwStdErr("Comm::TCPSocket:: Error while shutting down write");
 		}
 	}
 

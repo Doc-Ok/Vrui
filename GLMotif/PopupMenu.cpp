@@ -1,7 +1,7 @@
 /***********************************************************************
 PopupMenu - Class for top-level GLMotif UI components that act as menus
 and only require a single down-motion-up sequence to select an entry.
-Copyright (c) 2001-2018 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -26,6 +26,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <GLMotif/StyleSheet.h>
 #include <GLMotif/Event.h>
 #include <GLMotif/RowColumn.h>
+#include <GLMotif/Separator.h>
 #include <GLMotif/Label.h>
 #include <GLMotif/Button.h>
 #include <GLMotif/NewButton.h>
@@ -245,6 +246,38 @@ int countButtons(Container* container) // Recursively counts number of button-de
 	return result;
 	}
 
+Widget* getButton(Container* container,int buttonIndex,int& index) // Recursively search for the button of the given index inside the given container
+	{
+	/* Iterate through the container's children: */
+	Widget* result=0;
+	for(Widget* child=container->getFirstChild();child!=0&&index<=buttonIndex;child=container->getNextChild(child))
+		{
+		if(dynamic_cast<Button*>(child)!=0||dynamic_cast<NewButton*>(child)!=0) // Time to replace Button with NewButton for good!
+			{
+			if(index==buttonIndex)
+				{
+				/* Return the current child widget: */
+				result=child;
+				}
+			
+			/* Only count button-derived widgets: */
+			++index;
+			}
+		else
+			{
+			/* Check if the child is a sub-container: */
+			Container* subContainer=dynamic_cast<Container*>(child);
+			if(subContainer!=0)
+				{
+				/* Search inside the sub-container: */
+				result=getButton(subContainer,buttonIndex,index);
+				}
+			}
+		}
+	
+	return result;
+	}
+
 int findButtonIndex(Container* container,Widget* button,int& index) // Recursively search for the given button inside the given container
 	{
 	int result=-1;
@@ -348,12 +381,32 @@ int PopupMenu::getNumEntries(void)
 		return 0;
 	}
 
+Widget* PopupMenu::getEntry(int entryIndex)
+	{
+	if(menu!=0)
+		{
+		/* Search for the button-derived widget of the given index in all sub-containers recursively: */
+		int index=0;
+		return getButton(menu,entryIndex,index);
+		}
+	else
+		return 0;
+	}
+
 Button* PopupMenu::addEntry(const char* newEntryLabel)
 	{
 	/* Create a new button of the given name: */
 	char newButtonName[40];
 	snprintf(newButtonName,sizeof(newButtonName),"_MenuButton%d",getNumEntries());
 	return new Button(newButtonName,this,newEntryLabel);
+	}
+
+Separator* PopupMenu::addSeparator(void)
+	{
+	/* Create a new horizontal separator: */
+	char newSeparatorName[40];
+	snprintf(newSeparatorName,sizeof(newSeparatorName),"_MenuSeparator%d",getNumEntries());
+	return new Separator(newSeparatorName,this,Separator::HORIZONTAL,0.0f,Separator::LOWERED);
 	}
 
 int PopupMenu::getEntryIndex(Widget* button)

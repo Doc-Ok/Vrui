@@ -1,7 +1,7 @@
 /***********************************************************************
 OpenVRHost - Class to wrap a low-level OpenVR tracking and display
 device driver in a VRDevice.
-Copyright (c) 2016-2018 Oliver Kreylos
+Copyright (c) 2016-2020 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -24,8 +24,12 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #ifndef OPENVRHOST_INCLUDED
 #define OPENVRHOST_INCLUDED
 
+#include <stdlib.h>
 #include <string>
 #include <vector>
+#include <Misc/StandardHashFunction.h>
+#include <Misc/StringHashFunctions.h>
+#include <Misc/HashTable.h>
 #include <Misc/ConfigurationFile.h>
 #include <Vrui/Internal/BatteryState.h>
 #include <VRDeviceDaemon/VRDevice.h>
@@ -44,7 +48,7 @@ namespace Vrui {
 class HMDConfiguration;
 }
 
-class OpenVRHost:public VRDevice,public vr::IVRSettings,public vr::IVRDriverContext,public vr::IVRProperties,public vr::IVRDriverInput,public vr::IVRDriverLog,public vr::IVRServerDriverHost,public vr::IVRResources,public vr::IVRDriverManager
+class OpenVRHost:public VRDevice,public vr::IVRSettings,public vr::IVRDriverContext,public vr::IVRProperties,public vr::IVRDriverInput,public vr::IVRDriverLog,public vr::IVRServerDriverHost,public vr::IVRResources,public vr::IVRIOBuffer,public vr::IVRDriverManager
 	{
 	/* Embedded classes: */
 	private:
@@ -87,9 +91,32 @@ class OpenVRHost:public VRDevice,public vr::IVRSettings,public vr::IVRDriverCont
 		public:
 		DeviceTypes deviceType; // Device's type
 		std::string serialNumber; // Device's serial number
+		int32_t edidVendorId,edidProductId; // Display device ID if device is an HMD
+		
+		/* A bunch of serial numbers that get set and queried to check for updates: */
+		std::string trackingFirmwareVersion;
+		std::string hardwareRevisionString;
+		uint64_t hardwareRevision;
+		uint64_t firmwareVersion;
+		uint64_t fpgaVersion;
+		uint64_t vrcVersion;
+		uint64_t radioVersion;
+		uint64_t dongleVersion;
+		uint64_t peripheralApplicationVersion;
+		uint64_t displayFirmwareVersion;
+		uint64_t displayFpgaVersion;
+		uint64_t displayBootloaderVersion;
+		uint64_t displayHardwareVersion;
+		uint64_t cameraFirmwareVersion;
+		uint64_t audioFirmwareVersion;
+		uint64_t audioBridgeFirmwareVersion;
+		uint64_t imageBridgeFirmwareVersion;
+		
 		vr::ITrackedDeviceServerDriver* driver; // Pointer to the driver interface for this tracked device
 		vr::IVRDisplayComponent* display; // Pointer to the device's display component if it is an HMD
 		int trackerIndex; // Index of this device's tracker; -1 if no tracker associated, i.e., for tracking base stations
+		
+		std::string mcImageNames[2]; // Names of Mura correction images if device is an HMD
 		
 		/* Device state reported by OpenVR: */
 		bool willDriftInYaw; // Flag if the device does not have external orientation drift correction and will therefore drift in yaw over time
@@ -133,6 +160,30 @@ class OpenVRHost:public VRDevice,public vr::IVRSettings,public vr::IVRDriverCont
 		float amplitude; // Amplitude of haptic pulse
 		};
 	
+	struct IOBuffer // Structure to represent an I/O buffer
+		{
+		/* Elements: */
+		public:
+		std::string path; // Path under which this I/O buffer was opened
+		vr::IOBufferHandle_t handle; // Buffer handle
+		size_t size; // Allocated buffer size in bytes
+		void* buffer; // Pointer to the allocated buffer
+		size_t dataSize; // Amount of data currently in the buffer in bytes
+		
+		/* Constructors and destructors: */
+		IOBuffer(vr::IOBufferHandle_t sHandle) // Constructs nameless un-allocated I/O buffer
+			:handle(sHandle),
+			 size(0),buffer(0),dataSize(0)
+			{
+			}
+		~IOBuffer(void) // Destroys the I/O buffer
+			{
+			free(buffer);
+			}
+		};
+	
+	typedef Misc::HashTable<vr::IOBufferHandle_t,IOBuffer> IOBufferMap; // Type for hash tables mapping from I/O buffer handles to I/O buffers
+	
 	/* Elements: */
 	
 	/* Low-level OpenVR driver configuration: */
@@ -140,6 +191,8 @@ class OpenVRHost:public VRDevice,public vr::IVRSettings,public vr::IVRDriverCont
 	std::string openvrDriverRootDir; // Root directory containing the OpenVR tracking driver
 	void* openvrDriverDsoHandle; // Handle for the dynamic shared object containing the OpenVR tracking driver
 	vr::IServerTrackedDeviceProvider* openvrTrackedDeviceProvider; // Pointer to the tracked device provider, i.e., the tracking driver object
+	IOBufferMap ioBufferMap; // Map of opened I/O buffers
+	vr::IOBufferHandle_t lastIOBufferHandle; // Last assigned I/O buffer handle
 	
 	/* OpenVRHost driver module configuration: */
 	Misc::ConfigurationFileSection openvrSettingsSection; // Configuration file section containing driver settings
@@ -183,11 +236,10 @@ class OpenVRHost:public VRDevice,public vr::IVRSettings,public vr::IVRDriverCont
 	virtual void start(void);
 	virtual void stop(void);
 	virtual void powerOff(int devicePowerFeatureIndex);
-	virtual void hapticTick(int deviceHapticFeatureIndex,unsigned int duration);
+	virtual void hapticTick(int deviceHapticFeatureIndex,unsigned int duration,unsigned int frequency,unsigned int amplitude);
 	
 	/* Methods from vr::IVRSettings: */
 	virtual const char* GetSettingsErrorNameFromEnum(vr::EVRSettingsError eError);
-	virtual bool Sync(bool bForce,vr::EVRSettingsError* peError);
 	virtual void SetBool(const char* pchSection,const char* pchSettingsKey,bool bValue,vr::EVRSettingsError* peError);
 	virtual void SetInt32(const char* pchSection,const char* pchSettingsKey,int32_t nValue,vr::EVRSettingsError* peError);
 	virtual void SetFloat(const char* pchSection,const char* pchSettingsKey,float flValue,vr::EVRSettingsError* peError);
@@ -230,15 +282,26 @@ class OpenVRHost:public VRDevice,public vr::IVRSettings,public vr::IVRDriverCont
 	virtual bool PollNextEvent(vr::VREvent_t* pEvent,uint32_t uncbVREvent);
 	virtual void GetRawTrackedDevicePoses(float fPredictedSecondsFromNow,vr::TrackedDevicePose_t* pTrackedDevicePoseArray,uint32_t unTrackedDevicePoseArrayCount);
 	virtual void TrackedDeviceDisplayTransformUpdated(uint32_t unWhichDevice,vr::HmdMatrix34_t eyeToHeadLeft,vr::HmdMatrix34_t eyeToHeadRight);
+	virtual void RequestRestart(const char* pchLocalizedReason,const char* pchExecutableToStart,const char* pchArguments,const char* pchWorkingDirectory);
+	virtual uint32_t GetFrameTimings(vr::Compositor_FrameTiming* pTiming,uint32_t nFrames);
 	
 	/* Methods from vr::IVRResources: */
 	virtual uint32_t LoadSharedResource(const char* pchResourceName,char* pchBuffer,uint32_t unBufferLen);
 	virtual uint32_t GetResourceFullPath(const char* pchResourceName,const char* pchResourceTypeDirectory,char* pchPathBuffer,uint32_t unBufferLen);
 	
+	/* Methods from vr::IVRIOBuffer: */
+	virtual vr::EIOBufferError Open(const char* pchPath,vr::EIOBufferMode mode,uint32_t unElementSize,uint32_t unElements,vr::IOBufferHandle_t* pulBuffer);
+	virtual vr::EIOBufferError Close(vr::IOBufferHandle_t ulBuffer);
+	virtual vr::EIOBufferError Read(vr::IOBufferHandle_t ulBuffer,void* pDst,uint32_t unBytes,uint32_t* punRead);
+	virtual vr::EIOBufferError Write(vr::IOBufferHandle_t ulBuffer,void* pSrc,uint32_t unBytes);
+	virtual vr::PropertyContainerHandle_t PropertyContainer(vr::IOBufferHandle_t ulBuffer);
+	virtual bool HasReaders(vr::IOBufferHandle_t ulBuffer);
+	
 	/* Methods from vr::IVRDriverManager: */
 	virtual uint32_t GetDriverCount(void) const;
 	virtual uint32_t GetDriverName(vr::DriverId_t nDriver,char* pchValue,uint32_t unBufferSize);
 	virtual vr::DriverHandle_t GetDriverHandle(const char *pchDriverName);
+	virtual bool IsEnabled(vr::DriverId_t nDriver) const;
 	};
 
 #endif

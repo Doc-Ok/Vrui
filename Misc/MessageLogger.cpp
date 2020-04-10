@@ -1,6 +1,6 @@
 /***********************************************************************
 MessageLogger - Base class for objects that receive and log messages.
-Copyright (c) 2015 Oliver Kreylos
+Copyright (c) 2015-2019 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -44,8 +44,15 @@ void MessageLogger::logMessageInternal(MessageLogger::Target target,int messageL
 	std::string paddedMessage=message;
 	paddedMessage.append("\n");
 	
+	/* Log and console messages go to stdout, user messages go to stderr: */
+	int targetFd;
+	if(target==User)
+		targetFd=STDERR_FILENO;
+	else
+		targetFd=STDOUT_FILENO;
+	
 	/* Write message directly to stderr, bypassing any buffers: */
-	if(write(STDERR_FILENO,paddedMessage.data(),paddedMessage.size())!=ssize_t(paddedMessage.size()))
+	if(write(targetFd,paddedMessage.data(),paddedMessage.size())!=ssize_t(paddedMessage.size()))
 		{
 		/* Whatcha gonna do? */
 		}

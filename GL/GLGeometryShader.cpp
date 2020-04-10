@@ -1,7 +1,7 @@
 /***********************************************************************
 GLGeometryShader - Class to represent GLSL shaders that contain at least
 one geometry shader according to the GL_EXT_geometry_shader4 extension.
-Copyright (c) 2009-2013 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 Based on code provided by Tony Bernardin
 
 This file is part of the OpenGL Support Library (GLSupport).
@@ -76,7 +76,7 @@ void GLGeometryShader::compileGeometryShader(const char* shaderSourceFileName)
 		/* Store the shader for linking: */
 		geometryShaderObjects.push_back(geometryShaderObject);
 		}
-	catch(std::runtime_error)
+	catch(const std::runtime_error&)
 		{
 		/* Delete the geometry shader: */
 		if(geometryShaderObject!=0)
@@ -103,7 +103,7 @@ void GLGeometryShader::compileGeometryShaderFromString(const char* shaderSource)
 		/* Store the shader for linking: */
 		geometryShaderObjects.push_back(geometryShaderObject);
 		}
-	catch(std::runtime_error)
+	catch(const std::runtime_error&)
 		{
 		/* Delete the geometry shader: */
 		if(geometryShaderObject!=0)

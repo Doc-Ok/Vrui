@@ -1,7 +1,7 @@
 /***********************************************************************
 OpenVRHost - Class to wrap a low-level OpenVR tracking and display
 device driver in a VRDevice.
-Copyright (c) 2016-2018 Oliver Kreylos
+Copyright (c) 2016-2020 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -159,6 +159,10 @@ Methods of class OpenVRHost::DeviceState:
 
 OpenVRHost::DeviceState::DeviceState(void)
 	:deviceType(NumDeviceTypes),
+	 edidVendorId(0),edidProductId(0),
+	 hardwareRevision(0),firmwareVersion(0),fpgaVersion(0),vrcVersion(0),radioVersion(0),dongleVersion(0),peripheralApplicationVersion(0),
+	 displayFirmwareVersion(0),displayFpgaVersion(0),displayBootloaderVersion(0),displayHardwareVersion(0),
+	 cameraFirmwareVersion(0),audioFirmwareVersion(0),audioBridgeFirmwareVersion(0),imageBridgeFirmwareVersion(0),
 	 driver(0),display(0),
 	 trackerIndex(-1),
 	 willDriftInYaw(true),isWireless(false),hasProximitySensor(false),providesBatteryStatus(false),canPowerOff(false),
@@ -177,7 +181,7 @@ Methods of class OpenVRHost:
 
 void OpenVRHost::updateHMDConfiguration(OpenVRHost::DeviceState& deviceState) const
 	{
-	deviceManager->lockHmdConfigurations();
+	Threads::Mutex::Lock hmdConfigurationLock(deviceManager->getHmdConfigurationMutex());
 	
 	/* Update recommended pre-distortion render target size: */
 	uint32_t renderTargetSize[2];
@@ -228,8 +232,6 @@ void OpenVRHost::updateHMDConfiguration(OpenVRHost::DeviceState& deviceState) co
 	
 	/* Tell the device manager that the HMD configuration was updated: */
 	deviceManager->updateHmdConfiguration(deviceState.hmdConfiguration);
-	
-	deviceManager->unlockHmdConfigurations();
 	}
 
 void OpenVRHost::deviceThreadMethod(void)
@@ -276,6 +278,7 @@ OpenVRHost::OpenVRHost(VRDevice::Factory* sFactory,VRDeviceManager* sDeviceManag
 	:VRDevice(sFactory,sDeviceManager,configFile),
 	 openvrDriverDsoHandle(0),
 	 openvrTrackedDeviceProvider(0),
+	 ioBufferMap(17),lastIOBufferHandle(0),
 	 openvrSettingsSection(configFile.getSection("Settings")),
 	 driverHandle(512),deviceHandleBase(256),
 	 printLogMessages(configFile.retrieveValue<bool>("./printLogMessages",false)),
@@ -405,7 +408,11 @@ OpenVRHost::OpenVRHost(VRDevice::Factory* sFactory,VRDeviceManager* sDeviceManag
 	/* Trackers: */
 	deviceConfigurations[2].nameTemplate=configFile.retrieveString("./trackerNameTemplate","Tracker%u");
 	deviceConfigurations[2].haveTracker=true;
-	deviceConfigurations[2].numButtons=0;
+	
+	// Experimental!
+	deviceConfigurations[2].numButtons=1;
+	deviceConfigurations[2].buttonNames.push_back("Power");
+	
 	deviceConfigurations[2].numValuators=0;
 	deviceConfigurations[2].numHapticFeatures=0;
 	deviceConfigurations[2].numPowerFeatures=1;
@@ -656,7 +663,7 @@ void OpenVRHost::powerOff(int devicePowerFeatureIndex)
 		}
 	}
 
-void OpenVRHost::hapticTick(int deviceHapticFeatureIndex,unsigned int duration)
+void OpenVRHost::hapticTick(int deviceHapticFeatureIndex,unsigned int duration,unsigned int frequency,unsigned int amplitude)
 	{
 	/* Bail out if there is already a pending event: */
 	HapticEvent& he=hapticEvents[deviceHapticFeatureIndex];
@@ -664,9 +671,9 @@ void OpenVRHost::hapticTick(int deviceHapticFeatureIndex,unsigned int duration)
 		{
 		/* Store the new event: */
 		he.pending=true;
-		he.duration=duration;
-		he.frequency=1000;
-		he.amplitude=255;
+		he.duration=float(duration)*0.001f;
+		he.frequency=float(frequency);
+		he.amplitude=float(amplitude)/255.0f;
 		}
 	}
 
@@ -697,12 +704,6 @@ const char* OpenVRHost::GetSettingsErrorNameFromEnum(vr::EVRSettingsError eError
 		default:
 			return "Unknown settings error";
 		}
-	}
-
-bool OpenVRHost::Sync(bool bForce,vr::EVRSettingsError* peError)
-	{
-	/* Don't know what to do: */
-	return true;
 	}
 
 void OpenVRHost::SetBool(const char* pchSection,const char* pchSettingsKey,bool bValue,vr::EVRSettingsError* peError)
@@ -824,13 +825,15 @@ void* OpenVRHost::GetGenericInterface(const char* pchInterfaceVersion,vr::EVRIni
 		return static_cast<vr::IVRServerDriverHost*>(this);
 	else if(strcmp(pchInterfaceVersion,vr::IVRResources_Version)==0)
 		return static_cast<vr::IVRResources*>(this);
+	else if(strcmp(pchInterfaceVersion,vr::IVRIOBuffer_Version)==0)
+		return static_cast<vr::IVRIOBuffer*>(this);
 	else if(strcmp(pchInterfaceVersion,vr::IVRDriverManager_Version)==0)
 		return static_cast<vr::IVRDriverManager*>(this);
 	else
 		{
 		/* Signal an error: */
-		#ifdef VERBOSE
-		printf("OpenVRHost: Error: Requested server interface %s not found\n",pchInterfaceVersion);
+		#ifdef VERYVERBOSE
+		printf("OpenVRHost: Warning: Requested server interface %s not found\n",pchInterfaceVersion);
 		fflush(stdout);
 		#endif
 		if(peError!=0)
@@ -911,6 +914,27 @@ inline void storeFloat(vr::PropertyContainerHandle_t ulContainerHandle,vr::Prope
 			{
 			prop.unTag=vr::k_unFloatPropertyTag;
 			*static_cast<float*>(prop.pvBuffer)=value;
+			}
+		else
+			prop.eError=vr::TrackedProp_BufferTooSmall;
+		}
+	else
+		prop.eError=vr::TrackedProp_InvalidDevice;
+	}
+
+inline void storeInt32(vr::PropertyContainerHandle_t ulContainerHandle,vr::PropertyContainerHandle_t minHandle,vr::PropertyContainerHandle_t maxHandle,int32_t value,vr::PropertyRead_t& prop)
+	{
+	/* Initialize the property: */
+	prop.unRequiredBufferSize=sizeof(int32_t);
+	prop.eError=vr::TrackedProp_Success;
+	
+	/* Check for correctness: */
+	if(ulContainerHandle>=minHandle&&ulContainerHandle<=maxHandle)
+		{
+		if(prop.unBufferSize>=prop.unRequiredBufferSize)
+			{
+			prop.unTag=vr::k_unInt32PropertyTag;
+			*static_cast<int32_t*>(prop.pvBuffer)=value;
 			}
 		else
 			prop.eError=vr::TrackedProp_BufferTooSmall;
@@ -1098,6 +1122,68 @@ inline bool retrieveString(vr::PropertyContainerHandle_t ulContainerHandle,vr::P
 	return prop.eError==vr::TrackedProp_Success;
 	}
 
+inline bool retrieveMatrix34(vr::PropertyContainerHandle_t ulContainerHandle,vr::PropertyContainerHandle_t minHandle,vr::PropertyContainerHandle_t maxHandle,vr::PropertyWrite_t& prop)
+	{
+	/* Initialize the property: */
+	prop.eError=vr::TrackedProp_Success;
+	
+	/* Check for correctness: */
+	if(ulContainerHandle>=minHandle&&ulContainerHandle<=maxHandle)
+		{
+		if(prop.unTag==vr::k_unHmdMatrix34PropertyTag)
+			{
+			if(prop.unBufferSize==3*4*sizeof(float))
+				{
+				float* matrix=static_cast<float*>(prop.pvBuffer);
+				printf("OpenVRHost: Matrix value = %8.5f %8.5f %8.5f %8.5f\n",matrix[0*4+0],matrix[0*4+1],matrix[0*4+2],matrix[0*4+3]);
+				for(int i=1;i<3;++i)
+					printf("                           %8.5f %8.5f %8.5f %8.5f\n",matrix[i*4+0],matrix[i*4+1],matrix[i*4+2],matrix[i*4+3]);
+				}
+			else
+				prop.eError=vr::TrackedProp_BufferTooSmall;
+			}
+		else
+			prop.eError=vr::TrackedProp_WrongDataType;
+		}
+	else
+		prop.eError=vr::TrackedProp_InvalidDevice;
+	
+	return prop.eError==vr::TrackedProp_Success;
+	}
+
+inline bool retrieveMatrix34Array(vr::PropertyContainerHandle_t ulContainerHandle,vr::PropertyContainerHandle_t minHandle,vr::PropertyContainerHandle_t maxHandle,vr::PropertyWrite_t& prop)
+	{
+	/* Initialize the property: */
+	prop.eError=vr::TrackedProp_Success;
+	
+	/* Check for correctness: */
+	if(ulContainerHandle>=minHandle&&ulContainerHandle<=maxHandle)
+		{
+		if(prop.unTag==vr::k_unHmdMatrix34PropertyTag)
+			{
+			float* matrix=static_cast<float*>(prop.pvBuffer);
+			int numMatrices=prop.unBufferSize/(3*4*sizeof(float));
+			if(prop.unBufferSize==numMatrices*3*4*sizeof(float))
+				{
+				for(int m=0;m<numMatrices;++m)
+					{
+					printf("OpenVRHost: Matrix value = %8.5f %8.5f %8.5f %8.5f\n",matrix[0*4+0],matrix[0*4+1],matrix[0*4+2],matrix[0*4+3]);
+					for(int i=1;i<3;++i)
+						printf("                           %8.5f %8.5f %8.5f %8.5f\n",matrix[i*4+0],matrix[i*4+1],matrix[i*4+2],matrix[i*4+3]);
+					}
+				}
+			else
+				prop.eError=vr::TrackedProp_BufferTooSmall;
+			}
+		else
+			prop.eError=vr::TrackedProp_WrongDataType;
+		}
+	else
+		prop.eError=vr::TrackedProp_InvalidDevice;
+	
+	return prop.eError==vr::TrackedProp_Success;
+	}
+
 }
 
 vr::ETrackedPropertyError OpenVRHost::ReadPropertyBatch(vr::PropertyContainerHandle_t ulContainerHandle,vr::PropertyRead_t* pBatch,uint32_t unBatchEntryCount)
@@ -1115,20 +1201,158 @@ vr::ETrackedPropertyError OpenVRHost::ReadPropertyBatch(vr::PropertyContainerHan
 		/* Check for known property tags: */
 		switch(pPtr->prop)
 			{
-			#if 0
 			case vr::Prop_SerialNumber_String:
 				storeString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.serialNumber,*pPtr);
 				break;
 			
+			case vr::Prop_TrackingFirmwareVersion_String:
+				storeString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.trackingFirmwareVersion,*pPtr);
+				break;
+			
+			case vr::Prop_HardwareRevision_String:
+				storeString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.hardwareRevisionString,*pPtr);
+				break;
+			
+			case vr::Prop_AllWirelessDongleDescriptions_String:
+				{
+				/* Return an empty string because I don't know what else to do: */
+				if(pPtr->unBufferSize>=1)
+					static_cast<char*>(pPtr->pvBuffer)[0]='\0';
+				pPtr->unTag=vr::k_unStringPropertyTag;
+				pPtr->unRequiredBufferSize=1;
+				pPtr->eError=vr::TrackedProp_Success;
+				}
+			
+			case vr::Prop_HardwareRevision_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.hardwareRevision,*pPtr);
+				break;
+			
+			case vr::Prop_FirmwareVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.firmwareVersion,*pPtr);
+				break;
+			
+			case vr::Prop_FPGAVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.fpgaVersion,*pPtr);
+				break;
+			
+			case vr::Prop_VRCVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.vrcVersion,*pPtr);
+				break;
+			
+			case vr::Prop_RadioVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.radioVersion,*pPtr);
+				break;
+			
+			case vr::Prop_DongleVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.dongleVersion,*pPtr);
+				break;
+			
+			case vr::Prop_PeripheralApplicationVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.peripheralApplicationVersion,*pPtr);
+				break;
+			
+			case vr::Prop_EdidVendorID_Int32:
+				storeInt32(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.edidVendorId,*pPtr);
+				break;
+			
+			case vr::Prop_EdidProductID_Int32:
+				storeInt32(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.edidProductId,*pPtr);
+				break;
+				
+			case vr::Prop_DisplayFirmwareVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.displayFirmwareVersion,*pPtr);
+				break;
+			
+			case vr::Prop_DisplayFPGAVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.displayFpgaVersion,*pPtr);
+				break;
+			
+			case vr::Prop_DisplayBootloaderVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.displayBootloaderVersion,*pPtr);
+				break;
+			
+			case vr::Prop_DisplayHardwareVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.displayHardwareVersion,*pPtr);
+				break;
+			
+			case vr::Prop_CameraFirmwareVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.cameraFirmwareVersion,*pPtr);
+				break;
+			
+			case vr::Prop_AudioFirmwareVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.audioFirmwareVersion,*pPtr);
+				break;
+			
+			case vr::Prop_AudioBridgeFirmwareVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.audioBridgeFirmwareVersion,*pPtr);
+				break;
+			
+			case vr::Prop_ImageBridgeFirmwareVersion_Uint64:
+				storeUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.imageBridgeFirmwareVersion,*pPtr);
+				break;
+			
+			#if 0
+			case vr::Prop_DisplayMCImageLeft_String:
+				storeString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.mcImageNames[0],*pPtr);
+				printf("OpenVRHost: Returned left Mura correction image is  %s\n",ds.mcImageNames[0].c_str());
+				fflush(stdout);
+				break;
+			
+			case vr::Prop_DisplayMCImageRight_String:
+				storeString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.mcImageNames[1],*pPtr);
+				printf("OpenVRHost: Returned right Mura correction image is %s\n",ds.mcImageNames[1].c_str());
+				fflush(stdout);
+				break;
+			#elif 0
+			case vr::Prop_DisplayMCImageLeft_String:
+			case vr::Prop_DisplayMCImageRight_String:
+				/* Return an unknown property error because IVRMCStore is an internal interface: */
+				pPtr->unTag=vr::k_unStringPropertyTag;
+				pPtr->unRequiredBufferSize=0;
+				pPtr->eError=vr::TrackedProp_UnknownProperty;
+				break;
+			#else
 			case vr::Prop_DisplayMCImageLeft_String:
 			case vr::Prop_DisplayMCImageRight_String:
 				/* Return an empty string because OpenVR hangs in the MC image loader: */
-				static_cast<char*>(pPtr->pvBuffer)[0]='\0';
+				if(pPtr->unBufferSize>=1)
+					static_cast<char*>(pPtr->pvBuffer)[0]='\0';
 				pPtr->unTag=vr::k_unStringPropertyTag;
 				pPtr->unRequiredBufferSize=1;
 				pPtr->eError=vr::TrackedProp_Success;
 				break;
 			#endif
+			
+			case vr::Prop_DeviceClass_Int32:
+				{
+				int32_t deviceClass=vr::TrackedDeviceClass_Invalid;
+				if(ulContainerHandle>=minDeviceHandle&&ulContainerHandle<=maxDeviceHandle)
+					{
+					switch(ds.deviceType)
+						{
+						case HMD:
+							deviceClass=vr::TrackedDeviceClass_HMD;
+							break;
+						
+						case Controller:
+							deviceClass=vr::TrackedDeviceClass_Controller;
+							break;
+						
+						case Tracker:
+							deviceClass=vr::TrackedDeviceClass_GenericTracker;
+							break;
+						
+						case BaseStation:
+							deviceClass=vr::TrackedDeviceClass_TrackingReference;
+							break;
+						
+						default:
+							deviceClass=vr::TrackedDeviceClass_Invalid;
+						}
+					}
+				storeInt32(ulContainerHandle,minDeviceHandle,maxDeviceHandle,deviceClass,*pPtr);
+				break;
+				}
 			
 			case vr::Prop_DeviceCanPowerOff_Bool:
 				storeBool(ulContainerHandle,minDeviceHandle,maxDeviceHandle,ds.canPowerOff,*pPtr);
@@ -1190,39 +1414,573 @@ vr::ETrackedPropertyError OpenVRHost::WritePropertyBatch(vr::PropertyContainerHa
 		switch(pPtr->prop)
 			{
 			/* Print some interesting properties: */
+			case vr::Prop_ModelNumber_String:
+				{
+				std::string modelNumber;
+				if(retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,modelNumber))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Model number for device %s is %s\n",ds.serialNumber.c_str(),modelNumber.c_str());
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_RenderModelName_String:
+				{
+				std::string renderModelName;
+				if(retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,renderModelName))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Render model name for device %s is %s\n",ds.serialNumber.c_str(),renderModelName.c_str());
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_ManufacturerName_String:
+				{
+				std::string manufacturerName;
+				if(retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,manufacturerName))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Manufacturer name for device %s is %s\n",ds.serialNumber.c_str(),manufacturerName.c_str());
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_StatusDisplayTransform_Matrix34:
+				{
+				#ifdef VERYVERBOSE
+				printf("OpenVRHost: Display transform matrix of type %s\n",propertyTypeName(pPtr->unTag));
+				retrieveMatrix34(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr);
+				fflush(stdout);
+				#endif
+				}
+			
+			case vr::Prop_Firmware_UpdateAvailable_Bool:
+				{
+				bool updateAvailable=false;
+				if(retrieveBool(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,updateAvailable))
+					{
+					if(updateAvailable)
+						{
+						printf("OpenVRHost: Device %s has firmware update available\n",ds.serialNumber.c_str());
+						fflush(stdout);
+						}
+					else
+						{
+						#if VERBOSE
+						printf("OpenVRHost: Device %s does not have firmware update available\n",ds.serialNumber.c_str());
+						fflush(stdout);
+						#endif
+						}
+					}
+				break;
+				}
+			
+			case vr::Prop_Firmware_ManualUpdate_Bool:
+				{
+				bool manualUpdate=false;
+				if(retrieveBool(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,manualUpdate))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Device %s %s update firmware manually\n",ds.serialNumber.c_str(),(manualUpdate?"can":"can not"));
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_Firmware_ManualUpdateURL_String:
+				{
+				std::string firmwareURL;
+				if(retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,firmwareURL))
+					{
+					#ifdef VERYVERBOSE
+					printf("OpenVRHost: Device %s has firmware update instructions at %s\n",ds.serialNumber.c_str(),firmwareURL.c_str());
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_Firmware_ForceUpdateRequired_Bool:
+				{
+				bool forceUpdate=false;
+				if(retrieveBool(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,forceUpdate))
+					{
+					if(forceUpdate)
+						{
+						printf("OpenVRHost: Device %s requires a forced firmware update\n",ds.serialNumber.c_str());
+						fflush(stdout);
+						}
+					else
+						{
+						#ifdef VERBOSE
+						printf("OpenVRHost: Device %s does not require a forced firmware update\n",ds.serialNumber.c_str());
+						fflush(stdout);
+						#endif
+						}
+					}
+				break;
+				}
+			
+			case vr::Prop_RegisteredDeviceType_String:
+				{
+				std::string registeredDeviceType;
+				if(retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,registeredDeviceType))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Registered device type for device %s is %s\n",ds.serialNumber.c_str(),registeredDeviceType.c_str());
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+				
 			case vr::Prop_SecondsFromVsyncToPhotons_Float:
 				{
 				float displayDelay=0.0f;
-				retrieveFloat(ulContainerHandle,minDeviceHandle,minDeviceHandle,*pPtr,displayDelay);
-				printf("OpenVRHost: Display delay from vsync = %fms\n",displayDelay*1000.0f);
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,displayDelay))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Display delay from vsync = %fms\n",displayDelay*1000.0f);
+					fflush(stdout);
+					#endif
+					}
 				break;
 				}
 			
-			case vr::Prop_DisplayMCImageLeft_String:
+			case vr::Prop_DisplayFrequency_Float:
 				{
-				std::string mcImage;
-				retrieveString(ulContainerHandle,minDeviceHandle,minDeviceHandle,*pPtr,mcImage);
-				printf("OpenVRHost: Left Mura correction image is %s\n",mcImage.c_str());
+				float displayFrequency=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,displayFrequency))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Display frequency = %fHz\n",displayFrequency);
+					fflush(stdout);
+					#endif
+					}
 				break;
 				}
 			
-			case vr::Prop_DisplayMCImageRight_String:
+			case vr::Prop_SecondsFromPhotonsToVblank_Float:
 				{
-				std::string mcImage;
-				retrieveString(ulContainerHandle,minDeviceHandle,minDeviceHandle,*pPtr,mcImage);
-				printf("OpenVRHost: Right Mura correction image is %s\n",mcImage.c_str());
+				float dutyCycle=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,dutyCycle))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Display duty cycle = %fms\n",dutyCycle*1000.0f);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_DisplayMCType_Int32:
+				{
+				int32_t mcType;
+				if(retrieveInt32(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,mcType))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Mura correction type is %d\n",mcType);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_DisplayMCOffset_Float:
+				{
+				float mcOffset=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,mcOffset))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Mura correction offset = %f\n",mcOffset);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_DisplayMCScale_Float:
+				{
+				float mcScale=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,mcScale))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Mura correction scale = %f\n",mcScale);
+					fflush(stdout);
+					#endif
+					}
 				break;
 				}
 			
 			case vr::Prop_UserHeadToEyeDepthMeters_Float:
 				{
 				float ed=0.0f;
-				retrieveFloat(ulContainerHandle,minDeviceHandle,minDeviceHandle,*pPtr,ed);
-				printf("OpenVRHost: User eye depth = %f\n",ed);
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ed))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: User eye depth = %fmm\n",ed*1000.0f);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_MinimumIpdStepMeters_Float:
+				{
+				float minIpdStep=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,minIpdStep))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Minimum IPD step = %fmm\n",minIpdStep*1000.0f);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_IpdUIRangeMinMeters_Float:
+				{
+				float minIpd=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,minIpd))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Minimum IPD = %fmm\n",minIpd*1000.0f);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_IpdUIRangeMaxMeters_Float:
+				{
+				float maxIpd=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,maxIpd))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Maximum IPD = %fmm\n",maxIpd*1000.0f);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_DisplaySupportsMultipleFramerates_Bool:
+				{
+				bool supportsMultipleFrameRates=false;
+				if(retrieveBool(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,supportsMultipleFrameRates))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Device %s %s multiple frame rates\n",ds.serialNumber.c_str(),(supportsMultipleFrameRates?"supports":"does not support"));
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_ExpectedTrackingReferenceCount_Int32:
+				{
+				int32_t numTrackingReferences=0;
+				if(retrieveInt32(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,numTrackingReferences))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Device %s expects %d base station(s)\n",ds.serialNumber.c_str(),numTrackingReferences);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_ExpectedControllerCount_Int32:
+				{
+				int32_t numControllers=0;
+				if(retrieveInt32(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,numControllers))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Device %s expects %d controller(s)\n",ds.serialNumber.c_str(),numControllers);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_ExpectedControllerType_String:
+				{
+				std::string controllerType;
+				if(retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,controllerType))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Device %s expects controller type %s\n",ds.serialNumber.c_str(),controllerType.c_str());
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_HasCamera_Bool:
+				{
+				bool hasCamera=false;
+				if(retrieveBool(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,hasCamera))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Device %s %s camera\n",ds.serialNumber.c_str(),(hasCamera?"has":"does not have"));
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_NumCameras_Int32:
+				{
+				int32_t numCameras=0;
+				if(retrieveInt32(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,numCameras))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Device %s has %d camera(s)\n",ds.serialNumber.c_str(),numCameras);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_CameraToHeadTransform_Matrix34:
+				#ifdef VERYVERBOSE
+				printf("OpenVRHost: Camera-to-head matrix of type %s\n",propertyTypeName(pPtr->unTag));
+				retrieveMatrix34(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr);
+				fflush(stdout);
+				#endif
+				break;
+			
+			case vr::Prop_CameraToHeadTransforms_Matrix34_Array:
+				#ifdef VERYVERBOSE
+				printf("OpenVRHost: Camera-to-head matrix array of type %s\n",propertyTypeName(pPtr->unTag));
+				retrieveMatrix34Array(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr);
+				fflush(stdout);
+				#endif
+				break;
+			
+			case vr::Prop_Audio_DefaultPlaybackDeviceId_String:
+				{
+				std::string playbackDevice;
+				if(retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,playbackDevice))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Default audio playback device %s\n",playbackDevice.c_str());
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_Audio_DefaultRecordingDeviceId_String:
+				{
+				std::string recordingDevice;
+				if(retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,recordingDevice))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Default audio recording device %s\n",recordingDevice.c_str());
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_FieldOfViewLeftDegrees_Float:
+				{
+				float fov=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,fov))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Left FoV on base station %s   = %f\n",ds.serialNumber.c_str(),fov);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_FieldOfViewRightDegrees_Float:
+				{
+				float fov=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,fov))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Right FoV on base station %s  = %f\n",ds.serialNumber.c_str(),fov);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_FieldOfViewTopDegrees_Float:
+				{
+				float fov=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,fov))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Top FoV on base station %s    = %f\n",ds.serialNumber.c_str(),fov);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_FieldOfViewBottomDegrees_Float:
+				{
+				float fov=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,fov))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Bottom FoV on base station %s = %f\n",ds.serialNumber.c_str(),fov);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_TrackingRangeMinimumMeters_Float:
+				{
+				float minRange=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,minRange))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Minimum range on base station %s = %fm\n",ds.serialNumber.c_str(),minRange);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_TrackingRangeMaximumMeters_Float:
+				{
+				float maxRange=0.0f;
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,maxRange))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Maximum range on base station %s = %fm\n",ds.serialNumber.c_str(),maxRange);
+					fflush(stdout);
+					#endif
+					}
+				break;
+				}
+			
+			case vr::Prop_ModeLabel_String:
+				{
+				std::string modeLabel;
+				if(retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,modeLabel))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Mode label on base station %s = %s\n",ds.serialNumber.c_str(),modeLabel.c_str());
+					fflush(stdout);
+					#endif
+					}
 				break;
 				}
 			
 			/* Extract relevant properties: */
+			case vr::Prop_TrackingFirmwareVersion_String:
+				retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.trackingFirmwareVersion);
+				break;
+			
+			case vr::Prop_HardwareRevision_String:
+				retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.hardwareRevisionString);
+				break;
+			
+			case vr::Prop_HardwareRevision_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.hardwareRevision);
+				break;
+			
+			case vr::Prop_FirmwareVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.firmwareVersion);
+				break;
+			
+			case vr::Prop_FPGAVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.fpgaVersion);
+				break;
+			
+			case vr::Prop_VRCVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.vrcVersion);
+				break;
+			
+			case vr::Prop_RadioVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.radioVersion);
+				break;
+			
+			case vr::Prop_DongleVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.dongleVersion);
+				break;
+			
+			case vr::Prop_PeripheralApplicationVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.peripheralApplicationVersion);
+				break;
+			
+			case vr::Prop_EdidVendorID_Int32:
+				retrieveInt32(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.edidVendorId);
+				break;
+			
+			case vr::Prop_EdidProductID_Int32:
+				retrieveInt32(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.edidProductId);
+				break;
+			
+			case vr::Prop_DisplayFirmwareVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.displayFirmwareVersion);
+				break;
+			
+			case vr::Prop_DisplayFPGAVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.displayFpgaVersion);
+				break;
+			
+			case vr::Prop_DisplayBootloaderVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.displayBootloaderVersion);
+				break;
+			
+			case vr::Prop_DisplayHardwareVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.displayHardwareVersion);
+				break;
+			
+			case vr::Prop_CameraFirmwareVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.cameraFirmwareVersion);
+				break;
+			
+			case vr::Prop_AudioFirmwareVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.audioFirmwareVersion);
+				break;
+			
+			case vr::Prop_AudioBridgeFirmwareVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.audioBridgeFirmwareVersion);
+				break;
+			
+			case vr::Prop_ImageBridgeFirmwareVersion_Uint64:
+				retrieveUint64(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.imageBridgeFirmwareVersion);
+				break;
+			
+			case vr::Prop_DisplayMCImageLeft_String:
+				if(retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.mcImageNames[0]))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Left Mura correction image is  %s\n",ds.mcImageNames[0].c_str());
+					fflush(stdout);
+					#endif
+					}
+				break;
+			
+			case vr::Prop_DisplayMCImageRight_String:
+				if(retrieveString(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.mcImageNames[1]))
+					{
+					#ifdef VERBOSE
+					printf("OpenVRHost: Right Mura correction image is %s\n",ds.mcImageNames[1].c_str());
+					fflush(stdout);
+					#endif
+					}
+				break;
+			
 			case vr::Prop_WillDriftInYaw_Bool:
 				retrieveBool(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.willDriftInYaw);
 				break;
@@ -1240,13 +1998,12 @@ vr::ETrackedPropertyError OpenVRHost::WritePropertyBatch(vr::PropertyContainerHa
 				bool newBatteryCharging;
 				if(retrieveBool(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,newBatteryCharging)&&ds.batteryState.charging!=newBatteryCharging)
 					{
-					#ifdef VERBOSE
 					if(newBatteryCharging)
 						printf("OpenVRHost: Device %s is now charging\n",ds.serialNumber.c_str());
 					else
 						printf("OpenVRHost: Device %s is now discharging\n",ds.serialNumber.c_str());
 					fflush(stdout);
-					#endif
+					
 					ds.batteryState.charging=newBatteryCharging;
 					
 					/* Notify the device manager: */
@@ -1263,10 +2020,9 @@ vr::ETrackedPropertyError OpenVRHost::WritePropertyBatch(vr::PropertyContainerHa
 					unsigned int newBatteryPercent=(unsigned int)(Math::floor(newBatteryLevel*100.0f+0.5f));
 					if(ds.batteryState.batteryLevel!=newBatteryPercent)
 						{
-						#ifdef VERBOSE
 						printf("OpenVRHost: Battery level on device %s is %u%%\n",ds.serialNumber.c_str(),newBatteryPercent);
 						fflush(stdout);
-						#endif
+						
 						ds.batteryState.batteryLevel=newBatteryPercent;
 					
 						/* Notify the device manager: */
@@ -1289,42 +2045,50 @@ vr::ETrackedPropertyError OpenVRHost::WritePropertyBatch(vr::PropertyContainerHa
 				break;
 			
 			case vr::Prop_LensCenterLeftU_Float:
-				retrieveFloat(ulContainerHandle,minDeviceHandle,minDeviceHandle,*pPtr,ds.lensCenters[0][0]);
+				retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.lensCenters[0][0]);
 				break;
 			
 			case vr::Prop_LensCenterLeftV_Float:
-				retrieveFloat(ulContainerHandle,minDeviceHandle,minDeviceHandle,*pPtr,ds.lensCenters[0][1]);
+				retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.lensCenters[0][1]);
 				break;
 			
 			case vr::Prop_LensCenterRightU_Float:
-				retrieveFloat(ulContainerHandle,minDeviceHandle,minDeviceHandle,*pPtr,ds.lensCenters[1][0]);
+				retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.lensCenters[1][0]);
 				break;
 			
 			case vr::Prop_LensCenterRightV_Float:
-				retrieveFloat(ulContainerHandle,minDeviceHandle,minDeviceHandle,*pPtr,ds.lensCenters[1][1]);
+				retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ds.lensCenters[1][1]);
 				break;
 			
 			case vr::Prop_UserIpdMeters_Float:
 				{
 				float ipd;
-				if(retrieveFloat(ulContainerHandle,minDeviceHandle,minDeviceHandle,*pPtr,ipd)&&ds.hmdConfiguration!=0)
+				if(retrieveFloat(ulContainerHandle,minDeviceHandle,maxDeviceHandle,*pPtr,ipd)&&ds.hmdConfiguration!=0)
 					{
-					deviceManager->lockHmdConfigurations();
+					printf("OpenVRHost: User IPD = %fmm\n",ipd*1000.0f);
+					fflush(stdout);
+					
+					{
+					Threads::Mutex::Lock hmdConfigurationLock(deviceManager->getHmdConfigurationMutex());
 					
 					/* Update the HMD's IPD: */
 					ds.hmdConfiguration->setIpd(ipd);
 					
 					/* Update the HMD configuration in the device manager: */
 					deviceManager->updateHmdConfiguration(ds.hmdConfiguration);
-					
-					deviceManager->unlockHmdConfigurations();
+					}
 					}
 				break;
 				}
-			
-			/* Warn about unknown properties: */
+				
 			default:
+				#if 1
+				/* Silently ignore unknown properties: */
+				pPtr->eError=vr::TrackedProp_Success;
+				#else
+				/* Warn about unknown properties: */
 				pPtr->eError=vr::TrackedProp_UnknownProperty;
+				#endif
 			}
 		if(pPtr->eError!=vr::TrackedProp_Success)
 			{
@@ -1681,6 +2445,24 @@ bool OpenVRHost::TrackedDeviceAdded(const char* pchDeviceSerialNumber,vr::ETrack
 	
 	#ifdef VERBOSE
 	printf("OpenVRHost: Done activating newly-added %s with serial number %s\n",newDeviceClass,pchDeviceSerialNumber);
+	#ifdef VERYVERBOSE
+	printf("OpenVRHost:                 Tracking firmware version %s\n",ds.trackingFirmwareVersion.c_str());
+	printf("OpenVRHost:                 Hardware revision %s (%lu)\n",ds.hardwareRevisionString.c_str(),ds.hardwareRevision);
+	printf("OpenVRHost:                 Firmware version %lu\n",ds.firmwareVersion);
+	printf("OpenVRHost:                 FPGA version %lu\n",ds.fpgaVersion);
+	printf("OpenVRHost:                 VRC version %lu\n",ds.vrcVersion);
+	printf("OpenVRHost:                 Radio version %lu\n",ds.radioVersion);
+	printf("OpenVRHost:                 Dongle version %lu\n",ds.dongleVersion);
+	printf("OpenVRHost:                 Peripheral application version %lu\n",ds.peripheralApplicationVersion);
+	printf("OpenVRHost:                 Display firmware version %lu\n",ds.displayFirmwareVersion);
+	printf("OpenVRHost:                 Display FPGA version %lu\n",ds.displayFpgaVersion);
+	printf("OpenVRHost:                 Display bootloader version %lu\n",ds.displayBootloaderVersion);
+	printf("OpenVRHost:                 Display hardware version %lu\n",ds.displayHardwareVersion);
+	printf("OpenVRHost:                 Camera firmware version %lu\n",ds.cameraFirmwareVersion);
+	printf("OpenVRHost:                 Audio firmware version %lu\n",ds.audioFirmwareVersion);
+	printf("OpenVRHost:                 Audio bridge firmware version %lu\n",ds.audioBridgeFirmwareVersion);
+	printf("OpenVRHost:                 Image bridge firmware version %lu\n",ds.imageBridgeFirmwareVersion);
+	#endif
 	fflush(stdout);
 	#endif
 	
@@ -1870,6 +2652,20 @@ void OpenVRHost::TrackedDeviceDisplayTransformUpdated(uint32_t unWhichDevice,vr:
 	fflush(stdout);
 	}
 
+void OpenVRHost::RequestRestart(const char* pchLocalizedReason,const char* pchExecutableToStart,const char* pchArguments,const char* pchWorkingDirectory)
+	{
+	printf("OpenVRHost: Ignoring RequestRestart request with reason %s, executable %s, arguments %s and working directory %s\n",pchLocalizedReason,pchExecutableToStart,pchArguments,pchWorkingDirectory);
+	fflush(stdout);
+	}
+
+uint32_t OpenVRHost::GetFrameTimings(vr::Compositor_FrameTiming* pTiming,uint32_t nFrames)
+	{
+	printf("OpenVRHost: Ignoring GetFrameTimings request with result array %p of size %u\n",static_cast<void*>(pTiming),nFrames);
+	fflush(stdout);
+	
+	return 0;
+	}
+
 /* Methods inherited from class vr::IVRResources: */
 
 uint32_t OpenVRHost::LoadSharedResource(const char* pchResourceName,char* pchBuffer,uint32_t unBufferLen)
@@ -1925,12 +2721,207 @@ uint32_t OpenVRHost::LoadSharedResource(const char* pchResourceName,char* pchBuf
 uint32_t OpenVRHost::GetResourceFullPath(const char* pchResourceName,const char* pchResourceTypeDirectory,char* pchPathBuffer,uint32_t unBufferLen)
 	{
 	#ifdef VERBOSE
-	printf("OpenVRHost: GetResourceFullPath called with resource name %s, type directory %s and buffer size %u\n",pchResourceName,pchResourceTypeDirectory,unBufferLen);
+	printf("OpenVRHost: GetResourceFullPath called with resource name %s and resource type directory %s\n",pchResourceName,pchResourceTypeDirectory);
 	fflush(stdout);
 	#endif
 	
-	pchPathBuffer[0]='\0';
-	return 1;
+	/* Extract the driver name template from the given resource name: */
+	const char* driverStart=0;
+	const char* driverEnd=0;
+	for(const char* rnPtr=pchResourceName;*rnPtr!='\0';++rnPtr)
+		{
+		if(*rnPtr=='{')
+			driverStart=rnPtr;
+		else if(*rnPtr=='}')
+			driverEnd=rnPtr+1;
+		}
+	
+	/* Assemble the resource path based on the OpenVR root directory and the driver name: */
+	std::string resourcePath=openvrRootDir;
+	if(driverStart!=0&&driverEnd!=0)
+		{
+		resourcePath.append("/drivers/");
+		resourcePath.append(driverStart+1,driverEnd-1);
+		}
+	resourcePath.append("/resources/");
+	if(pchResourceTypeDirectory!=0)
+		{
+		resourcePath.append(pchResourceTypeDirectory);
+		resourcePath.push_back('/');
+		}
+	if(driverEnd!=0)
+		resourcePath.append(driverEnd);
+	else
+		resourcePath.append(pchResourceName);
+	
+	#ifdef VERBOSE
+	printf("OpenVRHost::GetResourceFullPath: Result is %s\n",resourcePath.c_str());
+	fflush(stdout);
+	#endif
+	
+	/* Copy the resource path into the buffer if there is enough space: */
+	if(unBufferLen>=resourcePath.size()+1)
+		memcpy(pchPathBuffer,resourcePath.c_str(),resourcePath.size()+1);
+	else
+		pchPathBuffer[0]='\0';
+	return resourcePath.size()+1;
+	}
+
+vr::EIOBufferError OpenVRHost::Open(const char* pchPath,vr::EIOBufferMode mode,uint32_t unElementSize,uint32_t unElements,vr::IOBufferHandle_t* pulBuffer)
+	{
+	#ifdef VERBOSE
+	printf("OpenVRHost: Open called with path %s, buffer mode %u, element size %u and number of elements %u\n",pchPath,uint32_t(mode),unElementSize,unElements);
+	fflush(stdout);
+	#endif
+	
+	vr::EIOBufferError result=vr::IOBuffer_Success;
+	
+	/* Find an I/O buffer of the given path: */
+	IOBufferMap::Iterator iobIt;
+	for(iobIt=ioBufferMap.begin();!iobIt.isFinished()&&iobIt->getDest().path!=pchPath;++iobIt)
+		;
+	if(mode&vr::IOBufferMode_Create)
+		{
+		if(iobIt.isFinished())
+			{
+			/* Create a new I/O buffer: */
+			++lastIOBufferHandle;
+			ioBufferMap.setEntry(IOBufferMap::Entry(lastIOBufferHandle,IOBuffer(lastIOBufferHandle)));
+			IOBuffer& buf=ioBufferMap.getEntry(lastIOBufferHandle).getDest();
+			buf.path=pchPath;
+			buf.size=size_t(unElements)*size_t(unElementSize);
+			buf.buffer=malloc(buf.size);
+			
+			/* Return the new buffer's handle: */
+			*pulBuffer=lastIOBufferHandle;
+			}
+		else
+			{
+			printf("OpenVRHost::Open: Path %s already exists\n",pchPath);
+			fflush(stdout);
+			result=vr::IOBuffer_PathExists;
+			}
+		}
+	else
+		{
+		if(!iobIt.isFinished())
+			{
+			/* Return the existing buffer's handle: */
+			*pulBuffer=iobIt->getDest().handle;
+			}
+		else
+			{
+			printf("OpenVRHost::Open: Path %s does not exist\n",pchPath);
+			fflush(stdout);
+			result=vr::IOBuffer_PathDoesNotExist;
+			}
+		}
+	
+	return result;
+	}
+
+vr::EIOBufferError OpenVRHost::Close(vr::IOBufferHandle_t ulBuffer)
+	{
+	#ifdef VERBOSE
+	printf("OpenVRHost: Close called with buffer handle %lu\n",ulBuffer);
+	fflush(stdout);
+	#endif
+	
+	vr::EIOBufferError result=vr::IOBuffer_Success;
+	
+	/* Find the I/O buffer: */
+	IOBufferMap::Iterator iobIt=ioBufferMap.findEntry(ulBuffer);
+	if(!iobIt.isFinished())
+		{
+		/* Delete the buffer: */
+		ioBufferMap.removeEntry(iobIt);
+		}
+	else
+		{
+		printf("OpenVRHost::Close: Invalid buffer handle %lu\n",ulBuffer);
+		fflush(stdout);
+		result=vr::IOBuffer_InvalidHandle;
+		}
+	
+	return result;
+	}
+
+vr::EIOBufferError OpenVRHost::Read(vr::IOBufferHandle_t ulBuffer,void* pDst,uint32_t unBytes,uint32_t* punRead)
+	{
+	vr::EIOBufferError result=vr::IOBuffer_Success;
+	
+	/* Find the I/O buffer: */
+	IOBufferMap::Iterator iobIt=ioBufferMap.findEntry(ulBuffer);
+	if(!iobIt.isFinished())
+		{
+		/* Read as much data as requested and available: */
+		IOBuffer& buf=iobIt->getDest();
+		uint32_t canRead=unBytes;
+		if(canRead>buf.dataSize)
+			canRead=buf.dataSize;
+		memcpy(pDst,buf.buffer,canRead);
+		*punRead=canRead;
+		}
+	else
+		{
+		printf("OpenVRHost::Read: Invalid buffer handle %lu\n",ulBuffer);
+		fflush(stdout);
+		result=vr::IOBuffer_InvalidHandle;
+		}
+	
+	return result;
+	}
+
+vr::EIOBufferError OpenVRHost::Write(vr::IOBufferHandle_t ulBuffer,void* pSrc,uint32_t unBytes)
+	{
+	vr::EIOBufferError result=vr::IOBuffer_Success;
+	
+	/* Find the I/O buffer: */
+	IOBufferMap::Iterator iobIt=ioBufferMap.findEntry(ulBuffer);
+	if(!iobIt.isFinished())
+		{
+		/* Write if the data fits into the buffer: */
+		IOBuffer& buf=iobIt->getDest();
+		if(unBytes<=buf.size)
+			{
+			memcpy(buf.buffer,pSrc,unBytes);
+			buf.dataSize=unBytes;
+			}
+		else
+			{
+			printf("OpenVRHost::Write: Overflow on buffer handle %lu\n",ulBuffer);
+			fflush(stdout);
+			result=vr::IOBuffer_InvalidArgument;
+			}
+		}
+	else
+		{
+		printf("OpenVRHost::Write: Invalid buffer handle %lu\n",ulBuffer);
+		fflush(stdout);
+		result=vr::IOBuffer_InvalidHandle;
+		}
+	
+	return result;
+	}
+
+vr::PropertyContainerHandle_t OpenVRHost::PropertyContainer(vr::IOBufferHandle_t ulBuffer)
+	{
+	#ifdef VERBOSE
+	printf("OpenVRHost: PropertyContainer called with buffer handle %lu\n",ulBuffer);
+	fflush(stdout);
+	#endif
+	
+	return vr::k_ulInvalidPropertyContainer;
+	}
+
+bool OpenVRHost::HasReaders(vr::IOBufferHandle_t ulBuffer)
+	{
+	#ifdef VERBOSE
+	printf("OpenVRHost: HasReaders called with buffer handle %lu\n",ulBuffer);
+	fflush(stdout);
+	#endif
+	
+	return false;
 	}
 
 /* Methods inherited from class vr::IVRDriverManager: */
@@ -1959,12 +2950,22 @@ uint32_t OpenVRHost::GetDriverName(vr::DriverId_t nDriver,char* pchValue,uint32_
 vr::DriverHandle_t OpenVRHost::GetDriverHandle(const char *pchDriverName)
 	{
 	#ifdef VERBOSE
-	printf("OpenVRDriver::GetDriverHandle called with driver name %s\n",pchDriverName);
+	printf("OpenVRHost::GetDriverHandle called with driver name %s\n",pchDriverName);
 	fflush(stdout);
 	#endif
 	
 	/* Driver itself has a fixed handle, based on OpenVR's vrserver: */
 	return driverHandle;
+	}
+
+bool OpenVRHost::IsEnabled(vr::DriverId_t nDriver) const
+	{
+	#ifdef VERBOSE
+	printf("OpenVRHost::IsEnabled called for driver %u\n",nDriver);
+	fflush(stdout);
+	#endif
+	
+	return true;
 	}
 
 /*************************************

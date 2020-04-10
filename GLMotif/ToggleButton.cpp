@@ -1,6 +1,6 @@
 /***********************************************************************
 ToggleButton - Class for buttons displaying a binary (on/off) status.
-Copyright (c) 2001-2010 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -46,6 +46,9 @@ void ToggleButton::select(void)
 	{
 	/* Toggle the toggle status: */
 	setSet(!set);
+	
+	/* Update a potential tracked variable: */
+	setTrackedBool(set);
 	
 	/* Call the parent class widget's select method: */
 	DecoratedButton::select();
@@ -177,6 +180,7 @@ void ToggleButton::positionToggle(void)
 
 void ToggleButton::setSet(bool newSet)
 	{
+	/* Update the toggle state: */
 	set=newSet;
 
 	/* Raise or lower the inner toggle points: */
@@ -258,6 +262,18 @@ void ToggleButton::resize(const Box& newExterior)
 	
 	/* Position the toggle button: */
 	positionToggle();
+	}
+
+void ToggleButton::updateVariables(void)
+	{
+	/* Check if variable tracking is active: */
+	if(isTracking())
+		{
+		/* Get the variable's current value and update toggle state if necessary: */
+		bool newSet=getTrackedBool();
+		if(set!=newSet)
+			setSet(newSet);
+		}
 	}
 
 void ToggleButton::setToggleType(ToggleButton::ToggleType newToggleType)

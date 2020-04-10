@@ -160,8 +160,14 @@ The GLSupport library contains classes and functions providing higher-level supp
 <DT>GLTextureObject.h</DT>
 <DD>GLTextureObject is a helper class to simplify managing texture objects.</DD>
 
+<DT>GLBuffer.h</DT>
+<DD>GLBuffer is a common base class for OpenGL buffer objects, to simplify management of vertex and/or index buffers.</DD>
+
 <DT>GLVertexBuffer.h</DT>
-<DD>GLVertexBuffer is a helper class to simplify managing vertex buffer objects, templatized based on the type of vertex contained in the buffer.</DD>
+<DD>GLVertexBuffer is a class to hold vertex arrays derived from GLBuffer, templatized based on the type of vertex contained in the buffer.</DD>
+
+<DT>GLIndexBuffer.h</DT>
+<DD>GLIndexBuffer is a class to hold index arrays derived from GLBuffer, templatized based on the type of index contained in the buffer.</DD>
 
 <DT>GLShader.h<DT>
 <DD>GLShader is a helper class to simplify using GLSL shaders that compile any number of vertex and fragment shaders into a single shader program. Assumes the source code for all shaders is loaded from plain text files.</DD>

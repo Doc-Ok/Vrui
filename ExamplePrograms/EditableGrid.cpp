@@ -1,7 +1,7 @@
 /***********************************************************************
 EditableGrid - Data structure to represent 3D grids with editable data
 values and interactive isosurface extraction.
-Copyright (c) 2006-2013 Oliver Kreylos
+Copyright (c) 2006-2018 Oliver Kreylos
 
 This file is part of the Virtual Clay Editing Package.
 
@@ -397,8 +397,9 @@ const int EditableGrid::triangleEdgeIndices[256][16]=
 Methods of class EditableGrid:
 *****************************/
 
-EditableGrid::EditableGrid(const EditableGrid::Index& sNumVertices,const EditableGrid::Size& sCellSize)
-	:numVertices(sNumVertices),
+EditableGrid::EditableGrid(const EditableGrid::Point& sOrigin,const EditableGrid::Index& sNumVertices,const EditableGrid::Size& sCellSize)
+	:origin(sOrigin),
+	 numVertices(sNumVertices),
 	 numCells(numVertices-Index(1,1,1)),
 	 cellSize(sCellSize),
 	 vertices(numVertices),
@@ -447,7 +448,7 @@ float EditableGrid::getValue(const EditableGrid::Point& p) const
 	float offset[3];
 	for(int i=0;i<3;++i)
 		{
-		float pi=p[i]/cellSize[i];
+		float pi=(p[i]-origin[i])/cellSize[i];
 		cell[i]=int(Math::floor(pi));
 		offset[i]=pi-float(cell[i]);
 		if(cell[i]<0)
@@ -537,7 +538,7 @@ void EditableGrid::invalidateVertices(const EditableGrid::Index& min,const Edita
 			/* Calculate the position of the cell's base vertex: */
 			float basePoint[3];
 			for(int i=0;i<3;++i)
-				basePoint[i]=float(c[i])*cellSize[i];
+				basePoint[i]=origin[i]+float(c[i])*cellSize[i];
 			
 			/* Calculate the edge intersection points and normal vectors: */
 			IsosurfaceVertex* evPtr=edgeVertices;
@@ -718,7 +719,7 @@ void EditableGrid::exportSurface(IO::File& file) const
 				
 				/* Calculate the vertex position along the edge: */
 				for(int i=0;i<3;++i)
-					ev.position[i]=float(ci[i])*cellSize[i];
+					ev.position[i]=origin[i]+float(ci[i])*cellSize[i];
 				ev.position[edgeDirection]+=cellSize[edgeDirection]*w1;
 				
 				/* Calculate the normalized edge normal vector by interpolating between the edge vertices' gradients: */

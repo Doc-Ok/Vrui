@@ -1,7 +1,7 @@
 /***********************************************************************
 PlaneSnapInputDeviceTool - Class for tools that snap a virtual input
 device to a plane defined by three points.
-Copyright (c) 2009-2015 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -31,10 +31,8 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <GL/gl.h>
 #include <GL/GLColorTemplates.h>
 #include <GL/GLGeometryWrappers.h>
-#include <GL/GLTransformationWrappers.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/ToolManager.h>
-#include <Vrui/DisplayState.h>
 
 namespace Vrui {
 
@@ -210,9 +208,7 @@ void PlaneSnapInputDeviceTool::display(GLContextData& contextData) const
 		markerSize/=getNavigationTransformation().getScaling();
 		
 		/* Go to navigational coordinates: */
-		glPushMatrix();
-		glLoadIdentity();
-		glMultMatrix(getDisplayState(contextData).modelviewNavigational);
+		goToNavigationalSpace(contextData);
 		
 		/* Mark all measurement points: */
 		glLineWidth(3.0f);
@@ -242,8 +238,10 @@ void PlaneSnapInputDeviceTool::display(GLContextData& contextData) const
 			}
 		glEnd();
 		
-		/* Restore OpenGL state: */
+		/* Return to physical space: */
 		glPopMatrix();
+		
+		/* Restore OpenGL state: */
 		glLineWidth(lineWidth);
 		if(lightingEnabled)
 			glEnable(GL_LIGHTING);

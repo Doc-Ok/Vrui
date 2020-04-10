@@ -2,7 +2,7 @@
 OculusCalibrator - Simple utility to retrieve calibration data from an Oculus
 Rift head-mounted display, and visualize the 3-DOF and inertial 6-DOF
 tracking driver's results.
-Copyright (c) 2013-2014 Oliver Kreylos
+Copyright (c) 2013-2018 Oliver Kreylos
 
 This file is part of the Vrui calibration utility package.
 
@@ -33,6 +33,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Threads/Thread.h>
 #include <Threads/TripleBuffer.h>
 #include <IO/SeekableFile.h>
+#include <IO/OpenFile.h>
 #include <IO/FixedMemoryFile.h>
 #include <libusb-1.0/libusb.h>
 #include <USB/DeviceList.h>
@@ -50,7 +51,6 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <GL/GLModels.h>
 #include <GL/GLGeometryWrappers.h>
 #include <Vrui/Application.h>
-#include <Vrui/OpenFile.h>
 
 #include "../VRDeviceDaemon/Config.h"
 
@@ -638,7 +638,7 @@ class Tracker
 				for(int j=0;j<4;++j)
 					magCalib[i][j]=Scalar(calibFile->read<Misc::Float64>());
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			/* Create a default calibration: */
 			std::cerr<<"Error "<<err.what()<<" while loading calibration file "<<calibFileName<<"; generating default calibration"<<std::endl;
@@ -941,7 +941,7 @@ class Tracker
 					for(int j=0;j<4;++j)
 						calibFile->write<Misc::Float64>(magCal(i,j));
 				}
-			catch(std::runtime_error err)
+			catch(const std::runtime_error& err)
 				{
 				std::cerr<<"Error "<<err.what()<<" while writing calibration data to calibration file "<<calibFileName<<std::endl;
 				}

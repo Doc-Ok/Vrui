@@ -19,6 +19,21 @@ The Misc library contains assorted abstraction classes such as error handling, f
 <DD>Utility.h contains namespace-global functions implementing common tasks, such as swapping variables.</DD>
 </DD>
 
+<DT>UTF8.h</DT>
+<DD>UTF8.h contains a class with static methods providing an extensible API to encode/decode Unicode characters to/from UTF-8.</DD>
+
+<DT>ColorComponentTraits.h</DT>
+<DD>ColorComponentTraits is a templatized class representing values and behaviors for scalar types used as color components.</DD>
+
+<DT>ConvertColorComponent.h</DT>
+<DD>ConvertColorComponent.h defines a namespace-global template function to convert color component values between different scalar types.</DD>
+
+<DT>RGB.h</DT>
+<DD>RGB is a templatized class to represent colors in RGB space using different component scalar types.</DD>
+
+<DT>RGBA.h</DT>
+<DD>RGBA is a templatized class to represent colors in RGB space with opacity values using different component scalar types.</DD>
+
 <DT>PrintIntegers.h</DT>
 <DD>PrintIntegers.h contains low-level namespace-global functions to print numbers of all integer types.</DD>
 
@@ -53,6 +68,9 @@ The Misc library contains assorted abstraction classes such as error handling, f
 
 <DT>Array.h</DT>
 <DD>Array is a class to represent n-dimensional arrays, templatized by the type of array element and the array dimension. It uses the ArrayIndex class to index array elements.</DD>
+
+<DT>RingBuffer.h</DT>
+<DD>RingBuffer is a class to represent a FIFO queue that grows dynamically as entries are added.</DD>
 
 <DT>ChunkedArray.h</DT>
 <DD>ChunkedArray is a class to represent dynamically growing arrays, implemented as a linear list of &quot;chunks&quot; containing a fixed number of elements. It is templatized by the type of array element, and the size of each chunk in bytes (meant to align chunk size to the computer's page size). It offers growing arrays without the copy passes used by std::vector, at the expense of not having constant-time random array access. It is a memory-efficient way to implement lists that only allow insertion and removal at the end.</DD>
@@ -98,6 +116,9 @@ The Misc library contains assorted abstraction classes such as error handling, f
 
 <DT>FunctionCalls.h</DT>
 <DD>FunctionCalls defines several functor classes representing function calls or method invocations as first-class objects.</DD>
+
+<DT>CommandDispatcher.h</DT>
+<DD>CommandDispatcher is a class to dispatch text commands read from a file or pipe to interested recipients.</DD>
 
 <DT>CallbackData.h</DT>
 <DD>CallbackData is the base class for all data passed to callbacks implemented as objects of class CallbackList. It contains a pointer back to the originating CallbackList object. CallbackData.h also declares the type of callback functions stored in CallbackList objects.</DD>

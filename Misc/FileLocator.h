@@ -1,6 +1,6 @@
 /***********************************************************************
 FileLocator - Class to find files from an ordered list of search paths.
-Copyright (c) 2007-2011 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 Based on code written by Braden Pellett.
 
 This file is part of the Miscellaneous Support Library (Misc).
@@ -76,6 +76,7 @@ class FileLocator
 		return pathList;
 		}
 	std::string locateFile(const char* fileName); // Returns the path of the first file matching the given name from the search path list
+	std::string locateNumberedFile(const char* fileNameTemplate); // Returns the path of the highest-numbered file matching the given file name template, which must contain exactly one %u conversion, from the search path list
 	};
 
 }

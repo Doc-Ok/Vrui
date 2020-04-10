@@ -1,7 +1,7 @@
 /***********************************************************************
 Event - Class to provide widgets with information they need to handle
 events.
-Copyright (c) 2001-2005 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -20,10 +20,10 @@ with the GLMotif Widget Library; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 ***********************************************************************/
 
+#include <GLMotif/Event.h>
+
 #include <GLMotif/WidgetManager.h>
 #include <GLMotif/Widget.h>
-
-#include <GLMotif/Event.h>
 
 namespace GLMotif {
 
@@ -49,24 +49,10 @@ Event::Event(const Ray& sWorldLocationRay,bool sButtonState)
 	{
 	}
 
-bool Event::setTargetWidget(Widget* newTargetWidget)
-	{
-	WidgetPoint newWidgetPoint=calcWidgetPoint(newTargetWidget);
-	if(worldLocationType==POINT||newWidgetPoint.lambda<widgetPoint.lambda)
-		{
-		/* Set the target widget: */
-		widgetPoint=newWidgetPoint;
-		targetWidget=newTargetWidget;
-		
-		return true;
-		}
-	else
-		return false;
-	}
-
 bool Event::setTargetWidget(Widget* newTargetWidget,const Event::WidgetPoint& newWidgetPoint)
 	{
-	if(worldLocationType==POINT||newWidgetPoint.lambda<widgetPoint.lambda)
+	/* If the widget point is ray-based, only set the target widget if the intersection is valid and closer than the current one: */
+	if(worldLocationType==POINT||(newWidgetPoint.lambda>=Scalar(0)&&newWidgetPoint.lambda<widgetPoint.lambda))
 		{
 		/* Set the target widget: */
 		widgetPoint=newWidgetPoint;
@@ -80,7 +66,8 @@ bool Event::setTargetWidget(Widget* newTargetWidget,const Event::WidgetPoint& ne
 
 Event::WidgetPoint Event::calcWidgetPoint(const Widget* widget) const
 	{
-	if(widget==targetWidget) // Is the target widget the same as the one we have?
+	/* Check if the given widget is the same as the current target widget: */
+	if(widget==targetWidget)
 		{
 		/* Return the stored point: */
 		return widgetPoint;

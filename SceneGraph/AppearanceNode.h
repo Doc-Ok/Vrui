@@ -1,7 +1,7 @@
 /***********************************************************************
 AppearanceNode - Class defining the appearance (material properties,
 textures) of a shape node.
-Copyright (c) 2009-2010 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -25,20 +25,20 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <Misc/Autopointer.h>
 #include <SceneGraph/FieldTypes.h>
-#include <SceneGraph/AttributeNode.h>
+#include <SceneGraph/BaseAppearanceNode.h>
 #include <SceneGraph/MaterialNode.h>
 #include <SceneGraph/TextureNode.h>
-#include <SceneGraph/TransformNode.h>
+#include <SceneGraph/TextureTransformNode.h>
 
 namespace SceneGraph {
 
-class AppearanceNode:public AttributeNode
+class AppearanceNode:public BaseAppearanceNode
 	{
 	/* Embedded classes: */
 	public:
 	typedef SF<MaterialNodePointer> SFMaterialNode;
 	typedef SF<TextureNodePointer> SFTextureNode;
-	typedef SF<TransformNodePointer> SFTransformNode;
+	typedef SF<TextureTransformNodePointer> SFTextureTransformNode;
 	
 	/* Elements: */
 	
@@ -46,7 +46,7 @@ class AppearanceNode:public AttributeNode
 	public:
 	SFMaterialNode material;
 	SFTextureNode texture;
-	SFTransformNode textureTransform;
+	SFTextureTransformNode textureTransform;
 	
 	/* Constructors and destructors: */
 	public:
@@ -63,6 +63,11 @@ class AppearanceNode:public AttributeNode
 	/* Methods from AttributeNode: */
 	virtual void setGLState(GLRenderState& renderState) const;
 	virtual void resetGLState(GLRenderState& renderState) const;
+	
+	/* Methods from BaseAppearanceNode: */
+	virtual bool requiresTexCoords(void) const;
+	virtual bool requiresColors(void) const;
+	virtual bool requiresNormals(void) const;
 	};
 
 typedef Misc::Autopointer<AppearanceNode> AppearanceNodePointer;

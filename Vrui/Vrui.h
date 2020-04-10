@@ -1,7 +1,7 @@
 /***********************************************************************
 Vrui - Public kernel interface of the Vrui virtual reality development
 toolkit.
-Copyright (c) 2000-2018 Oliver Kreylos
+Copyright (c) 2000-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -33,7 +33,9 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 /* Forward declarations: */
 namespace Misc {
 class Time;
+class CommandDispatcher;
 class CallbackList;
+class ConfigurationFileSection;
 class TimerEventScheduler;
 }
 namespace Cluster {
@@ -48,6 +50,8 @@ struct StyleSheet;
 class Widget;
 class WidgetManager;
 class PopupMenu;
+class Pager;
+class Button;
 }
 class ALContextData;
 namespace Vrui {
@@ -84,6 +88,30 @@ Additional Vrui data types:
 
 typedef GLColor<GLfloat,4> Color; // Data type for colors
 
+struct EnvironmentDefinitionChangedCallbackData:public Misc::CallbackData // Callback data passed to callbacks when the definition of Vrui's physical environment changes
+	{
+	/* Embedded classes: */
+	public:
+	enum ChangeReasons // Enumerated type for bit flags of reasons for the change
+		{
+		InchScale=0x1,
+		DisplayCenter=0x2,
+		DisplaySize=0x4,
+		ForwardDirection=0x8,
+		UpDirection=0x10,
+		FloorPlane=0x20
+		};
+	
+	/* Elements: */
+	int changeReasons; // Bit mask of reasons for the change
+	
+	/* Constructors and destructors: */
+	EnvironmentDefinitionChangedCallbackData(int sChangeReasons)
+		:changeReasons(sChangeReasons)
+		{
+		}
+	};
+
 struct NavigationTransformationChangedCallbackData:public Misc::CallbackData // Callback data passed to callbacks when the navigation transformation changes
 	{
 	/* Elements: */
@@ -101,7 +129,21 @@ struct NavigationTransformationChangedCallbackData:public Misc::CallbackData // 
 		}
 	};
 
+struct NavigationToolActivationCallbackData:public Misc::CallbackData // Callback data passed to callbacks when the active navigation tool changes
+	{
+	/* Elements: */
+	public:
+	bool navigationToolActive; // Flag if a navigation tool will be active after this callback returns
+	
+	/* Constructors and destructors: */
+	NavigationToolActivationCallbackData(bool sNavigationToolActive)
+		:navigationToolActive(sNavigationToolActive)
+		{
+		}
+	};
+
 typedef bool (*FrameCallback)(void* userData); // Function type for frame callbacks
+typedef void (*SynchronousIOCallback)(int fd,void* userData); // Function type for synchronous I/O callbacks
 
 /***********************************************************************
 Vrui functions called from inside an application's main function. These
@@ -132,6 +174,10 @@ void setSoundFunction(SoundFunctionType soundFunction,void* userData);
 typedef void (*ResetNavigationFunctionType)(void* userData);
 void setResetNavigationFunction(ResetNavigationFunctionType resetNavigationFunction,void* userData);
 
+/* Sets the function that is called immediately after the main loop finishes: */
+typedef void (*FinishMainLoopFunctionType)(void* userData);
+void setFinishMainLoopFunction(FinishMainLoopFunctionType finishMainLoopFunction,void* userData);
+
 /* Initializes the graphics and sound subsystems and starts the toolkit's main loop: */
 void mainLoop(void);
 
@@ -144,6 +190,11 @@ Vrui control functions:
 
 /* Exits from a Vrui application by terminating the main loop: */
 void shutdown(void);
+
+/* Query application or module configuration settings: */
+const char* getRootSectionName(void); // Returns the name of the root configuration file section
+Misc::ConfigurationFileSection getAppConfigurationSection(void); // Returns a configuration file section for application settings
+Misc::ConfigurationFileSection getModuleConfigurationSection(const char* moduleName); // Returns a configuration file section for settings for a module of the given name
 
 /* Manage multipipe rendering: */
 Cluster::Multiplexer* getClusterMultiplexer(void); // Returns the intra-cluster communication multiplexer in a cluster-based Vrui environment; returns 0 if called in a non-cluster environment)
@@ -210,6 +261,7 @@ const Point& getDisplayCenter(void); // Returns the center of the display enviro
 const Vector& getForwardDirection(void); // Returns a vector pointing in the main viewing direction
 const Vector& getUpDirection(void); // Returns a vector pointing "up" in physical coordinates
 const Plane& getFloorPlane(void); // Returns a plane equation for the "floor" of the display environment in physical coordinates
+Misc::CallbackList& getEnvironmentDefinitionChangedCallbacks(void); // Returns the lists of callbacks called when the physical environment definition changes
 
 /* Manage rendering parameters: */
 void setFrontplaneDist(Scalar newFrontplaneDist); // Sets the distance of the OpenGL front plane in physical units
@@ -234,6 +286,9 @@ void setWidgetMaterial(const GLMaterial& newWidgetMaterial); // Sets the materia
 const GLMaterial& getWidgetMaterial(void); // Returns the material property for rendering UI components
 void setMainMenu(GLMotif::PopupMenu* newMainMenu); // Sets the application's main menu (associated to all menu tools)
 MutexMenu* getMainMenu(void); // Returns pointer to the application's main menu
+GLMotif::Pager* getSettingsPager(void); // Returns the pager widget holding settings pages, so that applications or modules can add their own pages
+GLMotif::Button* addShowSettingsDialogButton(const char* buttonLabel); // Adds a button to show a pop-up window with application or module settings with the given label to the Vrui system menu and returns a pointer to the widget
+void removeShowSettingsDialogButton(GLMotif::Button* button); // Removes and deletes a previously added button from the Vrui system menu
 Misc::TimerEventScheduler* getTimerEventScheduler(void); // Returns pointer to the scheduler for application timer events
 TextEventDispatcher* getTextEventDispatcher(void); // Returns pointer to the GLMotif text event dispatcher
 GLMotif::WidgetManager* getWidgetManager(void); // Returns pointer to the UI component manager
@@ -242,7 +297,7 @@ void popupPrimaryWidget(GLMotif::Widget* topLevel); // Shows a top-level UI comp
 void popupPrimaryWidget(GLMotif::Widget* topLevel,const Point& hotSpot,bool navigational =true); // Shows a top-level UI component at the given position in physical or navigational coordinates
 void popupPrimaryScreenWidget(GLMotif::Widget* topLevel,Scalar x,Scalar y); // Shows a top-level UI component aligned to the given screen in the environment
 void popdownPrimaryWidget(GLMotif::Widget* topLevel); // Hides a top-level UI component
-void showErrorMessage(const char* title,const char* message); // Pops up a temporary dialog window to show an error message with an acknowledgment button
+void showErrorMessage(const char* title,const char* message,const char* buttonLabel =0); // Pops up a temporary dialog window to show an error message with an acknowledgment button showing the given label
 
 /* Manage 3D picking and selection: */
 Scalar getPointPickDistance(void); // Returns the maximum distance to be used for point-based pick queries in navigational space
@@ -268,6 +323,7 @@ NavTrackerState getDeviceTransformation(InputDevice* device); // Returns the tra
 
 /* Tool management: */
 ToolManager* getToolManager(void); // Returns pointer to the tool manager
+Misc::CallbackList& getNavigationToolActivationCallbacks(void); // Returns the list of callbacks called when the active navigation tool changes
 bool activateNavigationTool(const Tool* tool); // Activates a navigation tool (prohibits all other navigation tools from becoming active)
 void deactivateNavigationTool(const Tool* tool); // Deactivates a navigation tool such that other navigation tools may become active
 
@@ -280,16 +336,23 @@ double getApplicationTime(void); // Returns the time since the application was s
 double getFrameTime(void); // Returns the duration of the last frame in seconds
 double getCurrentFrameTime(void); // Returns the current average time between frames (1/framerate) in seconds
 double getNextAnimationTime(void); // Returns the application time at which the next frame in a general animation should be scheduled
-void addFrameCallback(FrameCallback newFrameCallback,void* newFrameCallbackUserData); // Adds a callback that is called once on every frame; can be called from background threads; callback is removed again if it returns true; can be called from background threads
+
+/* Callback management: */
+void addFrameCallback(FrameCallback newFrameCallback,void* newFrameCallbackUserData); // Adds a callback that is called once on every frame; callback is removed again if it returns true; can be called from background threads
+Misc::CommandDispatcher& getCommandDispatcher(void); // Returns a dispatcher for pipe and console commands
+void addSynchronousIOCallback(int fd,SynchronousIOCallback newIOCallback,void* newIOCallbackData); // Adds a callback that is called synchronously at the beginning of a Vrui frame if there is readable data on the given file descriptor
+void removeSynchronousIOCallback(int fd); // Removes a previously installed synchronous I/O callback for the given file descriptor
 
 /* Rendering management: */
 void updateContinuously(void); // Tells Vrui to continuously update its state (must be called before mainLoop)
 void requestUpdate(void); // Tells Vrui to update its internal state and redraw the VR windows; can be called from any thread
 void scheduleUpdate(double nextFrameTime); // Asks Vrui to update its internal state and redraw the VR windows at the given application time; must be called from main thread
 const DisplayState& getDisplayState(GLContextData& contextData); // Returns the Vrui display state valid for the current display method call
+void goToNavigationalSpace(GLContextData& contextData); // Pushes the current modelview matrix and sets it to render in navigational space
+void goToPhysicalSpace(GLContextData& contextData); // Pushes the current modelview matrix and sets it to render in physical space
 
 /* Desktop environment and session management: */
-void inhibitScreenSaver(void); // Requests to inhibit the desktop environment's screen saver to avoid screen blanking or low-power states while this VR application is running: */
+void inhibitScreenSaver(void); // Requests to inhibit the desktop environment's screen saver to avoid screen blanking or low-power states while this VR application is running
 void uninhibitScreenSaver(void); // Releases any screen saver inhibition
 
 }

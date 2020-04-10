@@ -2,7 +2,7 @@
 CallbackList - Class for lists of callback functions associated with
 certain events. Uses new-style templatized callback mechanism and offers
 backwards compatibility for traditional C-style callbacks.
-Copyright (c) 2000-2012 Oliver Kreylos
+Copyright (c) 2000-2019 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -111,16 +111,17 @@ void CallbackList::removeCli(const CallbackList::CallbackListItem& removeCli)
 		if(*ptr2==removeCli)
 			{
 			/* Remove the item from the list: */
-			if(tail==ptr2)
-				tail=ptr1;
 			if(ptr1!=0)
 				ptr1->succ=ptr2->succ;
 			else
 				head=ptr2->succ;
+			if(ptr2->succ==0)
+				tail=ptr1;
 			
 			/* Delete the item: */
 			delete ptr2;
 			
+			/* Stop looking: */
 			break;
 			}
 	}

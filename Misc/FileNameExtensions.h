@@ -1,7 +1,7 @@
 /***********************************************************************
 FileNameExtensions - Helper functions to extract or test path names or
 extensions from file names.
-Copyright (c) 2009-2012 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -30,7 +30,9 @@ const char* getFileName(const char* pathName); // Returns a pointer to the first
 const char* getExtension(const char* fileName); // Returns a pointer to the extension of the last component of the given file / path name including the period; returns empty string if no extension
 const char* getExtension(const char* fileNameBegin,const char* fileNameEnd); // Ditto, using the end pointer as the end of the file name
 bool hasExtension(const char* fileName,const char* extension); // Returns true if the extension of the last component of the given file / path name matches the given extension (period included, empty string matches against no extension)
+bool hasExtension(const char* fileNameBegin,const char* fileNameEnd,const char* extension); // Ditto, using the end pointer as the end of the file name
 bool hasCaseExtension(const char* fileName,const char* extension); // Ditto, with case-insensitive comparison
+bool hasCaseExtension(const char* fileNameBegin,const char* fileNameEnd,const char* extension); // Ditto, using the end pointer as the end of the file name
 
 }
 

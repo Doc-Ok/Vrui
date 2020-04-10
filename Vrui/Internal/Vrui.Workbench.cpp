@@ -1,6 +1,6 @@
 /***********************************************************************
 Environment-dependent part of Vrui virtual reality development toolkit.
-Copyright (c) 2000-2018 Oliver Kreylos
+Copyright (c) 2000-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -23,6 +23,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
@@ -45,13 +46,16 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Misc/StandardValueCoders.h>
 #include <Misc/CompoundValueCoders.h>
 #include <Misc/ConfigurationFile.h>
+#include <Misc/ConfigurationFile.icpp>
 #include <Misc/TimerEventScheduler.h>
+#include <Realtime/Time.h>
 #include <Threads/Thread.h>
 #include <Threads/Mutex.h>
 #include <Threads/Barrier.h>
 #include <Cluster/Multiplexer.h>
 #include <Cluster/MulticastPipe.h>
 #include <Cluster/ThreadSynchronizer.h>
+#include <Cluster/Opener.h>
 #include <Math/Constants.h>
 #include <Geometry/Point.h>
 #include <Geometry/Plane.h>
@@ -86,6 +90,37 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #endif
 
 namespace Vrui {
+
+struct SynchronousIOCallbackSlot
+	{
+	/* Elements: */
+	public:
+	int fd; // Watched file descriptor
+	SynchronousIOCallback callback; // Pointer to the callback function
+	void* callbackData; // Opaque pointer passed to callback function
+	
+	/* Constructors and destructors: */
+	SynchronousIOCallbackSlot(int sFd,SynchronousIOCallback sCallback,void* sCallbackData)
+		:fd(sFd),callback(sCallback),callbackData(sCallbackData)
+		{
+		}
+	
+	/* Methods: */
+	bool callIfPending(const Misc::FdSet& readFds) const // Calls the callback if there is pending data on its file descriptor
+		{
+		/* Check if the file descriptor has pending data: */
+		bool result=readFds.isSet(fd);
+		if(result)
+			{
+			/* Call the callback: */
+			(*callback)(fd,callbackData);
+			}
+		
+		return result;
+		}
+	};
+
+typedef std::vector<SynchronousIOCallbackSlot> SynchronousIOCallbackList;
 
 struct VruiWindowGroup
 	{
@@ -135,7 +170,12 @@ Workbench-specific global variables:
 ***********************************/
 
 int vruiEventPipe[2]={-1,-1};
+int vruiCommandPipe=-1;
+int vruiCommandPipeHolder=-1;
+SynchronousIOCallbackList vruiSynchronousIOCallbacks;
+Misc::FdSet vruiReadFdSet;
 Misc::ConfigurationFile* vruiConfigFile=0;
+char* vruiConfigRootSectionName=0;
 char* vruiApplicationName=0;
 int vruiNumWindows=0;
 VRWindow** vruiWindows=0;
@@ -243,6 +283,9 @@ void vruiErrorShutdown(bool signalError)
 		{
 		bool master=vruiMultiplexer->isMaster();
 		
+		/* Unregister the multiplexer from the Cluster::Opener object: */
+		Cluster::Opener::getOpener()->setMultiplexer(0);
+		
 		/* Destroy the multiplexer: */
 		delete vruiPipe;
 		delete vruiMultiplexer;
@@ -269,6 +312,14 @@ void vruiErrorShutdown(bool signalError)
 	
 	/* Close the configuration file: */
 	delete vruiConfigFile;
+	delete[] vruiConfigRootSectionName;
+	
+	/* Close the command pipe: */
+	if(vruiCommandPipe>=0)
+		{
+		close(vruiCommandPipeHolder);
+		close(vruiCommandPipe);
+		}
 	
 	/* Close the event pipe: */
 	close(vruiEventPipe[0]);
@@ -317,7 +368,7 @@ bool vruiMergeConfigurationFile(const char* configFileName)
 		
 		return true;
 		}
-	catch(Misc::File::OpenError err)
+	catch(const Misc::File::OpenError& err)
 		{
 		/* Ignore the error and continue */
 		if(vruiVerbose&&vruiMaster)
@@ -325,12 +376,12 @@ bool vruiMergeConfigurationFile(const char* configFileName)
 		
 		return false;
 		}
-	catch(std::runtime_error error)
+	catch(const std::runtime_error& err)
 		{
 		/* Bail out on errors in user configuration file: */
 		if(vruiVerbose&&vruiMaster)
 			std::cout<<" error"<<std::endl;
-		std::cerr<<vruiErrorHeader<<"Caught exception "<<error.what()<<" while merging configuration file "<<configFileName<<std::endl;
+		std::cerr<<vruiErrorHeader<<"Caught exception "<<err.what()<<" while merging configuration file "<<configFileName<<std::endl;
 		vruiErrorShutdown(true);
 		
 		return false;
@@ -351,10 +402,10 @@ void vruiOpenConfigurationFile(const char* userConfigDir,const char* appPath)
 			std::cout<<"Vrui: Reading system-wide configuration file "<<systemConfigFileName<<std::endl;
 		vruiConfigFile=new Misc::ConfigurationFile(systemConfigFileName.c_str());
 		}
-	catch(std::runtime_error error)
+	catch(const std::runtime_error& err)
 		{
 		/* Bail out: */
-		std::cerr<<vruiErrorHeader<<"Caught exception "<<error.what()<<" while reading system-wide configuration file "<<systemConfigFileName<<std::endl;
+		std::cerr<<vruiErrorHeader<<"Caught exception "<<err.what()<<" while reading system-wide configuration file "<<systemConfigFileName<<std::endl;
 		vruiErrorShutdown(true);
 		}
 	
@@ -371,18 +422,12 @@ void vruiOpenConfigurationFile(const char* userConfigDir,const char* appPath)
 		vruiMergeConfigurationFile(userConfigFileName.c_str());
 		}
 	
-	/* Extract the application name: */
-	const char* appName=appPath;
-	for(const char* apPtr=appPath;*apPtr!='\0';++apPtr)
-		if(*apPtr=='/')
-			appName=apPtr+1;
-	
 	/* Merge a system-wide per-application configuration file if it exists: */
 	std::string systemAppConfigFileName=VRUI_INTERNAL_CONFIG_SYSCONFIGDIR;
 	systemAppConfigFileName.push_back('/');
 	systemAppConfigFileName.append(VRUI_INTERNAL_CONFIG_APPCONFIGDIR);
 	systemAppConfigFileName.push_back('/');
-	systemAppConfigFileName.append(appName);
+	systemAppConfigFileName.append(vruiApplicationName);
 	systemAppConfigFileName.append(VRUI_INTERNAL_CONFIG_CONFIGFILESUFFIX);
 	vruiMergeConfigurationFile(systemAppConfigFileName.c_str());
 	
@@ -394,7 +439,7 @@ void vruiOpenConfigurationFile(const char* userConfigDir,const char* appPath)
 		userAppConfigFileName.push_back('/');
 		userAppConfigFileName.append(VRUI_INTERNAL_CONFIG_APPCONFIGDIR);
 		userAppConfigFileName.push_back('/');
-		userAppConfigFileName.append(appName);
+		userAppConfigFileName.append(vruiApplicationName);
 		userAppConfigFileName.append(VRUI_INTERNAL_CONFIG_CONFIGFILESUFFIX);
 		
 		/* Merge the per-user per-application configuration file if it exists: */
@@ -460,12 +505,16 @@ struct VruiWindowGroupCreator // Structure defining a group of windows rendered 
 	
 	/* Elements: */
 	public:
+	int groupId; // ID of the window group
 	std::vector<VruiWindow> windows; // List of the windows in this group
+	int visualFlags; // Union of visual flags requested by all windows in this group
 	InputDeviceAdapterMouse* mouseAdapter; // Pointer to the mouse input device adapter to be used for this window group
 	
 	/* Constructors and destructors: */
-	VruiWindowGroupCreator(void)
-		:mouseAdapter(0)
+	VruiWindowGroupCreator(int sGroupId)
+		:groupId(sGroupId),
+		 visualFlags(0x0),
+		 mouseAdapter(0)
 		{
 		}
 	};
@@ -475,6 +524,25 @@ bool vruiCreateWindowGroup(const VruiWindowGroupCreator& group)
 	GLContextPtr context;
 	VRWindow* firstWindow=0;
 	bool allWindowsOk=true;
+	if(vruiVerbose)
+		{
+		std::cout<<vruiErrorHeader<<"Creating window group "<<group.groupId<<" containing "<<group.windows.size()<<(group.windows.size()!=1?" windows":" window")<<" with visual type";
+		if(group.visualFlags&VRWindow::DIRECT)
+			{
+			std::cout<<" direct";
+			if(group.visualFlags&VRWindow::STEREO)
+				std::cout<<" stereo";
+			if((group.visualFlags&VRWindow::MULTISAMPLEMASK)>1)
+				std::cout<<" with "<<(group.visualFlags&VRWindow::MULTISAMPLEMASK)<<" samples per pixel";
+			}
+		else
+			{
+			std::cout<<" indirect";
+			if(group.visualFlags&VRWindow::BACKBUFFER)
+				std::cout<<" double-buffered";
+			}
+		std::cout<<std::endl;
+		}
 	for(std::vector<VruiWindowGroupCreator::VruiWindow>::const_iterator wIt=group.windows.begin();wIt!=group.windows.end();++wIt)
 		{
 		try
@@ -511,7 +579,7 @@ bool vruiCreateWindowGroup(const VruiWindowGroupCreator& group)
 			if(!context->isValid())
 				{
 				/* Initialize the OpenGL context: */
-				VRWindow::initContext(context.getPointer(),outputConfiguration.screen,vruiState->windowProperties,cfs);
+				VRWindow::initContext(context.getPointer(),outputConfiguration.screen,vruiState->windowProperties,group.visualFlags);
 				}
 			
 			/* Create the new window: */
@@ -522,7 +590,7 @@ bool vruiCreateWindowGroup(const VruiWindowGroupCreator& group)
 			/* Let Vrui quit when the window is closed: */
 			vruiWindows[wIt->windowIndex]->getCloseCallbacks().add(vruiState,&VruiState::quitCallback);
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			std::cerr<<vruiErrorHeader<<"Caught exception "<<err.what()<<" while initializing rendering window "<<wIt->windowIndex<<std::endl;
 			delete vruiWindows[wIt->windowIndex];
@@ -645,14 +713,14 @@ void init(int& argc,char**& argv,char**&)
 			
 			/* Read the entire configuration file and the root section name: */
 			vruiConfigFile=new Misc::ConfigurationFile(*vruiPipe);
-			char* rootSectionName=Misc::readCString(*vruiPipe);
+			vruiConfigRootSectionName=Misc::readCString(*vruiPipe);
 			
 			/* Go to the given root section: */
 			vruiConfigFile->setCurrentSection("/Vrui");
-			vruiConfigFile->setCurrentSection(rootSectionName);
-			delete[] rootSectionName;
+			vruiConfigFile->setCurrentSection(vruiConfigRootSectionName);
 			
-			/* Read the application's command line: */
+			/* Read the application's name and command line: */
+			vruiApplicationName=Misc::readCString(*vruiPipe);
 			vruiSlaveArgc=vruiPipe->read<int>();
 			vruiSlaveArgv=new char*[vruiSlaveArgc+1];
 			vruiSlaveArgvShadow=new char*[vruiSlaveArgc+1];
@@ -666,10 +734,13 @@ void init(int& argc,char**& argv,char**&)
 			/* Override the actual command line provided by the caller: */
 			argc=vruiSlaveArgc;
 			argv=vruiSlaveArgvShadow;
+			
+			/* Register Vrui's cluster multiplexer with the Opener object of the Cluster library: */
+			Cluster::Opener::getOpener()->setMultiplexer(vruiMultiplexer);
 			}
-		catch(std::runtime_error error)
+		catch(const std::runtime_error& err)
 			{
-			std::cerr<<"Vrui (node "<<nodeIndex<<"): Caught exception "<<error.what()<<" while initializing cluster communication"<<std::endl;
+			std::cerr<<"Vrui (node "<<nodeIndex<<"): Caught exception "<<err.what()<<" while initializing cluster communication"<<std::endl;
 			vruiErrorShutdown(true);
 			}
 		}
@@ -678,6 +749,16 @@ void init(int& argc,char**& argv,char**&)
 		/***********************
 		This is the master node:
 		***********************/
+		
+		/* Extract the application name: */
+		const char* appNameStart=argv[0];
+		const char* cPtr;
+		for(cPtr=appNameStart;*cPtr!='\0';++cPtr)
+			if(*cPtr=='/')
+				appNameStart=cPtr+1;
+		vruiApplicationName=new char[cPtr-appNameStart+1];
+		memcpy(vruiApplicationName,appNameStart,cPtr-appNameStart);
+		vruiApplicationName[cPtr-appNameStart]='\0';
 		
 		/* Check the command line for -vruiVerbose and -vruiHelp flags: */
 		for(int i=1;i<argc;++i)
@@ -940,8 +1021,11 @@ void init(int& argc,char**& argv,char**&)
 					}
 				}
 		
-		/* Go to the configuration's root section: */
+		/* Go to the configuration's root section and save the root section name for later: */
 		vruiGoToRootSection(rootSectionName,vruiVerbose);
+		size_t rsnLength=strlen(rootSectionName);
+		vruiConfigRootSectionName=new char[rsnLength+1];
+		memcpy(vruiConfigRootSectionName,rootSectionName,rsnLength+1);
 		
 		/* Check if this is a multipipe environment: */
 		if(vruiConfigFile->retrieveValue<bool>("./enableMultipipe",false))
@@ -1042,9 +1126,10 @@ void init(int& argc,char**& argv,char**&)
 				
 				/* Send the entire Vrui configuration file and the root section name across the pipe: */
 				vruiConfigFile->writeToPipe(*vruiPipe);
-				Misc::writeCString(rootSectionName,*vruiPipe);
+				Misc::writeCString(vruiConfigRootSectionName,*vruiPipe);
 				
-				/* Write the application's command line: */
+				/* Write the application's name and command line: */
+				Misc::writeCString(vruiApplicationName,*vruiPipe);
 				vruiPipe->write<int>(argc);
 				for(int i=0;i<argc;++i)
 					Misc::writeCString(argv[i],*vruiPipe);
@@ -1054,12 +1139,15 @@ void init(int& argc,char**& argv,char**&)
 				
 				if(vruiVerbose)
 					std::cout<<" Ok"<<std::endl;
+				
+				/* Register Vrui's cluster multiplexer with the Opener object of the Cluster library: */
+				Cluster::Opener::getOpener()->setMultiplexer(vruiMultiplexer);
 				}
-			catch(std::runtime_error error)
+			catch(const std::runtime_error& err)
 				{
 				if(vruiVerbose)
 					std::cout<<" error"<<std::endl;
-				std::cerr<<"Master node: Caught exception "<<error.what()<<" while initializing cluster communication"<<std::endl;
+				std::cerr<<"Master node: Caught exception "<<err.what()<<" while initializing cluster communication"<<std::endl;
 				vruiErrorShutdown(true);
 				}
 			}
@@ -1078,11 +1166,11 @@ void init(int& argc,char**& argv,char**&)
 		if(vruiVerbose&&vruiMaster)
 			std::cout<<" Ok"<<std::endl;
 		}
-	catch(std::runtime_error error)
+	catch(const std::runtime_error& err)
 		{
 		if(vruiVerbose&&vruiMaster)
 			std::cout<<" error"<<std::endl;
-		std::cerr<<vruiErrorHeader<<"Caught exception "<<error.what()<<" while initializing Vrui state object"<<std::endl;
+		std::cerr<<vruiErrorHeader<<"Caught exception "<<err.what()<<" while initializing Vrui state object"<<std::endl;
 		vruiErrorShutdown(true);
 		}
 	
@@ -1155,7 +1243,7 @@ void init(int& argc,char**& argv,char**&)
 						if(vruiVerbose&&vruiMaster)
 							std::cout<<" Ok"<<std::endl;
 						}
-					catch(std::runtime_error err)
+					catch(const std::runtime_error& err)
 						{
 						/* Print a warning and carry on: */
 						if(vruiVerbose&&vruiMaster)
@@ -1192,7 +1280,7 @@ void init(int& argc,char**& argv,char**&)
 						if(vruiVerbose&&vruiMaster)
 							std::cout<<" Ok"<<std::endl;
 						}
-					catch(std::runtime_error err)
+					catch(const std::runtime_error& err)
 						{
 						/* Print a warning and carry on: */
 						if(vruiVerbose&&vruiMaster)
@@ -1239,7 +1327,7 @@ void init(int& argc,char**& argv,char**&)
 							if(vruiVerbose&&vruiMaster)
 								std::cout<<" Ok"<<std::endl;
 							}
-						catch(std::runtime_error err)
+						catch(const std::runtime_error& err)
 							{
 							/* Print a warning and carry on: */
 							if(vruiVerbose&&vruiMaster)
@@ -1318,16 +1406,6 @@ void init(int& argc,char**& argv,char**&)
 			std::cout<<" \""<<argv[i]<<'"';
 		std::cout<<std::endl;
 		}
-	
-	/* Extract the application name: */
-	const char* appNameStart=argv[0];
-	const char* cPtr;
-	for(cPtr=appNameStart;*cPtr!='\0';++cPtr)
-		if(*cPtr=='/')
-			appNameStart=cPtr+1;
-	vruiApplicationName=new char[cPtr-appNameStart+1];
-	memcpy(vruiApplicationName,appNameStart,cPtr-appNameStart);
-	vruiApplicationName[cPtr-appNameStart]='\0';
 	}
 
 void startDisplay(void)
@@ -1426,13 +1504,14 @@ void startDisplay(void)
 			if(wgIt.isFinished())
 				{
 				/* Start a new window group: */
-				VruiWindowGroupCreator newGroup;
+				VruiWindowGroupCreator newGroup(groupId);
 				VruiWindowGroupCreator::VruiWindow newWindow;
 				newWindow.windowIndex=windowIndex;
 				newWindow.windowConfigFileSection=windowSection;
 				newGroup.windows.push_back(newWindow);
+				newGroup.visualFlags=VRWindow::getVisualFlags(windowSection);
 				newGroup.mouseAdapter=mouseAdapter;
-				windowGroups[groupId]=newGroup;
+				windowGroups.setEntry(WindowGroupMap::Entry(groupId,newGroup));
 				
 				/* Associate the new group with the display name: */
 				displayGroups[displayName]=groupId;
@@ -1446,6 +1525,7 @@ void startDisplay(void)
 				newWindow.windowIndex=windowIndex;
 				newWindow.windowConfigFileSection=windowSection;
 				wgIt->getDest().windows.push_back(newWindow);
+				wgIt->getDest().visualFlags|=VRWindow::getVisualFlags(windowSection);
 				}
 			}
 		
@@ -1531,9 +1611,9 @@ void startDisplay(void)
 			}
 		}
 		}
-	catch(std::runtime_error error)
+	catch(const std::runtime_error& err)
 		{
-		std::cerr<<vruiErrorHeader<<"Caught exception "<<error.what()<<" while initializing rendering windows"<<std::endl;
+		std::cerr<<vruiErrorHeader<<"Caught exception "<<err.what()<<" while initializing rendering windows"<<std::endl;
 		vruiErrorShutdown(true);
 		}
 	catch(...)
@@ -1601,42 +1681,47 @@ void startSound(void)
 		vruiSoundContexts[0]->makeCurrent();
 		vruiSoundContexts[0]->getContextData().updateThings();
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		std::cerr<<vruiErrorHeader<<"Disabling OpenAL sound due to exception "<<err.what()<<std::endl;
-		if(vruiSoundContexts[0]!=0)
+		if(vruiSoundContexts!=0)
 			{
-			delete vruiSoundContexts[0];
-			vruiSoundContexts[0]=0;
+			if(vruiSoundContexts[0]!=0)
+				{
+				delete vruiSoundContexts[0];
+				vruiSoundContexts[0]=0;
+				}
+			delete[] vruiSoundContexts;
+			vruiSoundContexts=0;
+			vruiNumSoundContexts=0;
 			}
 		}
 	catch(...)
 		{
 		std::cerr<<vruiErrorHeader<<"Disabling OpenAL sound due to spurious exception"<<std::endl;
-		if(vruiSoundContexts[0]!=0)
+		if(vruiSoundContexts!=0)
 			{
-			delete vruiSoundContexts[0];
-			vruiSoundContexts[0]=0;
+			if(vruiSoundContexts[0]!=0)
+				{
+				delete vruiSoundContexts[0];
+				vruiSoundContexts[0]=0;
+				}
+			delete[] vruiSoundContexts;
+			vruiSoundContexts=0;
+			vruiNumSoundContexts=0;
 			}
 		}
 	#endif
 	}
 
-bool vruiHandleAllEvents(bool allowBlocking,bool checkStdin)
+bool vruiHandleAllEvents(bool allowBlocking)
 	{
 	bool handledEvents=false;
 	
 	/* If there are no pending events, and blocking is allowed, block until something happens: */
-	Misc::FdSet readFds;
+	Misc::FdSet readFdSet(vruiReadFdSet);
 	if(allowBlocking)
 		{
-		/* Fill the file descriptor set to wait for events: */
-		if(checkStdin)
-			readFds.add(fileno(stdin)); // Return on input on stdin, as well
-		readFds.add(vruiEventPipe[0]);
-		for(int i=0;i<vruiNumWindowGroups;++i)
-			readFds.add(vruiWindowGroups[i].displayFd);
-		
 		/* Block until any events arrive: */
 		if(vruiState->nextFrameTime!=0.0||vruiState->timerEventScheduler->hasPendingEvents())
 			{
@@ -1660,89 +1745,103 @@ bool vruiHandleAllEvents(bool allowBlocking,bool checkStdin)
 				}
 			
 			/* Block until the next scheduled timer event comes due: */
-			if(Misc::select(&readFds,0,0,&timeout)==0)
+			if(Misc::select(&readFdSet,0,0,&timeout)==0)
 				handledEvents=true; // Must stop waiting if a timer event is due
 			}
 		else
 			{
 			/* Block until kingdom come: */
-			Misc::select(&readFds,0,0);
+			Misc::select(&readFdSet,0,0);
 			}
+		}
+	else
+		{
+		/* Check for available data, but don't block: */
+		struct timeval timeout;
+		timeout.tv_sec=0;
+		timeout.tv_usec=0;
+		Misc::select(&readFdSet,0,0,&timeout);
 		}
 	
 	/* Process any pending X events: */
 	for(int i=0;i<vruiNumWindowGroups;++i)
 		{
-		/* Process all pending events for this display connection: */
-		bool isKeyRepeat=false; // Flag if the next event is a key repeat event
-		while(XPending(vruiWindowGroups[i].display))
+		/* For some reason, the following check drops X events in non-blocking mode: */
+		// if(readFdSet.isSet(vruiWindowGroups[i].displayFd))
 			{
-			/* Get the next event: */
-			XEvent event;
-			XNextEvent(vruiWindowGroups[i].display,&event);
-			
-			/* Check for key repeat events (a KeyRelease immediately followed by a KeyPress with the same time stamp): */
-			if(event.type==KeyRelease&&XPending(vruiWindowGroups[i].display))
+			/* Process all pending events for this display connection: */
+			bool isKeyRepeat=false; // Flag if the next event is a key repeat event
+			while(XPending(vruiWindowGroups[i].display))
 				{
-				/* Check if the next event is a KeyPress with the same time stamp: */
-				XEvent nextEvent;
-				XPeekEvent(vruiWindowGroups[i].display,&nextEvent);
-				if(nextEvent.type==KeyPress&&nextEvent.xkey.window==event.xkey.window&&nextEvent.xkey.time==event.xkey.time&&nextEvent.xkey.keycode==event.xkey.keycode)
+				/* Get the next event: */
+				XEvent event;
+				XNextEvent(vruiWindowGroups[i].display,&event);
+				
+				/* Check for key repeat events (a KeyRelease immediately followed by a KeyPress with the same time stamp): */
+				if(event.type==KeyRelease&&XPending(vruiWindowGroups[i].display))
 					{
-					/* Mark the next event as a key repeat: */
-					isKeyRepeat=true;
-					continue;
+					/* Check if the next event is a KeyPress with the same time stamp: */
+					XEvent nextEvent;
+					XPeekEvent(vruiWindowGroups[i].display,&nextEvent);
+					if(nextEvent.type==KeyPress&&nextEvent.xkey.window==event.xkey.window&&nextEvent.xkey.time==event.xkey.time&&nextEvent.xkey.keycode==event.xkey.keycode)
+						{
+						/* Mark the next event as a key repeat: */
+						isKeyRepeat=true;
+						continue;
+						}
 					}
+				
+				/* Pass it to all windows interested in it: */
+				bool finishProcessing=false;
+				for(std::vector<VruiWindowGroup::Window>::iterator wIt=vruiWindowGroups[i].windows.begin();wIt!=vruiWindowGroups[i].windows.end();++wIt)
+					if(wIt->window->isEventForWindow(event))
+						finishProcessing=wIt->window->processEvent(event)||finishProcessing;
+				handledEvents=!isKeyRepeat||finishProcessing;
+				isKeyRepeat=false;
+				
+				/* Stop processing events if something significant happened: */
+				if(finishProcessing)
+					goto doneWithXEvents;
 				}
-			
-			/* Pass it to all windows interested in it: */
-			bool finishProcessing=false;
-			for(std::vector<VruiWindowGroup::Window>::iterator wIt=vruiWindowGroups[i].windows.begin();wIt!=vruiWindowGroups[i].windows.end();++wIt)
-				if(wIt->window->isEventForWindow(event))
-					finishProcessing=wIt->window->processEvent(event)||finishProcessing;
-			handledEvents=!isKeyRepeat||finishProcessing;
-			isKeyRepeat=false;
-			
-			/* Stop processing events if something significant happened: */
-			if(finishProcessing)
-				goto doneWithEvents;
 			}
 		}
-	doneWithEvents:
+	doneWithXEvents:
 	
-	/* Read pending data from stdin and exit if escape key is pressed: */
-	if(checkStdin)
+	/* Read pending bytes from the event pipe: */
+	if(readFdSet.isSet(vruiEventPipe[0]))
 		{
-		if(!allowBlocking)
-			{
-			/* Check for pending key presses real quick: */
-			struct timeval timeout;
-			timeout.tv_sec=0;
-			timeout.tv_usec=0;
-			readFds.add(fileno(stdin));
-			Misc::select(&readFds,0,0,&timeout);
-			}
-		if(readFds.isSet(fileno(stdin)))
-			{
-			/* Read the next character from stdin and check if it's ESC: */
-			char in='\0';
-			if(read(fileno(stdin),&in,sizeof(char))>0)
-				{
-				if(in==27)
-					{
-					/* Call the quit callback: */
-					Misc::CallbackData cbData;
-					vruiState->quitCallback(&cbData);
-					}
-				handledEvents=true;
-				}
-			}
+		char readBuffer[128]; // More than enough
+		if(read(vruiEventPipe[0],readBuffer,sizeof(readBuffer))>0)
+			handledEvents=true;
 		}
 	
-	/* Read accumulated bytes from the event pipe (it's nonblocking): */
-	char readBuffer[64]; // More than enough
-	if(read(vruiEventPipe[0],readBuffer,sizeof(readBuffer))>0)
+	/* Read and dispatch commands from stdin: */
+	if(readFdSet.isSet(fileno(stdin)))
+		{
+		/* Dispatch commands and check if there was an error: */
+		if(vruiState->commandDispatcher.dispatchCommands(fileno(stdin)))
+			{
+			/* Stop listening on stdin: */
+			vruiReadFdSet.remove(fileno(stdin));
+			}
 		handledEvents=true;
+		}
+	
+	/* Read and dispatch commands from the command pipe: */
+	if(vruiCommandPipe>=0&&readFdSet.isSet(vruiCommandPipe))
+		{
+		/* Dispatch commands and check if there was an error: */
+		if(vruiState->commandDispatcher.dispatchCommands(vruiCommandPipe))
+			{
+			/* Stop listening on the command pipe: */
+			vruiReadFdSet.remove(vruiCommandPipe);
+			}
+		handledEvents=true;
+		}
+	
+	/* Call any synchronous I/O callbacks whose file descriptors have pending data: */
+	for(SynchronousIOCallbackList::const_iterator siocbIt=vruiSynchronousIOCallbacks.begin();siocbIt!=vruiSynchronousIOCallbacks.end();++siocbIt)
+		handledEvents=siocbIt->callIfPending(readFdSet)||handledEvents;
 	
 	return handledEvents;
 	}
@@ -1751,18 +1850,21 @@ void vruiInnerLoopMultiWindow(void)
 	{
 	bool keepRunning=true;
 	bool firstFrame=true;
+	Realtime::TimePointMonotonic nextFrameRate;
+	nextFrameRate+=Realtime::TimeVector(1,0);
+	unsigned int numFrames=0;
 	while(keepRunning)
 		{
 		/* Handle all events, blocking if there are none unless in continuous mode: */
 		if(firstFrame||vruiState->updateContinuously)
 			{
 			/* Check for and handle events without blocking: */
-			vruiHandleAllEvents(false,vruiNumWindows==0&&vruiState->master);
+			vruiHandleAllEvents(false);
 			}
 		else
 			{
 			/* Wait for and process events until something actually happens: */
-			while(!vruiHandleAllEvents(true,vruiNumWindows==0&&vruiState->master))
+			while(!vruiHandleAllEvents(true))
 				;
 			}
 		
@@ -1875,8 +1977,15 @@ void vruiInnerLoopMultiWindow(void)
 		/* Print current frame rate on head node's console for window-less Vrui processes: */
 		if(vruiNumWindows==0&&vruiState->master)
 			{
-			printf("Current frame rate: %8.3f fps\r",1.0/vruiState->currentFrameTime);
-			fflush(stdout);
+			++numFrames;
+			Realtime::TimePointMonotonic now;
+			if(now>=nextFrameRate)
+				{
+				printf("Current frame rate: %8u fps\r",numFrames);
+				fflush(stdout);
+				nextFrameRate+=Realtime::TimeVector(1,0);
+				numFrames=0;
+				}
 			}
 		
 		firstFrame=false;
@@ -1910,12 +2019,12 @@ void vruiInnerLoopSingleWindow(void)
 		if(firstFrame||vruiState->updateContinuously)
 			{
 			/* Check for and handle events without blocking: */
-			vruiHandleAllEvents(false,false);
+			vruiHandleAllEvents(false);
 			}
 		else
 			{
 			/* Wait for and process events until something actually happens: */
-			while(!vruiHandleAllEvents(true,false))
+			while(!vruiHandleAllEvents(true))
 				;
 			}
 		
@@ -2024,25 +2133,48 @@ void mainLoop(void)
 	if(vruiVerbose&&vruiMaster)
 		std::cout<<"Vrui: Preparing main loop..."<<std::flush;
 	vruiState->prepareMainLoop();
-	
-	if(vruiState->master&&vruiNumWindows==0)
-		{
-		/* Disable line buffering on stdin to detect key presses in the inner loop: */
-		termios term;
-		tcgetattr(fileno(stdin),&term);
-		term.c_lflag&=~ICANON;
-		tcsetattr(fileno(stdin),TCSANOW,&term);
-		setbuf(stdin,0);
-		
-		printf("Press Esc to exit...\n");
-		}
-	
 	if(vruiVerbose&&vruiMaster)
 		std::cout<<" Ok"<<std::endl;
 	
-	/* Perform the main loop until the ESC key is hit: */
+	/* Construct the set of file descriptors to watch for events: */
+	vruiReadFdSet.add(vruiEventPipe[0]);
+	for(int i=0;i<vruiNumWindowGroups;++i)
+		vruiReadFdSet.add(vruiWindowGroups[i].displayFd);
+	std::string commandPipeName=vruiConfigFile->retrieveString("./commandPipeName",std::string());
+	if(!commandPipeName.empty())
+		{
+		/* Open the command pipe: */
+		vruiCommandPipe=open(commandPipeName.c_str(),O_RDONLY|O_NONBLOCK);
+		if(vruiCommandPipe>=0)
+			{
+			/* Open an extra (non-writing) writer to hold the command pipe open between external writers: */
+			vruiCommandPipeHolder=open(commandPipeName.c_str(),O_WRONLY|O_NONBLOCK);
+			}
+		if(vruiCommandPipeHolder>=0)
+			{
+			vruiReadFdSet.add(vruiCommandPipe);
+			if(vruiVerbose&&vruiMaster)
+				std::cout<<"Vrui: Listening for commands on pipe "<<commandPipeName<<std::endl;
+			}
+		else
+			{
+			int error=errno;
+			if(vruiMaster)
+				std::cout<<"Vrui: Unable to listen for commands from command pipe "<<commandPipeName<<" due to error "<<error<<" ("<<strerror(error)<<")"<<std::endl;
+			if(vruiCommandPipe>=0)
+				close(vruiCommandPipe);
+			vruiCommandPipe=-1;
+			}
+		}
+	
+	/* Listen for pipe commands on stdin: */
+	vruiReadFdSet.add(fileno(stdin));
+	
+	/* Perform the main loop until the quit command is entered: */
 	if(vruiVerbose&&vruiMaster)
 		std::cout<<"Vrui: Entering main loop"<<std::endl;
+	if(vruiState->master&&vruiNumWindows==0)
+		std::cout<<"Vrui: Enter \"quit\" to exit from main loop..."<<std::endl;
 	if(vruiNumWindows!=1)
 		vruiInnerLoopMultiWindow();
 	else
@@ -2127,6 +2259,9 @@ void deinit(void)
 		if(vruiVerbose&&vruiMaster)
 			std::cout<<"Vrui: Exiting cluster mode"<<std::endl;
 		
+		/* Unregister the multiplexer from the Cluster::Opener object: */
+		Cluster::Opener::getOpener()->setMultiplexer(0);
+		
 		/* Destroy the multiplexer: */
 		if(vruiVerbose&&vruiMaster)
 			std::cout<<"Vrui: Shutting down intra-cluster communication..."<<std::flush;
@@ -2161,6 +2296,14 @@ void deinit(void)
 	
 	/* Close the configuration file: */
 	delete vruiConfigFile;
+	delete[] vruiConfigRootSectionName;
+	
+	/* Close the command pipe: */
+	if(vruiCommandPipe>=0)
+		{
+		close(vruiCommandPipeHolder);
+		close(vruiCommandPipe);
+		}
 	
 	/* Close the vrui event pipe: */
 	close(vruiEventPipe[0]);
@@ -2175,6 +2318,21 @@ void shutdown(void)
 		vruiAsynchronousShutdown=true;
 		requestUpdate();
 		}
+	}
+
+const char* getRootSectionName(void)
+	{
+	return vruiConfigRootSectionName;
+	}
+
+Misc::ConfigurationFileSection getAppConfigurationSection(void)
+	{
+	return vruiConfigFile->getSection(vruiApplicationName);
+	}
+
+Misc::ConfigurationFileSection getModuleConfigurationSection(const char* moduleName)
+	{
+	return vruiConfigFile->getSection(moduleName);
 	}
 
 int getNumWindows(void)
@@ -2236,6 +2394,42 @@ ViewSpecification calcViewSpec(int windowIndex,int eyeIndex)
 		}
 	
 	return viewSpec;
+	}
+
+void addSynchronousIOCallback(int fd,SynchronousIOCallback newIOCallback,void* newIOCallbackData)
+	{
+	if(vruiState->master)
+		{
+		/* Add the given file descriptor to Vrui's watch set: */
+		vruiReadFdSet.add(fd);
+		
+		/* Add a new callback slot to the list: */
+		vruiSynchronousIOCallbacks.push_back(SynchronousIOCallbackSlot(fd,newIOCallback,newIOCallbackData));
+		
+		/* Request an update to handle any already-pending data on the new file descriptor: */
+		requestUpdate();
+		}
+	}
+
+void removeSynchronousIOCallback(int fd)
+	{
+	if(vruiState->master)
+		{
+		/* Remove the given file descriptor from Vrui's watch set: */
+		vruiReadFdSet.remove(fd);
+		
+		/* Remove the callback slot for the given file descriptor from the list: */
+		for(SynchronousIOCallbackList::iterator siocbIt=vruiSynchronousIOCallbacks.begin();siocbIt!=vruiSynchronousIOCallbacks.end();++siocbIt)
+			if(siocbIt->fd==fd)
+				{
+				/* Remove the callback slot: */
+				*siocbIt=vruiSynchronousIOCallbacks.back();
+				vruiSynchronousIOCallbacks.pop_back();
+				
+				/* Stop looking: */
+				break;
+				}
+		}
 	}
 
 void requestUpdate(void)

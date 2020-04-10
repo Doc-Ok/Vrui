@@ -107,6 +107,7 @@ class MouseNavigationTool:public NavigationTool
 	Scalar currentValue; // Value of the associated valuator
 	bool dolly; // Flag whether to dolly instead of scale
 	NavigationMode navigationMode; // The tool's current navigation mode
+	double wheelNavEndTime; // Application time at which to end the current wheel scaling or dollying operation
 	Point screenCenter; // Center of screen; center of rotation and scaling operations
 	Vector dollyDirection; // Transformation direction of dollying
 	Point motionStart; // Start position of mouse motion

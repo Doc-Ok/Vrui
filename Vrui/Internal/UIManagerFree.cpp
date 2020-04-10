@@ -1,7 +1,7 @@
 /***********************************************************************
 UIManagerFree - UI manager class that allows arbitrary positions and
 orientations for UI components.
-Copyright (c) 2015-2018 Oliver Kreylos
+Copyright (c) 2015-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -113,9 +113,10 @@ Point UIManagerFree::projectRay(const Ray& ray) const
 	return ray.getOrigin();
 	}
 
-void UIManagerFree::projectDevice(InputDevice* device) const
+void UIManagerFree::projectDevice(InputDevice* device,const TrackerState& proposedTransform) const
 	{
-	/* Do nothing... */
+	/* Assign the proposed transformation to the device without change: */
+	device->setTransformation(proposedTransform);
 	}
 
 ONTransform UIManagerFree::calcUITransform(const Point& point) const

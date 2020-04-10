@@ -1,6 +1,6 @@
 /***********************************************************************
 TextField - Class for labels displaying values as text.
-Copyright (c) 2006-2014 Oliver Kreylos
+Copyright (c) 2006-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -19,9 +19,10 @@ with the GLMotif Widget Library; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 ***********************************************************************/
 
+#include <GLMotif/TextField.icpp>
+
 #include <string.h>
-#include <stdio.h>
-#include <Misc/PrintInteger.h>
+#include <string>
 #include <GL/gl.h>
 #include <GL/GLColorTemplates.h>
 #include <GL/GLVertexTemplates.h>
@@ -31,8 +32,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <GLMotif/StyleSheet.h>
 #include <GLMotif/Container.h>
 #include <GLMotif/WidgetManager.h>
-
-#include <GLMotif/TextField.h>
 
 namespace GLMotif {
 
@@ -116,7 +115,7 @@ void TextField::insert(int insertLength,const char* insert)
 TextField::TextField(const char* sName,Container* sParent,const GLFont* sFont,GLint sCharWidth,bool sManageChild)
 	:Label(sName,sParent,"",sFont,false),
 	 charWidth(sCharWidth),
-	 fieldWidth(-1),precision(-1),floatFormat(SMART),
+	 fieldWidth(-1),precision(-1),valueType(ALPHA),floatFormat(SMART),
 	 editable(false),focus(false),anchorPos(0),cursorPos(0),cursorModelPos(0.0f),buttonDownTime(0.0),edited(false)
 	{
 	/* Get the style sheet: */
@@ -137,7 +136,7 @@ TextField::TextField(const char* sName,Container* sParent,const GLFont* sFont,GL
 TextField::TextField(const char* sName,Container* sParent,GLint sCharWidth,bool sManageChild)
 	:Label(sName,sParent,"",false),
 	 charWidth(sCharWidth),
-	 fieldWidth(-1),precision(-1),floatFormat(SMART),
+	 fieldWidth(-1),precision(-1),valueType(ALPHA),floatFormat(SMART),
 	 editable(false),focus(false),anchorPos(0),cursorPos(0),cursorModelPos(0.0f),buttonDownTime(0.0),edited(false)
 	{
 	/* Get the style sheet: */
@@ -163,6 +162,36 @@ TextField::~TextField(void)
 		WidgetManager* manager=getManager();
 		if(manager!=0)
 			manager->releaseFocus(this);
+		}
+	}
+
+void TextField::updateVariables(void)
+	{
+	/* Check if tracking is active: */
+	if(isTracking())
+		{
+		/* Set the text field's string based on its value type: */
+		switch(valueType)
+			{
+			case ALPHA:
+				{
+				std::string s=getTrackedString(fieldWidth,precision);
+				setString(s.c_str(),s.c_str()+s.size());
+				break;
+				}
+			
+			case UINT:
+				setValue((unsigned int)(getTrackedUInt()));
+				break;
+			
+			case INT:
+				setValue(int(getTrackedSInt()));
+				break;
+			
+			case FLOAT:
+				setValue(double(getTrackedFloat()));
+				break;
+			}
 		}
 	}
 
@@ -267,9 +296,9 @@ void TextField::pointerButtonDown(Event& event)
 	if(manager!=0&&(focus||manager->requestFocus(this)))
 		{
 		/* Check if this was a double-click: */
-		double time=getManager()->getTime();
+		double time=manager->getTime();
 		lastPointerPos=event.getWidgetPoint().getPoint()[0];
-		if(time-buttonDownTime<getManager()->getStyleSheet()->multiClickTime)
+		if(time-buttonDownTime<manager->getStyleSheet()->multiClickTime)
 			{
 			/* Select the entire text field: */
 			anchorPos=0;
@@ -293,6 +322,21 @@ void TextField::pointerButtonDown(Event& event)
 
 void TextField::pointerButtonUp(Event& event)
 	{
+	WidgetManager* manager=getManager();
+	if(manager!=0)
+		{
+		/* Request text entry based on the value type: */
+		if(valueType==ALPHA)
+			{
+			/* Request alphanumeric text entry: */
+			manager->requestAlphaNumericEntry(this);
+			}
+		else
+			{
+			/* Request numeric text entry: */
+			manager->requestNumericEntry(this);
+			}
+		}
 	}
 
 void TextField::pointerMotion(Event& event)
@@ -324,6 +368,18 @@ bool TextField::giveTextFocus(void)
 		
 		focus=true;
 		
+		/* Request text entry based on the value type: */
+		if(valueType==ALPHA)
+			{
+			/* Request alphanumeric text entry: */
+			getManager()->requestAlphaNumericEntry(this);
+			}
+		else
+			{
+			/* Request numeric text entry: */
+			getManager()->requestNumericEntry(this);
+			}
+		
 		/* Invalidate the visual representation: */
 		label.invalidate();
 		update();
@@ -340,6 +396,9 @@ void TextField::takeTextFocus(void)
 	/* Call value changed callbacks if the text field has been edited: */
 	if(edited)
 		{
+		/* Update a potential tracked variable: */
+		setTrackedString(label.getString());
+		
 		/* Call the value changed callbacks: */
 		ValueChangedCallbackData cbData(this,label.getString(),false);
 		valueChangedCallbacks.call(&cbData);
@@ -347,6 +406,9 @@ void TextField::takeTextFocus(void)
 		/* Clear the flag: */
 		edited=false;
 		}
+	
+	/* Release alphanumeric text entry: */
+	getManager()->textEntryFinished();
 	
 	/* Invalidate the visual representation: */
 	label.invalidate();
@@ -466,6 +528,10 @@ void TextField::textControlEvent(const TextControlEvent& event)
 		
 		case TextControlEvent::CONFIRM:
 			{
+			/* Update a potential tracked variable: */
+			if(isTracking())
+				setTrackedString(label.getString());
+			
 			/* Call value changed callbacks whether or not the text field has been edited: */
 			ValueChangedCallbackData cbData(this,label.getString(),true);
 			valueChangedCallbacks.call(&cbData);
@@ -474,8 +540,12 @@ void TextField::textControlEvent(const TextControlEvent& event)
 			edited=false;
 			
 			/* Give up the text entry focus: */
-			getManager()->releaseFocus(this);
+			WidgetManager* manager=getManager();
+			manager->releaseFocus(this);
 			focus=false;
+			
+			/* Release alphanumeric text entry: */
+			manager->textEntryFinished();
 			
 			/* Invalidate the visual representation: */
 			update();
@@ -561,6 +631,12 @@ void TextField::setPrecision(GLint newPrecision)
 	precision=newPrecision;
 	}
 
+void TextField::setValueType(TextField::ValueType newValueType)
+	{
+	/* Set the value type: */
+	valueType=newValueType;
+	}
+
 void TextField::setFloatFormat(TextField::FloatFormat newFloatFormat)
 	{
 	/* Set the floating-point formatting mode: */
@@ -590,83 +666,6 @@ void TextField::setSelection(int newAnchorPos,int newCursorPos)
 	/* Invalidate the visual representation: */
 	label.invalidate();
 	update();
-	}
-
-template <class ValueParam>
-void TextField::setValue(const ValueParam& value)
-	{
-	}
-
-template <>
-void TextField::setValue<int>(const int& value)
-	{
-	char valueString[81];
-	if(fieldWidth>=0)
-		{
-		char* vsPtr=Misc::print(value,valueString+80);
-		for(int width=(valueString+80)-vsPtr;width<fieldWidth&&width<80;++width)
-			*(--vsPtr)=' ';
-		setString(vsPtr);
-		}
-	else
-		setString(Misc::print(value,valueString+11));
-	}
-
-template <>
-void TextField::setValue<unsigned int>(const unsigned int& value)
-	{
-	char valueString[81];
-	if(fieldWidth>=0)
-		{
-		char* vsPtr=Misc::print(value,valueString+80);
-		for(int width=(valueString+80)-vsPtr;width<fieldWidth&&width<80;++width)
-			*(--vsPtr)=' ';
-		setString(vsPtr);
-		}
-	else
-		setString(Misc::print(value,valueString+10));
-	}
-
-template <>
-void TextField::setValue<float>(const float& value)
-	{
-	char format[10],valueString[80];
-	if(fieldWidth>=0)
-		{
-		if(precision>=0)
-			snprintf(valueString,sizeof(valueString),createFormatString(format),fieldWidth,precision,value);
-		else
-			snprintf(valueString,sizeof(valueString),createFormatString(format),fieldWidth,value);
-		}
-	else
-		{
-		if(precision>=0)
-			snprintf(valueString,sizeof(valueString),createFormatString(format),precision,value);
-		else
-			snprintf(valueString,sizeof(valueString),createFormatString(format),value);
-		}
-	setString(valueString);
-	}
-
-template <>
-void TextField::setValue<double>(const double& value)
-	{
-	char format[10],valueString[80];
-	if(fieldWidth>=0)
-		{
-		if(precision>=0)
-			snprintf(valueString,sizeof(valueString),createFormatString(format),fieldWidth,precision,value);
-		else
-			snprintf(valueString,sizeof(valueString),createFormatString(format),fieldWidth,value);
-		}
-	else
-		{
-		if(precision>=0)
-			snprintf(valueString,sizeof(valueString),createFormatString(format),precision,value);
-		else
-			snprintf(valueString,sizeof(valueString),createFormatString(format),value);
-		}
-	setString(valueString);
 	}
 
 }

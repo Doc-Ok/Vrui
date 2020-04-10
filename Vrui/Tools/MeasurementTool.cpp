@@ -1,7 +1,7 @@
 /***********************************************************************
 MeasurementTool - Tool to measure positions, distances and angles in
 physical or navigational coordinates.
-Copyright (c) 2006-2015 Oliver Kreylos
+Copyright (c) 2006-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -814,7 +814,7 @@ void MeasurementTool::buttonCallback(int,InputDevice::ButtonCallbackData* cbData
 					/* Create a uniquely named file based on the base name: */
 					factory->measurementFile=new Misc::File(Misc::createNumberedFileName(factory->measurementFileName.c_str(),4,numberedFileName),"wt");
 					}
-				catch(Misc::File::OpenError)
+				catch(const Misc::File::OpenError&)
 					{
 					/* Just don't open the file, then! */
 					Misc::formattedUserWarning("Vrui::MeasurementTool: Could not create measurement file \"%s\"; measurements will not be saved",numberedFileName);

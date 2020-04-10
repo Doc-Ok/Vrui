@@ -1,6 +1,6 @@
 /***********************************************************************
 NodeCreator - Class to create node objects based on a node type name.
-Copyright (c) 2009-2013 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -23,15 +23,21 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <SceneGraph/NodeFactory.h>
 #include <SceneGraph/GroupNode.h>
+#include <SceneGraph/CollisionNode.h>
 #include <SceneGraph/TransformNode.h>
+#include <SceneGraph/ONTransformNode.h>
+#include <SceneGraph/DOGTransformNode.h>
 #include <SceneGraph/BillboardNode.h>
 #include <SceneGraph/LODNode.h>
+#include <SceneGraph/SwitchNode.h>
 #include <SceneGraph/ReferenceEllipsoidNode.h>
 #include <SceneGraph/GeodeticToCartesianTransformNode.h>
 #include <SceneGraph/InlineNode.h>
 #include <SceneGraph/MaterialNode.h>
 #include <SceneGraph/ImageTextureNode.h>
+#include <SceneGraph/TextureTransformNode.h>
 #include <SceneGraph/AppearanceNode.h>
+#include <SceneGraph/MaterialLibraryNode.h>
 #include <SceneGraph/AffinePointTransformNode.h>
 #include <SceneGraph/GeodeticToCartesianPointTransformNode.h>
 #include <SceneGraph/UTMPointTransformNode.h>
@@ -54,7 +60,10 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <SceneGraph/ShapeNode.h>
 #include <SceneGraph/FontStyleNode.h>
 #include <SceneGraph/TextNode.h>
+#include <SceneGraph/FancyFontStyleNode.h>
+#include <SceneGraph/FancyTextNode.h>
 #include <SceneGraph/LabelSetNode.h>
+#include <SceneGraph/MeshFileNode.h>
 #include <SceneGraph/TSurfFileNode.h>
 #include <SceneGraph/ArcInfoExportFileNode.h>
 #include <SceneGraph/ESRIShapeFileNode.h>
@@ -73,15 +82,21 @@ NodeCreator::NodeCreator(void)
 	{
 	/* Register the standard node types: */
 	registerNodeType(new GenericNodeFactory<GroupNode>());
+	registerNodeType(new GenericNodeFactory<CollisionNode>());
 	registerNodeType(new GenericNodeFactory<TransformNode>());
+	registerNodeType(new GenericNodeFactory<ONTransformNode>());
+	registerNodeType(new GenericNodeFactory<DOGTransformNode>());
 	registerNodeType(new GenericNodeFactory<BillboardNode>());
 	registerNodeType(new GenericNodeFactory<LODNode>());
+	registerNodeType(new GenericNodeFactory<SwitchNode>());
 	registerNodeType(new GenericNodeFactory<ReferenceEllipsoidNode>());
 	registerNodeType(new GenericNodeFactory<GeodeticToCartesianTransformNode>());
 	registerNodeType(new GenericNodeFactory<InlineNode>());
 	registerNodeType(new GenericNodeFactory<MaterialNode>());
 	registerNodeType(new GenericNodeFactory<ImageTextureNode>());
+	registerNodeType(new GenericNodeFactory<TextureTransformNode>());
 	registerNodeType(new GenericNodeFactory<AppearanceNode>());
+	registerNodeType(new GenericNodeFactory<MaterialLibraryNode>());
 	registerNodeType(new GenericNodeFactory<AffinePointTransformNode>());
 	registerNodeType(new GenericNodeFactory<GeodeticToCartesianPointTransformNode>());
 	registerNodeType(new GenericNodeFactory<UTMPointTransformNode>());
@@ -104,7 +119,10 @@ NodeCreator::NodeCreator(void)
 	registerNodeType(new GenericNodeFactory<ShapeNode>());
 	registerNodeType(new GenericNodeFactory<FontStyleNode>());
 	registerNodeType(new GenericNodeFactory<TextNode>());
+	registerNodeType(new GenericNodeFactory<FancyFontStyleNode>());
+	registerNodeType(new GenericNodeFactory<FancyTextNode>());
 	registerNodeType(new GenericNodeFactory<LabelSetNode>());
+	registerNodeType(new GenericNodeFactory<MeshFileNode>());
 	registerNodeType(new GenericNodeFactory<TSurfFileNode>());
 	registerNodeType(new GenericNodeFactory<ArcInfoExportFileNode>());
 	registerNodeType(new GenericNodeFactory<ESRIShapeFileNode>());

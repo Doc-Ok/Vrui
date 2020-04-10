@@ -1,6 +1,6 @@
 /***********************************************************************
 TokenSource - Class to read tokens from files.
-Copyright (c) 2009-2011 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -225,7 +225,16 @@ const char* TokenSource::readNextToken(void)
 			{
 			if(tokenSize>=tokenBufferSize)
 				resizeTokenBuffer();
-			tokenBuffer[tokenSize++]=lastChar;
+			if(lastChar!='\\')
+				tokenBuffer[tokenSize++]=lastChar;
+			else
+				{
+				/* Read the escaped character: */
+				lastChar=source->getChar();
+				if(lastChar<0)
+					break;
+				tokenBuffer[tokenSize++]=lastChar;
+				}
 			lastChar=source->getChar();
 			}
 		

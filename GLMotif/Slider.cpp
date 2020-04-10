@@ -1,6 +1,6 @@
 /***********************************************************************
 Slider - Class for horizontal or vertical sliders.
-Copyright (c) 2001-2016 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -21,7 +21,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <GLMotif/Slider.h>
 
-#include <math.h>
+#include <Math/Math.h>
 #include <GL/gl.h>
 #include <GL/GLColorTemplates.h>
 #include <GL/GLColorOperations.h>
@@ -64,9 +64,9 @@ void Slider::positionNotches(void)
 	/* Recalculate all notch positions: */
 	notchPositions.clear();
 	int dim=orientation==HORIZONTAL?0:1;
-	for(std::vector<GLfloat>::iterator nvIt=notchValues.begin();nvIt!=notchValues.end();++nvIt)
+	for(std::vector<double>::iterator nvIt=notchValues.begin();nvIt!=notchValues.end();++nvIt)
 		{
-		GLfloat pos=shaftBox.origin[dim]+sliderLength*0.5f+(*nvIt-valueMin)*(shaftBox.size[dim]-sliderLength)/(valueMax-valueMin);
+		GLfloat pos=GLfloat(double(shaftBox.origin[dim])+double(sliderLength)*0.5+(*nvIt-valueMin)*double(shaftBox.size[dim]-sliderLength)/(valueMax-valueMin));
 		notchPositions.push_back(pos);
 		}
 	}
@@ -76,20 +76,20 @@ void Slider::positionSlider(void)
 	/* Position slider handle according to widget size and slider orientation: */
 	sliderBox.origin=shaftBox.origin;
 	sliderBox.size[2]=sliderHeight+shaftDepth;
-	GLfloat sliderPosition=(value-valueMin)/(valueMax-valueMin);
+	double sliderPosition=(value-valueMin)/(valueMax-valueMin);
 	switch(orientation)
 		{
 		case HORIZONTAL:
-			sliderBox.origin[0]+=(shaftBox.size[0]-sliderLength)*sliderPosition;
+			sliderBox.origin[0]+=GLfloat(double(shaftBox.size[0]-sliderLength)*sliderPosition);
 			sliderBox.size[0]=sliderLength;
-			sliderBox.origin[1]+=(shaftBox.size[1]-sliderWidth)*0.5;
+			sliderBox.origin[1]+=(shaftBox.size[1]-sliderWidth)*0.5f;
 			sliderBox.size[1]=sliderWidth;
 			break;
 		
 		case VERTICAL:
-			sliderBox.origin[0]+=(shaftBox.size[0]-sliderWidth)*0.5;
+			sliderBox.origin[0]+=(shaftBox.size[0]-sliderWidth)*0.5f;
 			sliderBox.size[0]=sliderWidth;
-			sliderBox.origin[1]+=(shaftBox.size[1]-sliderLength)*sliderPosition;
+			sliderBox.origin[1]+=GLfloat(double(shaftBox.size[1]-sliderLength)*sliderPosition);
 			sliderBox.size[1]=sliderLength;
 			break;
 		}
@@ -98,20 +98,17 @@ void Slider::positionSlider(void)
 void Slider::decrement(void)
 	{
 	/* Calculate the new slider value: */
-	GLfloat newValue;
-	if(valueIncrement!=0.0f)
+	double newValue;
+	if(valueIncrement!=0.0)
 		{
-		/* Decrement, range check, and quantize: */
-		newValue=value-valueIncrement*1.001f;
-		newValue=GLfloat(ceil(double(newValue)/double(valueIncrement))*double(valueIncrement));
-		if(newValue<valueMin)
-			newValue=valueMin;
+		/* Decrement and quantize, then range-check: */
+		newValue=Math::max((Math::ceil(value/valueIncrement)-1.0)*valueIncrement,valueMin);
 		}
 	else
 		newValue=valueMin;
 	
 	/* Check if the old and new values straddle a notch: */
-	std::vector<GLfloat>::reverse_iterator nvIt;
+	std::vector<double>::reverse_iterator nvIt;
 	for(nvIt=notchValues.rbegin();nvIt!=notchValues.rend()&&*nvIt>=value;++nvIt)
 		;
 	
@@ -125,6 +122,9 @@ void Slider::decrement(void)
 		value=newValue;
 		positionSlider();
 		
+		/* Update a potential tracked variable: */
+		setTrackedFloat(value);
+		
 		/* Call the value changed callbacks: */
 		ValueChangedCallbackData cbData(this,ValueChangedCallbackData::CLICKED,value);
 		valueChangedCallbacks.call(&cbData);
@@ -137,20 +137,17 @@ void Slider::decrement(void)
 void Slider::increment(void)
 	{
 	/* Calculate the new slider value: */
-	GLfloat newValue;
-	if(valueIncrement!=0.0f)
+	double newValue;
+	if(valueIncrement!=0.0)
 		{
-		/* Increment, range check, and quantize: */
-		newValue=value+valueIncrement*1.001f;
-		newValue=GLfloat(floor(double(newValue)/double(valueIncrement))*double(valueIncrement));
-		if(newValue>valueMax)
-			newValue=valueMax;
+		/* Decrement and quantize, then range-check: */
+		newValue=Math::min((Math::floor(value/valueIncrement)+1.0)*valueIncrement,valueMax);
 		}
 	else
 		newValue=valueMax;
 	
 	/* Check if the old and new values straddle a notch: */
-	std::vector<GLfloat>::iterator nvIt;
+	std::vector<double>::iterator nvIt;
 	for(nvIt=notchValues.begin();nvIt!=notchValues.end()&&*nvIt<=value;++nvIt)
 		;
 	
@@ -163,6 +160,9 @@ void Slider::increment(void)
 		/* Update the slider's state: */
 		value=newValue;
 		positionSlider();
+		
+		/* Update a potential tracked variable: */
+		setTrackedFloat(value);
 		
 		/* Call the value changed callbacks: */
 		ValueChangedCallbackData cbData(this,ValueChangedCallbackData::CLICKED,value);
@@ -197,7 +197,7 @@ void Slider::clickRepeatTimerEventCallback(Misc::TimerEventScheduler::CallbackDa
 Slider::Slider(const char* sName,Container* sParent,Slider::Orientation sOrientation,GLfloat sSliderWidth,GLfloat sShaftLength,bool sManageChild)
 	:Widget(sName,sParent,false),
 	 orientation(sOrientation),
-	 valueMin(0.0),valueMax(1000.0),valueIncrement(1.0),value(500.0),
+	 valueMin(0),valueMax(1000),valueIncrement(1),value(500),
 	 isClicking(0)
 	{
 	/* Get the style sheet: */
@@ -230,7 +230,7 @@ Slider::Slider(const char* sName,Container* sParent,Slider::Orientation sOrienta
 	:Widget(sName,sParent,false),
 	 orientation(sOrientation),
 	 sliderHeight(0.0f),shaftDepth(0.0f),
-	 valueMin(0.0),valueMax(1000.0),valueIncrement(1.0),value(500.0),
+	 valueMin(0),valueMax(1000),valueIncrement(1),value(500),
 	 isClicking(0)
 	{
 	/* Get the style sheet: */
@@ -306,6 +306,27 @@ void Slider::resize(const Box& newExterior)
 	positionShaft();
 	positionNotches();
 	positionSlider();
+	}
+
+void Slider::updateVariables(void)
+	{
+	/* Check if tracking is active: */
+	if(isTracking())
+		{
+		/* Calculate the new value: */
+		double newValue=Math::clamp(getTrackedFloat(),valueMin,valueMax);
+		
+		/* Check if the value changed: */
+		if(value!=newValue)
+			{
+			/* Update the value and reposition the slider: */
+			value=newValue;
+			positionSlider();
+			
+			/* Update the visual representation: */
+			update();
+			}
+		}
 	}
 
 void Slider::draw(GLContextData& contextData) const
@@ -800,8 +821,9 @@ void Slider::pointerButtonDown(Event& event)
 	if(picked>=sliderBox.origin[dimension]&&picked<=sliderBox.origin[dimension]+sliderBox.size[dimension])
 		{
 		/* Picked slider handle, start dragging: */
-		dragOffset=sliderBox.origin[dimension]-picked;
-		lastDragPos=sliderBox.origin[dimension];
+		GLfloat dz=sliderBox.origin[dimension]+sliderLength*0.5f;
+		dragOffset=dz-picked;
+		dragZone[1]=dragZone[0]=dz;
 		startDragging(event);
 		}
 	else
@@ -816,6 +838,9 @@ void Slider::pointerButtonDown(Event& event)
 			/* Update the slider's state: */
 			value=notchValues[i];
 			positionSlider();
+			
+			/* Update a potential tracked variable: */
+			setTrackedFloat(value);
 			
 			/* Call the value changed callbacks: */
 			ValueChangedCallbackData cbData(this,ValueChangedCallbackData::CLICKED,value);
@@ -864,49 +889,57 @@ void Slider::pointerMotion(Event& event)
 	{
 	if(isDragging())
 		{
-		/* Update the slider value and position: */
+		/* Calculate the new slider position: */
 		int dimension=orientation==HORIZONTAL?0:1;
 		GLfloat newSliderPosition=event.getWidgetPoint().getPoint()[dimension]+dragOffset;
+		double newValue=value;
 		
-		/* Check if the slider handle is currently hanging at a notch: */
-		GLfloat newValue=0.0f;
-		bool hanging=false;
-		if(newSliderPosition<lastDragPos)
+		/* Check if the new slider position is outside the drag zone: */
+		if(newSliderPosition<dragZone[0]) // Slider has been dragged to the left
 			{
+			/* Check if the slider was dragged across a notch: */
 			unsigned int i;
-			for(i=0;i<notchPositions.size()&&notchPositions[i]-sliderLength*0.5f<lastDragPos;++i)
+			for(i=notchPositions.size();i>0&&notchPositions[i-1]>=dragZone[0];--i)
 				;
-			if(i<notchPositions.size()&&newSliderPosition>=notchPositions[i]-sliderLength*0.5f-shaftWidth*1.5f)
+			if(i>0&&notchPositions[i-1]>=newSliderPosition)
 				{
-				lastDragPos=notchPositions[i]-sliderLength*0.5f;
-				newValue=notchValues[i];
-				hanging=true;
-				}
-			}
-		else if(newSliderPosition>lastDragPos)
-			{
-			unsigned int i;
-			for(i=notchPositions.size();i>0&&notchPositions[i-1]-sliderLength*0.5f>lastDragPos;--i)
-				;
-			if(i>0&&newSliderPosition<=notchPositions[i-1]-sliderLength*0.5f+shaftWidth*1.5f)
-				{
-				lastDragPos=notchPositions[i-1]-sliderLength*0.5f;
+				/* Lock the slider to the crossed notch: */
+				dragZone[1]=notchPositions[i-1];
+				dragZone[0]=dragZone[1]-sliderLength*2.0f;
 				newValue=notchValues[i-1];
-				hanging=true;
+				}
+			else
+				{
+				/* Drag the slider to the new position: */
+				dragZone[1]=dragZone[0]=newSliderPosition;
+				newValue=double(newSliderPosition-(shaftBox.origin[dimension]+sliderLength*0.5f))*(valueMax-valueMin)/double(shaftBox.size[dimension]-sliderLength)+valueMin;
+				if(valueIncrement!=0.0)
+					newValue=Math::floor(newValue/valueIncrement+0.5)*valueIncrement;
+				newValue=Math::clamp(newValue,valueMin,valueMax);
 				}
 			}
-		
-		if(!hanging)
+		else if(newSliderPosition>dragZone[1]) // Slider has been dragged to the right
 			{
-			/* Calculate the new slider value and reposition the slider: */
-			newValue=(newSliderPosition-shaftBox.origin[dimension])*(valueMax-valueMin)/(shaftBox.size[dimension]-sliderLength)+valueMin;
-			if(newValue<valueMin)
-				newValue=valueMin;
-			else if(newValue>valueMax)
-				newValue=valueMax;
-			if(valueIncrement>0.0f)
-				newValue=GLfloat(floor(double(newValue)/double(valueIncrement)+0.5)*double(valueIncrement));
-			lastDragPos=newSliderPosition;
+			/* Check if the slider was dragged across a notch: */
+			unsigned int i;
+			for(i=0;i<notchPositions.size()&&notchPositions[i]<=dragZone[1];++i)
+				;
+			if(i<notchPositions.size()&&notchPositions[i]<=newSliderPosition)
+				{
+				/* Lock the slider to the crossed notch: */
+				dragZone[0]=notchPositions[i];
+				dragZone[1]=dragZone[0]+sliderLength*2.0f;
+				newValue=notchValues[i];
+				}
+			else
+				{
+				/* Drag the slider to the new position: */
+				dragZone[1]=dragZone[0]=newSliderPosition;
+				newValue=double(newSliderPosition-(shaftBox.origin[dimension]+sliderLength*0.5f))*(valueMax-valueMin)/double(shaftBox.size[dimension]-sliderLength)+valueMin;
+				if(valueIncrement!=0.0)
+					newValue=Math::floor(newValue/valueIncrement+0.5)*valueIncrement;
+				newValue=Math::clamp(newValue,valueMin,valueMax);
+				}
 			}
 		
 		if(newValue!=value)
@@ -914,6 +947,9 @@ void Slider::pointerMotion(Event& event)
 			/* Update the slider: */
 			value=newValue;
 			positionSlider();
+			
+			/* Update a potential tracked variable: */
+			setTrackedFloat(value);
 			
 			/* Call the value changed callbacks: */
 			ValueChangedCallbackData cbData(this,ValueChangedCallbackData::DRAGGED,value);
@@ -939,10 +975,10 @@ void Slider::setMarginWidth(GLfloat newMarginWidth)
 		resize(Box(Vector(0.0f,0.0f,0.0f),calcNaturalSize()));
 	}
 
-void Slider::addNotch(GLfloat newNotchValue)
+void Slider::addNotch(double newNotchValue)
 	{
 	/* Find the appropriate place for the new notch value to keep the vector sorted: */
-	std::vector<GLfloat>::iterator nvIt;
+	std::vector<double>::iterator nvIt;
 	for(nvIt=notchValues.begin();nvIt!=notchValues.end()&&*nvIt<newNotchValue;++nvIt)
 		;
 	
@@ -954,10 +990,10 @@ void Slider::addNotch(GLfloat newNotchValue)
 	positionNotches();
 	}
 
-void Slider::removeNotch(GLfloat notchValue)
+void Slider::removeNotch(double notchValue)
 	{
 	/* Find the notch value in the vector: */
-	std::vector<GLfloat>::iterator nvIt;
+	std::vector<double>::iterator nvIt;
 	for(nvIt=notchValues.begin();nvIt!=notchValues.end()&&*nvIt<notchValue;++nvIt)
 		;
 	
@@ -969,36 +1005,34 @@ void Slider::removeNotch(GLfloat notchValue)
 	positionNotches();
 	}
 
-void Slider::setValue(GLfloat newValue)
+void Slider::setValue(double newValue)
 	{
 	/* Update the value and reposition the slider: */
-	if(newValue<=valueMin)
-		value=valueMin;
-	else if(newValue>=valueMax)
-		value=valueMax;
-	else
-		value=newValue;
+	value=Math::clamp(newValue,valueMin,valueMax);
 	positionSlider();
+	
+	/* Update a potential tracked variable: */
+	setTrackedFloat(value);
 	
 	/* Update the visual representation: */
 	update();
 	}
 
-void Slider::setValueRange(GLfloat newValueMin,GLfloat newValueMax,GLfloat newValueIncrement)
+void Slider::setValueRange(double newValueMin,double newValueMax,double newValueIncrement)
 	{
 	/* Update the value range: */
 	valueMin=newValueMin;
 	valueMax=newValueMax;
-	valueIncrement=newValueIncrement;
+	valueIncrement=Math::max(newValueIncrement,0.0);
 	
 	/* Adjust the current value and reposition the slider: */
-	if(value<valueMin)
-		value=valueMin;
-	else if(value>valueMax)
-		value=valueMax;
-	if(valueIncrement>0.0f)
-		value=GLfloat(floor(double(value)/double(valueIncrement)+0.5)*double(valueIncrement));
+	if(valueIncrement!=0.0)
+		value=Math::floor(value/valueIncrement+0.5)*valueIncrement;
+	value=Math::clamp(value,valueMin,valueMax);
 	positionSlider();
+	
+	/* Update a potential tracked variable: */
+	setTrackedFloat(value);
 	
 	/* Update the visual representation: */
 	update();

@@ -1,6 +1,6 @@
 /***********************************************************************
 VisletManager - Class to manage vislet classes.
-Copyright (c) 2006-2017 Oliver Kreylos
+Copyright (c) 2006-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -51,7 +51,7 @@ void VisletManager::visletMenuToggleButtonCallback(GLMotif::ToggleButton::ValueC
 			/* Activate or deactivate the vislet: */
 			if(cbData->set)
 				{
-				vislets[toggleIndex]->enable();
+				vislets[toggleIndex]->enable(false);
 				
 				/* Check if the vislet enabled successfully: */
 				if(!vislets[toggleIndex]->isActive())
@@ -62,7 +62,7 @@ void VisletManager::visletMenuToggleButtonCallback(GLMotif::ToggleButton::ValueC
 				}
 			else
 				{
-				vislets[toggleIndex]->disable();
+				vislets[toggleIndex]->disable(false);
 				
 				/* Check if the vislet disabled successfully: */
 				if(vislets[toggleIndex]->isActive())
@@ -76,7 +76,7 @@ void VisletManager::visletMenuToggleButtonCallback(GLMotif::ToggleButton::ValueC
 	}
 
 VisletManager::VisletManager(const Misc::ConfigurationFileSection& sConfigFileSection)
-	:Plugins::FactoryManager<VisletFactory>(sConfigFileSection.retrieveString("./visletDsoNameTemplate",VRUI_INTERNAL_CONFIG_VISLETDSONAMETEMPLATE)),
+	:Plugins::FactoryManager<VisletFactory>(sConfigFileSection.retrieveString("./visletDsoNameTemplate",VRUI_INTERNAL_CONFIG_VISLETDIR "/" VRUI_INTERNAL_CONFIG_VISLETNAMETEMPLATE)),
 	 configFileSection(sConfigFileSection),
 	 visletMenu(0)
 	{
@@ -140,24 +140,20 @@ GLMotif::PopupMenu* VisletManager::buildVisletMenu(void)
 
 void VisletManager::enable(void)
 	{
-	/* Enable all vislets: */
+	/* Enable all vislets for the first time: */
 	for(size_t i=0;i<vislets.size();++i)
 		if(!vislets[i]->isActive())
 			{
-			vislets[i]->enable();
+			vislets[i]->enable(true);
 			static_cast<GLMotif::ToggleButton*>(visletMenu->getMenu()->getChild(i))->setToggle(vislets[i]->isActive());
 			}
 	}
 
 void VisletManager::disable(void)
 	{
-	/* Disable all vislets: */
+	/* Disable all vislets for the last time, even those that are already inactive: */
 	for(size_t i=0;i<vislets.size();++i)
-		if(vislets[i]->isActive())
-			{
-			vislets[i]->disable();
-			static_cast<GLMotif::ToggleButton*>(visletMenu->getMenu()->getChild(i))->setToggle(vislets[i]->isActive());
-			}
+		vislets[i]->disable(true);
 	}
 
 void VisletManager::updateVisletMenu(const Vislet* vislet)

@@ -1,7 +1,7 @@
 /***********************************************************************
 MeasureEnvironment - Utility for guided surveys of a single-screen
 VR environment using a Total Station.
-Copyright (c) 2009-2015 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Vrui calibration utility package.
 
@@ -30,6 +30,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <iomanip>
 #include <Misc/ThrowStdErr.h>
 #include <IO/TokenSource.h>
+#include <IO/OpenFile.h>
 #include <Math/Math.h>
 #include <Math/Constants.h>
 #include <Math/Matrix.h>
@@ -57,7 +58,6 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/ToolManager.h>
 #include <Vrui/DisplayState.h>
 #include <Vrui/Vrui.h>
-#include <Vrui/OpenFile.h>
 
 #include "NaturalPointClient.h"
 #include "PTransformFitter.h"
@@ -780,7 +780,7 @@ MeasureEnvironment::MeasureEnvironment(int& argc,char**& argv)
 	/* Import a measurement file if one is given: */
 	if(measurementFileName!=0)
 		{
-		loadMeasurementFile(*Vrui::openDirectory("."),measurementFileName);
+		loadMeasurementFile(*IO::openDirectory("."),measurementFileName);
 		measurementsDirty=false;
 		}
 	
@@ -1027,7 +1027,7 @@ void MeasureEnvironment::changeMeasuringModeCallback(GLMotif::RadioBox::ValueCha
 void MeasureEnvironment::loadMeasurementFileCallback(Misc::CallbackData* cbData)
 	{
 	/* Open a file selection dialog: */
-	GLMotif::FileSelectionDialog* loadMeasurementFileDialog=new GLMotif::FileSelectionDialog(Vrui::getWidgetManager(),"Load Measurement File...",Vrui::openDirectory("."),".csv");
+	GLMotif::FileSelectionDialog* loadMeasurementFileDialog=new GLMotif::FileSelectionDialog(Vrui::getWidgetManager(),"Load Measurement File...",IO::openDirectory("."),".csv");
 	loadMeasurementFileDialog->getOKCallbacks().add(this,&MeasureEnvironment::loadMeasurementFileOKCallback);
 	loadMeasurementFileDialog->deleteOnCancel();
 	

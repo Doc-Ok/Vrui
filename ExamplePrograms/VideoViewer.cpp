@@ -332,8 +332,14 @@ void VideoViewer::eventCallback(Vrui::Application::EventID eventId,Vrui::InputDe
 			break;
 		
 		case 1:
+			#if 0
 			/* Save video frames while the tool button is pressed: */
 			saveVideoFrames=cbData->newButtonState;
+			#else
+			/* Toggle the save video frames flag: */
+			if(cbData->newButtonState)
+				saveVideoFrames=!saveVideoFrames;
+			#endif
 			break;
 		}
 	}

@@ -28,10 +28,8 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 namespace Misc {
 
-bool isValidUintTemplate(const char* templateString,unsigned int maxLength); // Returns true of the given template contains exactly one %u conversion and does not overrun the given maximum string length, NUL included
-bool isValidUintTemplate(const std::string& templateString,unsigned int maxLength); // Ditto, for C++ string
-bool isValidIntTemplate(const char* templateString,unsigned int maxLength); // Returns true of the given template contains exactly one %d conversion and does not overrun the given maximum string length, NUL included
-bool isValidIntTemplate(const std::string& templateString,unsigned int maxLength); // Ditto, for C++ string
+bool isValidTemplate(const char* templateString,char conversion,unsigned int maxLength,unsigned int* conversionStart =0,unsigned int* conversionLength =0,unsigned int* maxReplacementLength =0); // Returns true if the given template contains exactly one % conversion of the given type and does not overrun the given maximum string length, NUL included; returns conversion start character, conversion length, and maximum length of replacement text if respective pointers are non-null
+bool isValidTemplate(const std::string& templateString,char conversion,unsigned int maxLength,unsigned int* conversionStart =0,unsigned int* conversionLength =0,unsigned int* maxReplacementLength =0); // Ditto, for C++ string
 
 }
 

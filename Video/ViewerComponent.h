@@ -2,7 +2,7 @@
 ViewerComponent - An application component to stream video from a camera
 to an OpenGL texture for rendering, including user interfaces to select
 cameras and video modes and control camera settings.
-Copyright (c) 2018 Oliver Kreylos
+Copyright (c) 2018-2019 Oliver Kreylos
 
 This file is part of the Basic Video Library (Video).
 
@@ -141,6 +141,10 @@ class ViewerComponent:public GLObject
 	
 	/* New methods: */
 	static std::pair<VideoDataFormat,int> parseVideoFormat(int& argc,char**& argv); // Parses a video data format and format component mask from the given command line; removes format-related command line arguments
+	const std::string& getDeviceName(void) const // Returns the human-readable name of the currently active video device
+		{
+		return videoDeviceList[videoDeviceIndex]->getName();
+		}
 	const VideoDataFormat& getVideoFormat(void) const // Returns the currently streaming video format
 		{
 		return videoFormat;

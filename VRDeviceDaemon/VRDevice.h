@@ -1,7 +1,7 @@
 /***********************************************************************
 VRDevice - Abstract base class for hardware devices delivering
 position, orientation, button events and valuator values.
-Copyright (c) 2002-2017 Oliver Kreylos
+Copyright (c) 2002-2020 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -131,7 +131,7 @@ class VRDevice
 	virtual void start(void) =0; // Starts tracking hardware and position reporting
 	virtual void stop(void) =0; // Stops tracking hardware and position reporting
 	virtual void powerOff(int devicePowerFeatureIndex); // Requests to power off the feature with the given per-device index
-	virtual void hapticTick(int deviceHapticFeatureIndex,unsigned int duration); // Requests a haptic tick of the given length in microseconds on the haptic feature with the given per-device index
+	virtual void hapticTick(int deviceHapticFeatureIndex,unsigned int duration,unsigned int frequency,unsigned int amplitude); // Requests a haptic tick of the given length in milliseconds, frequency in Hertz, and relative amplitude in [0, 256) on the haptic feature with the given per-device index
 	};
 
 #endif

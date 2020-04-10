@@ -1,6 +1,6 @@
 /***********************************************************************
 ValueSource - Class to read strings or numbers from files.
-Copyright (c) 2009-2015 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -264,6 +264,14 @@ void ValueSource::setQuotes(const char* quotes)
 		}
 	}
 
+void ValueSource::setQuotedString(int character,bool quotedString)
+	{
+	if(quotedString)
+		cc[character]|=QUOTEDSTRING;
+	else
+		cc[character]&=~QUOTEDSTRING;
+	}
+
 void ValueSource::setEscape(int newEscapeChar)
 	{
 	escapeChar=newEscapeChar;
@@ -477,12 +485,15 @@ void ValueSource::skipString(void)
 		}
 	else if(cc[lastChar]&QUOTE)
 		{
-		/* Read and skip the quote character: */
+		/* Remember and skip the quote character: */
 		int quote=lastChar;
 		lastChar=source->getChar();
 		
+		/* Temporarily remove the quote character from the quoted string character set: */
+		cc[quote]&=~QUOTEDSTRING;
+		
 		/* Read characters until the matching quote, endline, or EOF: */
-		while(lastChar!=quote&&cc[lastChar]&QUOTEDSTRING)
+		while(cc[lastChar]&QUOTEDSTRING)
 			{
 			/* Skip the next character or escape sequence: */
 			if(lastChar!=escapeChar)
@@ -494,6 +505,9 @@ void ValueSource::skipString(void)
 		/* Read the terminating quote, if there is one: */
 		if(lastChar==quote)
 			lastChar=source->getChar();
+		
+		/* Put the quote character back into the quoted string character set: */
+		cc[quote]|=QUOTEDSTRING;
 		}
 	else
 		{
@@ -529,8 +543,11 @@ std::string ValueSource::readString(void)
 		int quote=lastChar;
 		lastChar=source->getChar();
 		
+		/* Temporarily remove the quote character from the quoted string character set: */
+		cc[quote]&=~QUOTEDSTRING;
+		
 		/* Read characters until the matching quote, endline, or EOF: */
-		while(lastChar!=quote&&(cc[lastChar]&QUOTEDSTRING))
+		while(cc[lastChar]&QUOTEDSTRING)
 			{
 			/* Read the next character or escape sequence: */
 			if(lastChar!=escapeChar)
@@ -545,6 +562,9 @@ std::string ValueSource::readString(void)
 		/* Read the terminating quote, if there is one: */
 		if(lastChar==quote)
 			lastChar=source->getChar();
+		
+		/* Put the quote character back into the quoted string character set: */
+		cc[quote]|=QUOTEDSTRING;
 		}
 	else
 		{

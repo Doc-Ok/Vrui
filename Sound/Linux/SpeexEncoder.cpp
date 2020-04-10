@@ -1,7 +1,7 @@
 /***********************************************************************
 SpeexEncoder - Class encapsulating an audio encoder using the SPEEX
 speech codec.
-Copyright (c) 2009-2010 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Basic Sound Library (Sound).
 
@@ -52,7 +52,7 @@ void* SpeexEncoder::encodingThreadMethod(void)
 				speex_bits_reset(&speexBits);
 				}
 			}
-		catch(ALSAPCMDevice::OverrunError)
+		catch(const ALSAPCMDevice::OverrunError&)
 			{
 			/* Restart the recording PCM device: */
 			prepare();

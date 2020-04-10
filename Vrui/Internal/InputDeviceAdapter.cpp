@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDeviceAdapter - Base class to convert from diverse "raw" input
 device representations to Vrui's internal input device representation.
-Copyright (c) 2004-2016 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -181,6 +181,11 @@ int InputDeviceAdapter::getFeatureIndex(InputDevice* device,const char* featureN
 	return getDefaultFeatureIndex(device,featureName);
 	}
 
+void InputDeviceAdapter::prepareMainLoop(void)
+	{
+	/* Do nothing */
+	}
+
 TrackerState InputDeviceAdapter::peekTrackerState(int deviceIndex)
 	{
 	/* Default implementation throws an exception, for input device adapters (or devices) that don't have a tracker state: */
@@ -188,6 +193,10 @@ TrackerState InputDeviceAdapter::peekTrackerState(int deviceIndex)
 	}
 
 void InputDeviceAdapter::glRenderAction(GLContextData& contextData) const
+	{
+	}
+
+void InputDeviceAdapter::hapticTick(unsigned int hapticFeatureIndex,unsigned int duration,unsigned int frequency,unsigned int amplitude)
 	{
 	}
 

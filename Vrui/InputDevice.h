@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDevice - Class to represent input devices (6-DOF tracker with
 associated buttons and valuators) in virtual reality environments.
-Copyright (c) 2000-2015 Oliver Kreylos
+Copyright (c) 2000-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -101,9 +101,10 @@ class InputDevice // Class for input devices
 	int numValuators; // Number of valuators on that device
 	
 	/* Callback management: */
-	Misc::CallbackList trackingCallbacks; // List of tracking callbacks
-	Misc::CallbackList* buttonCallbacks; // List of button callbacks for each button
-	Misc::CallbackList* valuatorCallbacks; // List of valuator callbacks for each valuator
+	Misc::CallbackList deviceRayCallbacks; // List of device ray callbacks; called when a device's device-space ray direction or ray start change
+	Misc::CallbackList trackingCallbacks; // List of tracking callbacks; called when a device's transformation or linear or angular velocity change
+	Misc::CallbackList* buttonCallbacks; // List of button callbacks for each button; called when a button changes state
+	Misc::CallbackList* valuatorCallbacks; // List of valuator callbacks for each valuator; called when a valuator changes value
 	
 	/* Current device state: */
 	Vector deviceRayDirection; // Preferred direction of ray devices in device coordinates
@@ -115,6 +116,8 @@ class InputDevice // Class for input devices
 	
 	/* State for disabling callbacks: */
 	bool callbacksEnabled; // Flag if callbacks are enabled
+	bool deviceRayChanged; // Flag whether the device-space ray direction or ray start have changed
+	bool trackingChanged; // Flag whether the transformation, linear velocity, or angular velocity have changed
 	bool* savedButtonStates; // Button states are saved at the time callbacks are disabled
 	double* savedValuatorValues; // Valuator values are saved at the time callbacks are disabled
 	
@@ -215,7 +218,11 @@ class InputDevice // Class for input devices
 		}
 	
 	/* Callback registration methods: */
-	Misc::CallbackList& getTrackingCallbacks(void)
+	Misc::CallbackList& getDeviceRayCallbacks(void) // Returns the callbacks called when a device's device-space ray direction or ray start change
+		{
+		return deviceRayCallbacks;
+		}
+	Misc::CallbackList& getTrackingCallbacks(void) // Returns the callbacks called when a device's transformation or linear or angular velocity change
 		{
 		return trackingCallbacks;
 		}
@@ -238,14 +245,9 @@ class InputDevice // Class for input devices
 	/* Device state manipulation methods: */
 	void setDeviceRay(const Vector& newDeviceRayDirection,Scalar newDeviceRayStart); // Sets input device's ray direction and starting parameter in device coordinates
 	void setTransformation(const TrackerState& newTransformation);
-	void setLinearVelocity(const Vector& newLinearVelocity)
-		{
-		linearVelocity=newLinearVelocity;
-		}
-	void setAngularVelocity(const Vector& newAngularVelocity)
-		{
-		angularVelocity=newAngularVelocity;
-		}
+	void setLinearVelocity(const Vector& newLinearVelocity);
+	void setAngularVelocity(const Vector& newAngularVelocity);
+	void setTrackingState(const TrackerState& newTransformation,const Vector& newLinearVelocity,const Vector& newAngularVelocity);
 	void copyTrackingState(const InputDevice* source); // Copies the entire tracking (but not button nor valuator) state from the given source device
 	void clearButtonStates(void);
 	void setButtonState(int index,bool newButtonState);
@@ -275,7 +277,7 @@ class InputDevice // Class for input devices
 		Ray result(transformation.getOrigin(),transformation.transform(deviceRayDirection));
 		
 		/* Offset the ray's origin by the ray start parameter: */
-		result.setOrigin(result.getOrigin()+result.getDirection()*deviceRayStart);
+		result.offset(deviceRayStart);
 		
 		return result;
 		}

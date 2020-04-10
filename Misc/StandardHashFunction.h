@@ -1,7 +1,7 @@
 /***********************************************************************
 StandardHashFunction - Generic class (and specializations for common
 data types) to calculate hash functions.
-Copyright (c) 2005 Oliver Kreylos
+Copyright (c) 2005-2019 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -23,6 +23,8 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 #ifndef MISC_STANDARDHASHFUNCTION_INCLUDED
 #define MISC_STANDARDHASHFUNCTION_INCLUDED
+
+#include <stddef.h>
 
 namespace Misc {
 

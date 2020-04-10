@@ -1,7 +1,7 @@
 /***********************************************************************
 EventDispatcher - Class to dispatch events from a central listener to
 any number of interested clients.
-Copyright (c) 2016-2018 Oliver Kreylos
+Copyright (c) 2016-2019 Oliver Kreylos
 
 This file is part of the Portable Threading Library (Threads).
 
@@ -30,6 +30,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #endif
 #include <vector>
 #include <Misc/PriorityHeap.h>
+#include <Misc/StandardHashFunction.h>
+#include <Misc/HashTable.h>
 #include <Threads/Spinlock.h>
 
 namespace Threads {
@@ -42,7 +44,7 @@ class EventDispatcher
 	
 	enum IOEventType // Enumerated type for input/output event types
 		{
-		Read=0x01,Write=0x02,Exception=0x04
+		Read=0x01,Write=0x02,ReadWrite=0x03,Exception=0x04
 		};
 	
 	class Time:public timeval // Class to specify time points or time intervals for timer events; microseconds are assumed in [0, 1000000) even if interval is negative
@@ -108,84 +110,61 @@ class EventDispatcher
 			}
 		};
 	
-	typedef bool (*IOEventCallback)(ListenerKey eventKey,int eventType,void* userData); // Type for input/output event callback functions; if callback returns true, event listener will immediately be removed from dispatcher
+	typedef bool (*IOEventCallback)(ListenerKey eventKey,int eventTypeMask,void* userData); // Type for input/output event callback functions with a bit mask of events; if callback returns true, event listener will immediately be removed from dispatcher
 	typedef bool (*TimerEventCallback)(ListenerKey eventKey,void* userData); // Type for timer event callback functions; if callback returns true, event listener will immediately be removed from dispatcher
 	typedef bool (*ProcessCallback)(ListenerKey processKey,void* userData); // Type for process callback functions; if callback returns true, event listener will immediately be removed from dispatcher
+	typedef bool (*SignalCallback)(ListenerKey signalKey,void* signalData,void* userData); // Type for signal event callback functions; if callback returns true, event listener will immediately be removed from dispatcher
+	
+	/* Helper functions to register class methods as callback functions: */
+	template <class ClassParam,bool (ClassParam::*methodParam)(ListenerKey,int)>
+	static bool wrapMethod(ListenerKey eventKey,int eventTypeMask,void* userData)
+		{
+		return (static_cast<ClassParam*>(userData)->*methodParam)(eventKey,eventTypeMask);
+		}
+	template <class ClassParam,bool (ClassParam::*methodParam)(ListenerKey)>
+	static bool wrapMethod(ListenerKey eventKey,void* userData)
+		{
+		return (static_cast<ClassParam*>(userData)->*methodParam)(eventKey);
+		}
+	template <class ClassParam,bool (ClassParam::*methodParam)(ListenerKey,void*)>
+	static bool wrapMethod(ListenerKey eventKey,void* signalData,void* userData)
+		{
+		return (static_cast<ClassParam*>(userData)->*methodParam)(eventKey,signalData);
+		}
 	
 	private:
-	struct IOEventListener // Structure representing listeners that have registered interest in some input/output event(s)
-		{
-		/* Elements: */
-		public:
-		ListenerKey key; // Unique key identifying this event
-		int fd; // File descriptor belonging to the event
-		int typeMask; // Mask of event types (read, write, exception) in which the listener is interested
-		IOEventCallback callback; // Function called when an event occurs
-		void* callbackUserData; // Opaque pointer to be passed to callback function
-		
-		/* Constructors and destructors: */
-		IOEventListener(ListenerKey sKey,int sFd,int sTypeMask,IOEventCallback sCallback,void* sCallbackUserData)
-			:key(sKey),fd(sFd),typeMask(sTypeMask),callback(sCallback),callbackUserData(sCallbackUserData)
-			{
-			}
-		};
-	
-	struct TimerEventListener // Structure representing listeners that have registered interest in timer events
-		{
-		/* Elements: */
-		public:
-		ListenerKey key; // Unique key identifying this event
-		Time time; // Time point at which to trigger the event
-		Time interval; // Event interval for recurring events; one-shot events need to return true from callback to cancel further events
-		TimerEventCallback callback; // Function called when an event occurs
-		void* callbackUserData; // Opaque pointer to be passed to callback function
-		
-		/* Constructors and destructors: */
-		TimerEventListener(ListenerKey sKey,const Time& sTime,const Time& sInterval,TimerEventCallback sCallback,void* sCallbackUserData)
-			:key(sKey),time(sTime),interval(sInterval),callback(sCallback),callbackUserData(sCallbackUserData)
-			{
-			}
-		};
-	
-	class TimerEventListenerComp // Helper class to compare timer event listener structures by next event time
-		{
-		/* Methods: */
-		public:
-		static bool lessEqual(const TimerEventListener* v1,const TimerEventListener* v2)
-			{
-			return v1->time<=v2->time;
-			}
-		};
-	
-	typedef Misc::PriorityHeap<TimerEventListener*,TimerEventListenerComp> TimerEventListenerHeap;
-	
-	struct ProcessListener // Structure representing listeners that are called after any event has been handled
-		{
-		/* Elements: */
-		public:
-		ListenerKey key; // Unique key identifying this event
-		ProcessCallback callback; // Function called when an event occurs
-		void* callbackUserData; // Opaque pointer to be passed to callback function
-		
-		/* Constructors and destructors: */
-		ProcessListener(ListenerKey sKey,ProcessCallback sCallback,void* sCallbackUserData)
-			:key(sKey),callback(sCallback),callbackUserData(sCallbackUserData)
-			{
-			}
-		};
+	struct IOEventListener; // Structure representing listeners that have registered interest in some input/output event(s)
+	struct TimerEventListener; // Structure representing listeners that have registered interest in timer events
+	class TimerEventListenerComp; // Helper class to compare timer event listener structures by next event time
+	typedef Misc::PriorityHeap<TimerEventListener*,TimerEventListenerComp> TimerEventListenerHeap; // Type for heap of timer event listeners, ordered by next event time
+	struct ProcessListener; // Structure representing listeners that are called after any event has been handled
+	struct SignalListener; // Structure representing listeners that react to user-defined signals
+	typedef Misc::HashTable<ListenerKey,SignalListener> SignalListenerMap; // Hash table mapping listener keys to signal listeners
+	struct PipeMessage;
 	
 	/* Elements: */
 	private:
-	Spinlock pipeMutex; // Mutex protecting the self-pipe used to change the dispatcher's internal state
+	Spinlock pipeMutex; // Mutex protecting the self-pipe used to change the dispatcher's internal state or raise signals
 	int pipeFds[2]; // A uni-directional unnamed pipe to trigger events internal to the dispatcher
+	size_t numMessages; // Number of messages in the self-pipe read buffer
+	PipeMessage* messages; // A buffer to read pipe messages from the self-pipe
+	size_t messageReadSize; // Number of bytes read during previous call to readPipeMessages
 	ListenerKey nextKey; // Next key to be assigned to an event listener
 	std::vector<IOEventListener> ioEventListeners; // List of currently registered input/output event listeners
 	TimerEventListenerHeap timerEventListeners; // Heap of currently registered timer event listeners, sorted by next event time
 	std::vector<ProcessListener> processListeners; // List of currently registered process event listeners
+	SignalListenerMap signalListeners; // Map of currently registered signal event listeners
 	fd_set readFds,writeFds,exceptionFds; // Three sets of file descriptors waiting for reads, writes, and exceptions, respectively
 	int numReadFds,numWriteFds,numExceptionFds; // Number of file descriptors in the three descriptor sets
 	int maxFd; // Largest file descriptor set in any of the three descriptor sets
 	bool hadBadFd; // Flag if the last invocation of dispatchNextEvent() tripped on a bad file descriptor
+	Time dispatchTime; // Time point of current iteration of dispatchNextEvent() method
+	
+	/* Private methods: */
+	ListenerKey getNextKey(void); // Returns a new listener key
+	size_t readPipeMessages(void); // Reads messages from the self-pipe; returns number of complete messages read
+	void writePipeMessage(const PipeMessage& pm,const char* methodName); // Writes a message to the self-pipe
+	void updateFdSets(int fd,int oldEventMask,int newEventMask); // Updates the three descriptor sets based on the given file descriptor changing its interest mask
 	
 	/* Constructors and destructors: */
 	public:
@@ -201,12 +180,22 @@ class EventDispatcher
 	void dispatchEvents(void); // Waits for and dispatches events until stopped
 	void interrupt(void); // Forces an invocation of dispatchNextEvent() to return with a true value
 	void stop(void); // Forces an invocation of dispatchNextEvent() to return with a false value, or an invocation of dispatchEvents() to return
+	void stopOnSignals(void); // Installs a signal handler that stops the event dispatcher when a SIGINT or SIGTERM occur
+	const Time& getCurrentTime(void) const // Returns the time point of the current invocation of the dispatchNextEvent method, to be used to schedule timer events; can only be called from inside an event callback
+		{
+		return dispatchTime;
+		}
 	ListenerKey addIOEventListener(int eventFd,int eventTypeMask,IOEventCallback eventCallback,void* eventCallbackUserData); // Adds a new input/output event listener for the given file descriptor and event type mask; returns unique event listener key
+	void setIOEventListenerEventTypeMask(ListenerKey listenerKey,int newEventTypeMask); // Changes the event type mask of the input/output event listener with the given listener key
+	void setIOEventListenerEventTypeMaskFromCallback(ListenerKey listenerKey,int newEventTypeMask); // Ditto, but can only be called from inside an input/output event callback
 	void removeIOEventListener(ListenerKey listenerKey); // Removes the input/output event listener with the given listener key
 	ListenerKey addTimerEventListener(const Time& eventTime,const Time& eventInterval,TimerEventCallback eventCallback,void* eventCallbackUserData); // Adds a new timer event listener for the given event time and repeat interval; returns unique event listener key
 	void removeTimerEventListener(ListenerKey listenerKey); // Removes the timer event listener with the given listener key
 	ListenerKey addProcessListener(ProcessCallback eventCallback,void* eventCallbackUserData); // Adds a new process listener; returns unique event listener key
 	void removeProcessListener(ListenerKey listenerKey); // Removes the process listener with the given listener key
+	ListenerKey addSignalListener(SignalCallback eventCallback,void* eventCallbackUserData); // Adds a new signal listener; returns unique event listener key
+	void removeSignalListener(ListenerKey listenerKey); // Removes the signal listener with the given listener key
+	void signal(ListenerKey listenerKey,void* signalData); // Raises a signal with the given listener key and opaque data pointer
 	};
 
 }

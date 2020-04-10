@@ -1,7 +1,7 @@
 /***********************************************************************
 LensDistortion - Class encapsulating a good lens distortion correction
 formula also used by OpenCV.
-Copyright (c) 2015 Oliver Kreylos
+Copyright (c) 2015-2019 Oliver Kreylos
 
 This file is part of the Basic Video Library (Video).
 
@@ -159,10 +159,11 @@ LensDistortion::Point LensDistortion::undistort(const LensDistortion::Point& dis
 		
 		/* Calculate the function derivative at p: */
 		Scalar fpd[2][2];
-		fpd[0][0]=(div-d[0]*(Scalar(2)*kappas[0]+(Scalar(4)*kappas[1]+Scalar(6)*kappas[2]*r2)*r2)*d[0])/Math::sqr(div)+Scalar(2)*rhos[0]*d[1]+Scalar(6)*rhos[1]*d[0]; // d fp[0] / d p[0]
-		fpd[0][1]=-d[0]*(Scalar(2)*kappas[0]+(Scalar(4)*kappas[1]+Scalar(6)*kappas[2]*r2)*r2)*d[1]/Math::sqr(div)+Scalar(2)*rhos[0]*d[0]+Scalar(2)*rhos[1]*d[1]; // d fp[0] / d p[1]
-		fpd[1][0]=-d[1]*(Scalar(2)*kappas[0]+(Scalar(4)*kappas[1]+Scalar(6)*kappas[2]*r2)*r2)*d[0]/Math::sqr(div)+Scalar(2)*rhos[0]*d[0]+Scalar(2)*rhos[1]*d[1]; // d fp[1] / d p[0]
-		fpd[1][1]=(div-d[1]*(Scalar(2)*kappas[0]+(Scalar(4)*kappas[1]+Scalar(6)*kappas[2]*r2)*r2)*d[1])/Math::sqr(div)+Scalar(2)*rhos[1]*d[0]+Scalar(6)*rhos[0]*d[1]; // d fp[0] / d p[0]
+		Scalar div2=Math::sqr(div);
+		Scalar divp=(Scalar(2)*kappas[0]+(Scalar(4)*kappas[1]+Scalar(6)*kappas[2]*r2)*r2)/div2;
+		fpd[0][0]=div/div2-d[0]*divp*d[0]+Scalar(2)*rhos[0]*d[1]+Scalar(6)*rhos[1]*d[0]; // d fp[0] / d p[0]
+		fpd[1][0]=fpd[0][1]=-d[0]*divp*d[1]+Scalar(2)*rhos[0]*d[0]+Scalar(2)*rhos[1]*d[1]; // d fp[0] / d p[1] == d fp[1] / d p[0]
+		fpd[1][1]=div/div2-d[1]*divp*d[1]+Scalar(2)*rhos[1]*d[0]+Scalar(6)*rhos[0]*d[1]; // d fp[0] / d p[0]
 		
 		/* Perform the Newton-Raphson step: */
 		Scalar det=fpd[0][0]*fpd[1][1]-fpd[0][1]*fpd[1][0];

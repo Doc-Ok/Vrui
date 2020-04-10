@@ -2,7 +2,7 @@
 CoordinateManager - Class to manage the (navigation) coordinate system
 of a Vrui application to support system-wide navigation manipulation
 interfaces.
-Copyright (c) 2007-2010 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -45,11 +45,24 @@ CoordinateManager::~CoordinateManager(void)
 
 void CoordinateManager::setUnit(const Geometry::LinearUnit& newUnit)
 	{
+	/* Call the list of unit of length measurement change callbacks: */
+	{
+	UnitChangedCallbackData cbData(unit,newUnit);
+	unitChangedCallbacks.call(&cbData);
+	}
+	
+	/* Set the new unit of length measurement: */
 	unit=newUnit;
 	}
 
 void CoordinateManager::setCoordinateTransform(CoordinateTransform* newTransform)
 	{
+	/* Call the list of coordinate transform change callbacks: */
+	{
+	CoordinateTransformChangedCallbackData cbData(transform,newTransform);
+	coordinateTransformChangedCallbacks.call(&cbData);
+	}
+	
 	/* Delete the previous coordinate transformation: */
 	delete transform;
 	

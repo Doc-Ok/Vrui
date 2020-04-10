@@ -2,7 +2,7 @@
 VRDeviceManager - Class to gather position, button and valuator data
 from one or several VR devices and associate them with logical input
 devices.
-Copyright (c) 2002-2017 Oliver Kreylos
+Copyright (c) 2002-2020 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -28,7 +28,6 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <string>
 #include <Realtime/Time.h>
 #include <Threads/Mutex.h>
-#include <Threads/MutexCond.h>
 #include <Vrui/Internal/VRDeviceState.h>
 #include <Vrui/Internal/BatteryState.h>
 
@@ -72,9 +71,41 @@ class VRDeviceManager
 	
 	typedef VRFactoryManager<VRCalibrator> CalibratorFactoryManager;
 	
-	typedef void (*TrackerUpdateCompleteCallback)(VRDeviceManager* manager,void* userData); // Callback called when all trackers have updated
-	typedef void (*BatteryStateUpdatedCallback)(VRDeviceManager* manager,unsigned int deviceIndex,const Vrui::BatteryState& batteryState,void* userData); // Callback called when a device's battery state changes
-	typedef void (*HMDConfigurationUpdatedCallback)(VRDeviceManager* manager,const Vrui::HMDConfiguration* hmdConfiguration,void* userData); // Callback called when an HMD configuration has changed
+	class VRStreamer // Abstract base class for objects receiving device state updates
+		{
+		/* Elements: */
+		protected:
+		VRDeviceManager* deviceManager; // Pointer to the device manager
+		Threads::Mutex& stateMutex; // Reference to the device manager's device state mutex
+		const Vrui::VRDeviceState& state; // Reference to the device manager's device state object
+		Threads::Mutex& batteryStateMutex; // Reference to the device manager's batter state mutex
+		const std::vector<Vrui::BatteryState>& batteryStates; // Reference to the device manager's battery state vector
+		Threads::Mutex& hmdConfigurationMutex; // Reference to the device manager's HMD configuration mutex
+		const std::vector<Vrui::HMDConfiguration*>& hmdConfigurations; // Reference to the device manager's HMD configuration vector
+		
+		/* Constructors and destructors: */
+		public:
+		VRStreamer(VRDeviceManager* sDeviceManager) // Creates a VR streamer listening to the given device manager
+			:deviceManager(sDeviceManager),
+			 stateMutex(deviceManager->stateMutex),state(deviceManager->state),
+			 batteryStateMutex(deviceManager->batteryStateMutex),batteryStates(deviceManager->batteryStates),
+			 hmdConfigurationMutex(deviceManager->hmdConfigurationMutex),hmdConfigurations(deviceManager->hmdConfigurations)
+			{
+			}
+		virtual ~VRStreamer(void)
+			{
+			}
+		
+		/* Methods: */
+		virtual void trackerUpdated(int trackerIndex) =0; // Notifies the VR streamer that a single tracker has been updated
+		virtual void buttonUpdated(int buttonIndex) =0; // Notifies the VR streamer that a single button has been updated
+		virtual void valuatorUpdated(int valuatorIndex) =0; // Notifies the VR streamer that a single valuator has been updated
+		virtual void updateCompleted(void) =0; // Notifies the VR streamer that the device state has been updated completely
+		virtual void batteryStateUpdated(unsigned int deviceIndex) =0; // Notifies the VR streamer that a battery state has been updated
+		virtual void hmdConfigurationUpdated(const Vrui::HMDConfiguration* hmdConfiguration) =0; // Notifies the VR streamer that an HMD configuration has been updated
+		};
+	
+	friend class VRStreamer;
 	
 	struct Feature // Structure describing a client-controlled feature managed by a device driver module
 		{
@@ -102,20 +133,13 @@ class VRDeviceManager
 	std::vector<Vrui::VRDeviceDescriptor*> virtualDevices; // List of virtual devices combining selected trackers, buttons, and valuators
 	Threads::Mutex batteryStateMutex; // Mutex serializing access to the list of virtual device battery states
 	std::vector<Vrui::BatteryState> batteryStates; // List of current battery states for all virtual devices
-	BatteryStateUpdatedCallback batteryStateUpdatedCallback; // Callback called when a virtual device's battery state has been updated
-	void* batteryStateUpdatedCallbackData; // Data passed with battery state updated callback
 	Threads::Mutex hmdConfigurationMutex; // Mutex serializing access to the list of HMD configurations
 	std::vector<Vrui::HMDConfiguration*> hmdConfigurations; // List of HMD configurations
-	HMDConfigurationUpdatedCallback hmdConfigurationUpdatedCallback; // Callback called when an HMD configuration has been updated
-	void* hmdConfigurationUpdatedCallbackData; // Data passed with HMD configuration updated callback
 	std::vector<Feature> powerFeatures; // List of device parts that can be powered off on request
 	std::vector<Feature> hapticFeatures; // List of haptic feedback devices
 	unsigned int fullTrackerReportMask; // Bitmask containing 1-bits for all used logical tracker indices
 	unsigned int trackerReportMask; // Bitmask of logical tracker indices that have reported state
-	bool trackerUpdateNotificationEnabled; // Flag if update notification is enabled
-	Threads::MutexCond* trackerUpdateCompleteCond; // Condition variable to notify client threads that all tracker states has been updated
-	TrackerUpdateCompleteCallback trackerUpdateCompleteCallback; // Callback called when all tracker states have been updated
-	void* trackerUpdateCompleteCallbackData; // Data passed with tracker update complete callback
+	VRStreamer* streamer; // Pointer to VR streamer receiving state update notifications
 	
 	/* Constructors and destructors: */
 	public:
@@ -170,6 +194,10 @@ class VRDeviceManager
 	void setValuatorState(int valuatorIndex,Vrui::VRDeviceState::ValuatorState newValuatorState); // Updates state of single valuator
 	void updateState(void); // Tells device manager that the current state should be considered "complete"
 	void updateBatteryState(unsigned int virtualDeviceIndex,const Vrui::BatteryState& newBatteryState); // Updates the battery state of the given virtual device with the given new state
+	Threads::Mutex& getHmdConfigurationMutex(void) // Returns the mutex serializing access to the HMD configurations
+		{
+		return hmdConfigurationMutex;
+		}
 	void updateHmdConfiguration(const Vrui::HMDConfiguration* hmdConfiguration); // Tells device manager that the given HMD configuration was updated; must be called with HMD configurations locked
 	
 	/* Methods to communicate with device server: */
@@ -181,46 +209,6 @@ class VRDeviceManager
 		{
 		return *(virtualDevices[deviceIndex]);
 		}
-	void lockState(void) // Locks current device states
-		{
-		stateMutex.lock();
-		};
-	void unlockState(void) // Unlocks current device states
-		{
-		stateMutex.unlock();
-		};
-	Vrui::VRDeviceState& getState(void) // Returns current state of all managed devices (state must be locked while being used)
-		{
-		return state;
-		};
-	void lockBatteryStates(void) // Locks current battery states
-		{
-		hmdConfigurationMutex.lock();
-		};
-	void unlockBatteryStates(void) // Unlocks current battery states
-		{
-		hmdConfigurationMutex.unlock();
-		};
-	Vrui::BatteryState& getBatteryState(unsigned int deviceIndex) // Returns the current battery state of the given virtual device (battery states must be locked while being used)
-		{
-		return batteryStates[deviceIndex];
-		}
-	unsigned int getNumHmdConfigurations(void) const // Returns the number of HMD configurations
-		{
-		return hmdConfigurations.size();
-		}
-	void lockHmdConfigurations(void) // Locks current HMD configurations
-		{
-		hmdConfigurationMutex.lock();
-		};
-	void unlockHmdConfigurations(void) // Unlocks current HMD configurations
-		{
-		hmdConfigurationMutex.unlock();
-		};
-	Vrui::HMDConfiguration& getHmdConfiguration(unsigned int index) // Returns current HMD configuration of given index (HMD configurations must be locked while being used)
-		{
-		return *hmdConfigurations[index];
-		};
 	unsigned int getNumPowerFeatures(void) const // Returns the number of power features
 		{
 		return powerFeatures.size();
@@ -230,12 +218,8 @@ class VRDeviceManager
 		{
 		return hapticFeatures.size();
 		}
-	void hapticTick(unsigned int hapticFeatureIndex,unsigned int duration); // Requests a haptic tick of the given duration in microseconds on the given power feature
-	void enableTrackerUpdateNotification(Threads::MutexCond* sTrackerUpdateCompleteCond); // Sets a condition variable to be signalled when all trackers have updated
-	void enableTrackerUpdateNotification(TrackerUpdateCompleteCallback newTrackerUpdateCompleteCallback,void* newTrackerUpdateCompleteCallbackData); // Sets a callback to be called when all trackers have updated; callback is called with device states locked
-	void disableTrackerUpdateNotification(void); // Disables tracker update notification
-	void setBatteryStateUpdatedCallback(BatteryStateUpdatedCallback newBatteryStateUpdatedCallback,void* newBatteryStateUpdatedCallbackData); // Sets a callback to be called when a virtual device's battery state is updated
-	void setHmdConfigurationUpdatedCallback(HMDConfigurationUpdatedCallback newHmdConfigurationUpdatedCallback,void* newHmdConfigurationUpdatedCallbackData); // Sets a callback to be called when an HMD configuration is updated
+	void hapticTick(unsigned int hapticFeatureIndex,unsigned int duration,unsigned int frequency,unsigned int amplitude); // Requests a haptic tick of the given duration in milliseconds, frequency in Hertz, and relative amplitude in [0, 256) on the given power feature
+	void setStreamer(VRStreamer* newStreamer); // Installs a new object receiving device state update notifications
 	void start(void); // Starts device processing
 	void stop(void); // Stops device processing
 	};

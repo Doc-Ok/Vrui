@@ -1,7 +1,7 @@
 /***********************************************************************
 ShapeNode - Class for shapes represented as a combination of a geometry
 node and an attribute node defining the geometry's appearance.
-Copyright (c) 2009 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -62,24 +62,38 @@ void ShapeNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 
 void ShapeNode::update(void)
 	{
+	/* Check if there are both an appearance node and a geometry node: */
+	if(appearance.getValue()!=0&&geometry.getValue()!=0)
+		{
+		/* Tell the geometry node whether it requires per-vertex texture coordinates, colors, and/or normal vectors: */
+		if(appearance.getValue()->requiresTexCoords())
+			geometry.getValue()->mustProvideTexCoords();
+		if(appearance.getValue()->requiresColors())
+			geometry.getValue()->mustProvideColors();
+		if(appearance.getValue()->requiresNormals())
+			geometry.getValue()->mustProvideNormals();
+		}
 	}
 
 Box ShapeNode::calcBoundingBox(void) const
 	{
-	/* Return the geometry node's bounding box: */
-	return geometry.getValue()->calcBoundingBox();
+	/* Return the geometry node's bounding box or an empty box if there is no geometry node: */
+	if(geometry.getValue()!=0)
+		return geometry.getValue()->calcBoundingBox();
+	else
+		return Box::empty;
 	}
 
 void ShapeNode::glRenderAction(GLRenderState& renderState) const
 	{
-	/* Set the attribute node's OpenGL state: */
+	/* Set the appearance node's OpenGL state: */
 	if(appearance.getValue()!=0)
 		appearance.getValue()->setGLState(renderState);
 	else
 		{
 		/* Turn off all appearance aspects: */
 		renderState.disableMaterials();
-		renderState.emissiveColor=GLRenderState::Color(1.0f,1.0f,1.0f);
+		renderState.setEmissiveColor(GLRenderState::Color(1.0f,1.0f,1.0f));
 		renderState.disableTextures();
 		}
 	
@@ -87,7 +101,7 @@ void ShapeNode::glRenderAction(GLRenderState& renderState) const
 	if(geometry.getValue()!=0)
 		geometry.getValue()->glRenderAction(renderState);
 	
-	/* Reset the attribute node's OpenGL state: */
+	/* Reset the appearance node's OpenGL state: */
 	if(appearance.getValue()!=0)
 		appearance.getValue()->resetGLState(renderState);
 	}

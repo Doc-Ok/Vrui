@@ -3,7 +3,7 @@ Animation - Example program demonstrating data exchange between a
 background animation thread and the foreground rendering thread using
 a triple buffer, and retained-mode OpenGL rendering using vertex and
 index buffers.
-Copyright (c) 2014-2015 Oliver Kreylos
+Copyright (c) 2014-2018 Oliver Kreylos
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -27,40 +27,29 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <Math/Math.h>
 #include <Math/Constants.h>
 #include <GL/gl.h>
-#include <GL/GLObject.h>
-#include <GL/GLContextData.h>
-#include <GL/Extensions/GLARBVertexBufferObject.h>
 #include <GL/GLMaterial.h>
 #include <GL/GLGeometryVertex.h>
+#include <GL/GLVertexBuffer.h>
+#include <GL/GLIndexBuffer.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/Application.h>
 
-class Animation:public Vrui::Application,public GLObject
+class Animation:public Vrui::Application
 	{
 	/* Embedded classes: */
 	private:
 	typedef GLGeometry::Vertex<void,0,void,0,float,float,3> MeshVertex; // Type for mesh vertices storing normal vectors and positions
-	
-	struct DataItem:public GLObject::DataItem
-		{
-		/* Elements: */
-		public:
-		GLuint vertexBufferId; // ID of vertex buffer holding mesh vertices
-		GLuint indexBufferId; // ID of index buffer holding quad strip vertex indices
-		unsigned int version; // Version number of mesh currently in vertex buffer
-		
-		/* Constructors and destructors: */
-		DataItem(void);
-		virtual ~DataItem(void);
-		};
+	typedef GLVertexBuffer<MeshVertex> VertexBuffer; // Type for OpenGL buffers holding mesh vertices
+	typedef GLIndexBuffer<GLuint> IndexBuffer; // Type for OpenGL buffers holding mesh vertex indices
 	
 	/* Elements: */
 	private:
 	int meshSize[2]; // Width and height of mesh
 	Threads::TripleBuffer<MeshVertex*> meshVertices;
 	float phase; // Phase angle for mesh animation
-	unsigned int version; // Version number of mesh in the most-recently locked triple buffer slot
 	GLMaterial meshMaterialFront,meshMaterialBack; // Material properties to render the mesh from the front and back
+	VertexBuffer vertexBuffer; // Buffer holding mesh vertices
+	IndexBuffer indexBuffer; // Buffer holding mesh vertex indices
 	Threads::Thread animationThread; // Thread object for the background animation thread
 	
 	/* Private methods: */
@@ -76,33 +65,7 @@ class Animation:public Vrui::Application,public GLObject
 	virtual void frame(void);
 	virtual void display(GLContextData& contextData) const;
 	virtual void resetNavigation(void);
-	
-	/* Methods from GLObject: */
-	virtual void initContext(GLContextData& contextData) const;
 	};
-
-/***********************************
-Methods of class Anmation::DataItem:
-***********************************/
-
-Animation::DataItem::DataItem(void)
-	:vertexBufferId(0),indexBufferId(0),
-	 version(0)
-	{
-	/* Initialize the GL_ARB_vertex_buffer_object extension: */
-	GLARBVertexBufferObject::initExtension();
-	
-	/* Allocate the vertex and index buffers: */
-	glGenBuffersARB(1,&vertexBufferId);
-	glGenBuffersARB(1,&indexBufferId);
-	}
-
-Animation::DataItem::~DataItem(void)
-	{
-	/* Destroy the vertex and index buffers: */
-	glDeleteBuffersARB(1,&vertexBufferId);
-	glDeleteBuffersARB(1,&indexBufferId);
-	}
 
 /**************************
 Methods of class Animation:
@@ -136,10 +99,8 @@ void* Animation::animationThreadMethod(void)
 		/* Sleep for approx. 1/60th of a second: */
 		usleep(1000000/60);
 		
-		/* Increment the phase angle by 1 radians/second (assuming we slept 1/60s): */
-		phase+=1.0f/60.0f;
-		if(phase>=2.0f*Math::Constants<float>::pi)
-			phase-=2.0f*Math::Constants<float>::pi;
+		/* Increment the phase angle by 1 radians/second (assuming we slept 1/60s) and wrap to [-pi, +pi): */
+		phase=Math::wrapRad(phase+1.0f/60.0f);
 		
 		/* Start a new value in the mesh triple buffer: */
 		MeshVertex* mv=meshVertices.startNewValue();
@@ -189,11 +150,13 @@ Animation::Animation(int& argc,char**& argv)
 	
 	/* Initialize animation state: */
 	phase=0.0f;
-	version=0;
 	
 	/* Calculate the first full mesh state in a new triple buffer slot: */
 	updateMesh(meshVertices.startNewValue());
 	meshVertices.postNewValue();
+	
+	/* Initialize the index buffer for manual updates: */
+	indexBuffer.setSource((meshSize[1]-1)*meshSize[0]*2,0);
 	
 	/* Start the background animation thread: */
 	animationThread.start(this,&Animation::animationThreadMethod);
@@ -215,16 +178,13 @@ void Animation::frame(void)
 	/* Check if there is a new entry in the triple buffer and lock it: */
 	if(meshVertices.lockNewValue())
 		{
-		/* Invalidate the in-GPU vertex buffer: */
-		++version;
+		/* Point the vertex buffer to the new mesh vertices: */
+		vertexBuffer.setSource(meshSize[1]*meshSize[0],meshVertices.getLockedValue());
 		}
 	}
 
 void Animation::display(GLContextData& contextData) const
 	{
-	/* Get the context data item: */
-	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);
-	
 	/* Save OpenGL state: */
 	glPushAttrib(GL_ENABLE_BIT|GL_LIGHTING_BIT);
 	
@@ -236,30 +196,34 @@ void Animation::display(GLContextData& contextData) const
 	glMaterial(GLMaterialEnums::FRONT,meshMaterialFront);
 	glMaterial(GLMaterialEnums::BACK,meshMaterialBack);
 	
-	/* Upload the mesh vertices into the vertex buffer object: */
-	glBindBufferARB(GL_ARRAY_BUFFER_ARB,dataItem->vertexBufferId);
-	if(dataItem->version!=version)
+	/* Bind the vertex buffer (which automatically uploads any new vertex data): */
+	vertexBuffer.bind(contextData);
+	
+	/* Bind the index buffer and check if it is outdated (happens only on first call): */
+	IndexBuffer::DataItem* ibdi=indexBuffer.bind(contextData);
+	if(indexBuffer.needsUpdate(ibdi))
 		{
-		/* The in-GPU vertex buffer is outdated; upload the most recent in-memory vertex buffer: */
-		glBufferDataARB(GL_ARRAY_BUFFER_ARB,meshSize[1]*meshSize[0]*sizeof(MeshVertex),meshVertices.getLockedValue(),GL_DYNAMIC_DRAW_ARB);
-		dataItem->version=version;
+		/* Upload mesh vertex indices into the index buffer: */
+		IndexBuffer::Index* indexPtr=indexBuffer.startUpdate(ibdi);
+		for(int y=1;y<meshSize[1];++y)
+			for(int x=0;x<meshSize[0];++x,indexPtr+=2)
+				{
+				indexPtr[0]=IndexBuffer::Index(y*meshSize[0]+x);
+				indexPtr[1]=IndexBuffer::Index((y-1)*meshSize[0]+x);
+				}
+		
+		/* Mark the index buffer as up-to-date: */
+		indexBuffer.finishUpdate(ibdi);
 		}
 	
-	/* Set up vertex array rendering: */
-	GLVertexArrayParts::enable(MeshVertex::getPartsMask());
-	glVertexPointer(static_cast<MeshVertex*>(0));
+	/* Draw the mesh as a sequence of quad strips: */
+	GLint start=0;
+	for(int y=1;y<meshSize[1];++y,start+=meshSize[0]*2)
+		indexBuffer.draw(GL_QUAD_STRIP,start,meshSize[0]*2,ibdi);
 	
-	/* Bind the index buffer and draw the mesh: */
-	glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,dataItem->indexBufferId);
-	const GLuint* indexPtr=0;
-	for(int y=1;y<meshSize[1];++y,indexPtr+=meshSize[0]*2)
-		glDrawElements(GL_QUAD_STRIP,meshSize[0]*2,GL_UNSIGNED_INT,indexPtr);
-	
-	/* Disable vertex array rendering and unbind the buffers: */
-	GLVertexArrayParts::disable(MeshVertex::getPartsMask());
-	
-	glBindBufferARB(GL_ARRAY_BUFFER_ARB,0);
-	glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,0);
+	/* Unbind the buffers: */
+	indexBuffer.unbind();
+	vertexBuffer.unbind();
 	
 	/* Restore OpenGL state: */
 	glPopAttrib();
@@ -269,30 +233,6 @@ void Animation::resetNavigation(void)
 	{
 	/* Center and scale the object: */
 	Vrui::setNavigationTransformation(Vrui::Point::origin,9.0*Math::Constants<double>::pi,Vrui::Vector(0,1,0));
-	}
-
-void Animation::initContext(GLContextData& contextData) const
-	{
-	/* Create a context data item: */
-	DataItem* dataItem=new DataItem;
-	contextData.addDataItem(this,dataItem);
-	
-	/* Initialize the index buffer: */
-	glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,dataItem->indexBufferId);
-	glBufferDataARB(GL_ELEMENT_ARRAY_BUFFER_ARB,(meshSize[1]-1)*meshSize[0]*2*sizeof(GLuint),0,GL_STATIC_DRAW_ARB);
-	
-	/* Write mesh vertex indices for quad strip rendering directly to OpenGL memory: */
-	GLuint* indexPtr=static_cast<GLuint*>(glMapBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,GL_WRITE_ONLY_ARB));
-	for(int y=1;y<meshSize[1];++y)
-		for(int x=0;x<meshSize[0];++x,indexPtr+=2)
-			{
-			indexPtr[0]=GLuint(y*meshSize[0]+x);
-			indexPtr[1]=GLuint((y-1)*meshSize[0]+x);
-			}
-	glUnmapBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB);
-	
-	/* Protect the index buffer: */
-	glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,0);
 	}
 
 VRUI_APPLICATION_RUN(Animation)

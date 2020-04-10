@@ -1,7 +1,7 @@
 /***********************************************************************
 GridEditor - Vrui application for interactive virtual clay modeling
 using a density grid and interactive isosurface extraction.
-Copyright (c) 2006-2015 Oliver Kreylos
+Copyright (c) 2006-2019 Oliver Kreylos
 
 This file is part of the Virtual Clay Editing Package.
 
@@ -27,10 +27,12 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <iostream>
 #include <Misc/SelfDestructPointer.h>
 #include <Misc/ThrowStdErr.h>
-#include <IO/File.h>
+#include <Misc/FileNameExtensions.h>
+#include <IO/ValueSource.h>
 #include <IO/OpenFile.h>
 #include <Geometry/Box.h>
 #include <Geometry/OrthogonalTransformation.h>
+#include <Geometry/OutputOperators.h>
 #include <GL/gl.h>
 #include <GL/GLColorTemplates.h>
 #include <GL/GLVertexTemplates.h>
@@ -41,7 +43,6 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <GL/GLGeometryWrappers.h>
 #include <GL/GLTransformationWrappers.h>
 #include <GLMotif/StyleSheet.h>
-#include <GLMotif/WidgetManager.h>
 #include <GLMotif/PopupMenu.h>
 #include <GLMotif/PopupWindow.h>
 #include <GLMotif/RowColumn.h>
@@ -50,7 +51,6 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <GLMotif/ToggleButton.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/GlyphRenderer.h>
-#include <Vrui/OpenFile.h>
 #include <Vrui/DisplayState.h>
 
 /*************************************
@@ -159,7 +159,7 @@ void GridEditor::EditTool::initialize(void)
 		fudgeSize+=Math::sqr(grid->getCellSize(i));
 	fudgeSize=Math::sqrt(fudgeSize)*2.0f;
 	
-	const GLMotif::StyleSheet& ss=*Vrui::getWidgetManager()->getStyleSheet();
+	const GLMotif::StyleSheet& ss=*Vrui::getUiStyleSheet();
 	
 	/* Create the settings dialog: */
 	settingsDialog=new GLMotif::PopupWindow("SettingsDialog",Vrui::getWidgetManager(),"Edit Tool Settings");
@@ -298,6 +298,8 @@ void GridEditor::EditTool::frame(void)
 	
 	/* Update the brush position and size in model coordinates: */
 	modelCenter=Point(newTrackerState.getOrigin());
+	for(int i=0;i<3;++i)
+		modelCenter[i]-=grid->getOrigin()[i];
 	modelRadius=float(influenceRadius*newTrackerState.getScaling());
 	
 	/* Determine the subdomain of the grid affected by the brush: */
@@ -506,7 +508,7 @@ void GridEditor::saveGridCallback(GLMotif::FileSelectionDialog::OKCallbackData* 
 		for(EditableGrid::Index i(0);i[0]<grid->getNumVertices(0);i.preInc(grid->getNumVertices()))
 			gridFile->write<float>(grid->getValue(i));
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		Vrui::showErrorMessage("Save Grid...",Misc::printStdErrMsg("Could not save grid due to exception %s",err.what()));
 		}
@@ -520,7 +522,7 @@ void GridEditor::exportSurfaceCallback(GLMotif::FileSelectionDialog::OKCallbackD
 		IO::FilePtr plyFile(cbData->selectedDirectory->openFile(cbData->selectedFileName,IO::File::WriteOnly));
 		grid->exportSurface(*plyFile);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		Vrui::showErrorMessage("Export Surface...",Misc::printStdErrMsg("Could not export surface due to exception %s",err.what()));
 		}
@@ -550,11 +552,12 @@ GLMotif::PopupMenu* GridEditor::createMainMenu(void)
 GridEditor::GridEditor(int& argc,char**& argv)
 	:Vrui::Application(argc,argv),
 	 grid(0),
-	 saveGridHelper(Vrui::getWidgetManager(),"SavedGrid.fvol",".fvol",Vrui::openDirectory(".")),
-	 exportSurfaceHelper(Vrui::getWidgetManager(),"ExportedSurface.ply",".ply",Vrui::openDirectory(".")),
+	 saveGridHelper(Vrui::getWidgetManager(),"SavedGrid.fvol",".fvol",IO::openDirectory(".")),
+	 exportSurfaceHelper(Vrui::getWidgetManager(),"ExportedSurface.ply",".ply",IO::openDirectory(".")),
 	 mainMenu(0)
 	{
 	/* Parse the command line: */
+	EditableGrid::Point newOrigin=EditableGrid::Point::origin;
 	EditableGrid::Index newGridSize(256,256,256);
 	EditableGrid::Size newCellSize(1.0f,1.0f,1.0f);
 	const char* gridFileName=0;
@@ -567,12 +570,31 @@ GridEditor::GridEditor(int& argc,char**& argv)
 				std::cout<<"Usage:"<<std::endl;
 				std::cout<<"  "<<argv[0]<<" [-gridSize <sx> <sy> <sz>] [-cellSize <cx> <cy> <cz>] [<grid file name>]"<<std::endl;
 				std::cout<<"Options:"<<std::endl;
+				std::cout<<"  -origin <x> <y> <z>"<<std::endl;
+				std::cout<<"    Origin point of grid. Defaults to (0, 0, 0)."<<std::endl;
 				std::cout<<"  -gridSize <sx> <sy> <sz>"<<std::endl;
 				std::cout<<"    Number of vertices for newly-created grids in x, y, and z. Defaults to 256 256 256."<<std::endl;
 				std::cout<<"  -cellSize <cx> <cy> <cz>"<<std::endl;
 				std::cout<<"    Grid cell dimensions for newly-created grids in x, y, and z in some arbitrary unit of measurement. Defaults to 1.0 1.0 1.0."<<std::endl;
 				std::cout<<"  <grid file name>"<<std::endl;
-				std::cout<<"    Name of a grid file (extension .fvol) to load upon start-up. If not provided, a new grid will be created."<<std::endl;
+				std::cout<<"    Name of a grid file (extension .fvol or .sdf) to load upon start-up. If not provided, a new grid will be created."<<std::endl;
+				}
+			else if(strcasecmp(argv[i]+1,"origin")==0)
+				{
+				if(i+3<argc)
+					{
+					/* Read the requested origin: */
+					for(int j=0;j<3;++j)
+						{
+						++i;
+						newOrigin[j]=float(atof(argv[i]));
+						}
+					}
+				else
+					{
+					std::cerr<<"Ignoring dangling -origin option"<<std::endl;
+					i=argc;
+					}
 				}
 			else if(strcasecmp(argv[i]+1,"gridSize")==0)
 				{
@@ -617,42 +639,89 @@ GridEditor::GridEditor(int& argc,char**& argv)
 		{
 		try
 			{
-			/* Load the grid from a float-valued vol file: */
-			IO::FilePtr volFile=Vrui::openFile(gridFileName);
-			volFile->setEndianness(Misc::BigEndian);
-			
-			/* Read the file header: */
-			EditableGrid::Index numVertices;
-			volFile->read<int>(numVertices.getComponents(),3);
-			int borderSize=volFile->read<int>();
-			for(int i=0;i<3;++i)
-				numVertices[i]+=borderSize*2;
-			float domainSize[3];
-			volFile->read<float>(domainSize,3);
-			EditableGrid::Size cellSize;
-			for(int i=0;i<3;++i)
-				cellSize[i]=domainSize[i]/float(numVertices[i]-borderSize*2-1);
-			
-			/* Create the grid: */
-			grid=new EditableGrid(numVertices,cellSize);
-			
-			/* Read all grid values: */
-			for(EditableGrid::Index i(0);i[0]<grid->getNumVertices(0);i.preInc(grid->getNumVertices()))
-				grid->setValue(i,volFile->read<float>());
-			grid->invalidateVertices(EditableGrid::Index(0,0,0),grid->getNumVertices());
+			/* Determine the type of grid file based on its extension: */
+			if(Misc::hasCaseExtension(gridFileName,".fvol"))
+				{
+				/* Load the grid from a float-valued vol file: */
+				IO::FilePtr volFile=IO::openFile(gridFileName);
+				volFile->setEndianness(Misc::BigEndian);
+				
+				/* Read the file header: */
+				EditableGrid::Index numVertices;
+				volFile->read<int>(numVertices.getComponents(),3);
+				int borderSize=volFile->read<int>();
+				for(int i=0;i<3;++i)
+					numVertices[i]+=borderSize*2;
+				float domainSize[3];
+				volFile->read<float>(domainSize,3);
+				EditableGrid::Size cellSize;
+				for(int i=0;i<3;++i)
+					cellSize[i]=domainSize[i]/float(numVertices[i]-borderSize*2-1);
+				
+				/* Create the grid: */
+				grid=new EditableGrid(newOrigin,numVertices,cellSize);
+				
+				/* Read all grid values: */
+				for(EditableGrid::Index i(0);i[0]<grid->getNumVertices(0);i.preInc(grid->getNumVertices()))
+					grid->setValue(i,volFile->read<float>());
+				grid->invalidateVertices(EditableGrid::Index(0,0,0),grid->getNumVertices());
+				}
+			else if(Misc::hasCaseExtension(gridFileName,".sdf"))
+				{
+				/* Load the grid from a signed distance field in ASCII format: */
+				IO::ValueSource sdfFile(IO::openFile(gridFileName));
+				sdfFile.setWhitespace(" \t\r\n");
+				sdfFile.skipWs();
+				EditableGrid::Index numVertices;
+				for(int i=0;i<3;++i)
+					numVertices[i]=sdfFile.readUnsignedInteger();
+				EditableGrid::Point origin;
+				for(int i=0;i<3;++i)
+					origin[i]=float(sdfFile.readNumber());
+				EditableGrid::Size cellSize;
+				cellSize[2]=cellSize[1]=cellSize[0]=float(sdfFile.readNumber());
+				
+				/* Create the grid: */
+				grid=new EditableGrid(origin,numVertices,cellSize);
+				
+				std::cout<<"Loading distance field with "<<numVertices[0]<<'x'<<numVertices[1]<<'x'<<numVertices[2]<<" cells"<<std::endl;
+				std::cout<<"Cell size "<<cellSize[0]<<'x'<<cellSize[1]<<'x'<<cellSize[2]<<std::endl;
+				std::cout<<"Domain box: ["<<grid->getBox().min<<", "<<grid->getBox().max<<"]"<<std::endl;
+				
+				/* Read all grid values: */
+				float minValue=Math::Constants<float>::max;
+				float maxValue=Math::Constants<float>::min;
+				EditableGrid::Index i;
+				for(i[2]=0;i[2]<numVertices[2];++i[2])
+					for(i[1]=0;i[1]<numVertices[1];++i[1])
+						for(i[0]=0;i[0]<numVertices[0];++i[0])
+							{
+							float value=float(sdfFile.readNumber());
+							if(minValue>value)
+								minValue=value;
+							if(maxValue<value)
+								maxValue=value;
+							grid->setValue(i,value+0.5f);
+							}
+				grid->invalidateVertices(EditableGrid::Index(0,0,0),grid->getNumVertices());
+				
+				std::cout<<"Signed distance field value range: ["<<minValue<<", "<<maxValue<<"]"<<std::endl;
+				}
+			else
+				throw std::runtime_error("Unrecognized file extension");
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			std::cerr<<"Unable to load grid file "<<gridFileName<<" due to exception "<<err.what()<<std::endl;
 			
 			/* Create a new grid: */
-			grid=new EditableGrid(newGridSize,newCellSize);
+			grid=new EditableGrid(newOrigin,newGridSize,newCellSize);
 			}
 		}
 	else
 		{
 		/* Create a new grid: */
-		grid=new EditableGrid(newGridSize,newCellSize);
+		grid=new EditableGrid(newOrigin,newGridSize,newCellSize);
 		}
 	
 	/* Create the program GUI: */
@@ -692,12 +761,7 @@ void GridEditor::display(GLContextData& contextData) const
 
 void GridEditor::resetNavigation(void)
 	{
-	typedef Geometry::Box<float,3> Box;
-	
-	Box::Point max;
-	for(int i=0;i<3;++i)
-		max[i]=float(grid->getNumVertices(i)-1)*grid->getCellSize(i);
-	Box bb(Box::Point::origin,max);
+	EditableGrid::Box bb=grid->getBox();
 	
 	/* Calculate the center and radius of the box: */
 	Vrui::Point center=Geometry::mid(bb.min,bb.max);
@@ -724,10 +788,9 @@ void GridEditor::initContext(GLContextData& contextData) const
 	glEndList();
 	
 	/* Create the domain box display list: */
-	Point min=Point::origin;
-	Point max;
-	for(int i=0;i<3;++i)
-		max[i]=float(grid->getNumVertices(i)-1)*grid->getCellSize(i);
+	EditableGrid::Box box=grid->getBox();
+	Point min=box.min;
+	Point max=box.max;
 	Vrui::Color fgColor=Vrui::getBackgroundColor();
 	for(int i=0;i<3;++i)
 		fgColor[i]=1.0f-fgColor[i];

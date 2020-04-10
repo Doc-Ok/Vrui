@@ -1,7 +1,7 @@
 /***********************************************************************
 GLARBShaderObjects - OpenGL extension class for the
 GL_ARB_shader_objects extension.
-Copyright (c) 2007-2014 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 
 This file is part of the OpenGL Support Library (GLSupport).
 
@@ -501,6 +501,7 @@ void glCompileShaderFromStrings(GLhandleARB shaderObject,size_t numShaderSources
 void glCompileShaderFromStrings(GLhandleARB shaderObject,size_t numShaderSources,...); // Ditto, using variable number of arguments
 void glCompileShaderFromFile(GLhandleARB shaderObject,const char* shaderSourceFileName); // Loads and compiles shader from source file of given name; throws exception on errors
 void glCompileShaderFromFile(GLhandleARB shaderObject,const char* shaderSourceFileName,IO::File& shaderSourceFile); // Ditto, with already-opened IO::File object
+void glLinkAndTestShader(GLhandleARB programObject); // Links the given shader program; throws an exception on errors
 GLhandleARB glLinkShader(const std::vector<GLhandleARB>& shaderObjects); // Links the given list of vertex and/or fragment shaders into a new shader program and returns its handle; throws exception on errors
 GLhandleARB glLinkShader(size_t numShaderObjects,va_list ap); // Links the given list of vertex and/or fragment shaders into a new shader program and returns its handle; throws exception on errors
 GLhandleARB glLinkShader(size_t numShaderObjects,...); // Ditto, using variable number of arguments

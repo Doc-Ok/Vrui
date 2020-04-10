@@ -1,6 +1,6 @@
 /***********************************************************************
 FileLocator - Class to find files from an ordered list of search paths.
-Copyright (c) 2007-2011 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 Based on code written by Braden Pellett.
 
 This file is part of the Miscellaneous Support Library (Misc).
@@ -28,6 +28,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Misc/ThrowStdErr.h>
 #include <Misc/GetCurrentDirectory.h>
 #include <Misc/FileTests.h>
+#include <Misc/Directory.h>
 
 namespace {
 
@@ -377,10 +378,96 @@ std::string FileLocator::locateFile(const char* fileName)
 		}
 	
 	/* Instead of returning an empty string or somesuch, throw an exception: */
-	Misc::throwStdErr("FileLocator::locateFile: Could not find resource %s",fileName);
+	throw FileNotFound(fileName);
+	}
+
+std::string FileLocator::locateNumberedFile(const char* fileNameTemplate)
+	{
+	/* Find the file name template's potential directory prefix and conversion location: */
+	const char* fileNameStart=fileNameTemplate;
+	const char* conversion=0;
+	const char* fntPtr;
+	for(fntPtr=fileNameTemplate;*fntPtr!='\0';++fntPtr)
+		{
+		if(*fntPtr=='/')
+			fileNameStart=fntPtr+1;
+		else if(*fntPtr=='%'&&fntPtr[1]!='%')
+			{
+			if(fntPtr[1]=='u')
+				{
+				if(conversion!=0)
+					Misc::throwStdErr("FileLocator::locateNumberedFile: Template \"%s\" contains more than one %%u conversion",fileNameTemplate);
+				conversion=fntPtr;
+				}
+			else if(fntPtr[1]!='\0')
+				Misc::throwStdErr("FileLocator::locateNumberedFile: Template \"%s\" contains invalid %%%c conversion",fileNameTemplate,fntPtr[1]);
+			else
+				Misc::throwStdErr("FileLocator::locateNumberedFile: Template \"%s\" contains dangling %%",fileNameTemplate);
+			}
+		}
+	if(conversion==0)
+		Misc::throwStdErr("FileLocator::locateNumberedFile: Template \"%s\" does not contain a %%u conversion",fileNameTemplate);
+	if(conversion<fileNameStart)
+		Misc::throwStdErr("FileLocator::locateNumberedFile: Template \"%s\" has %%u conversion in directory prefix",fileNameTemplate);
+	size_t preConversionLen=conversion-fileNameStart;
 	
-	/* Just a dummy statement to make the compiler happy: */
-	return "";
+	/* Find the highest-numbered file that matches the given template in all search paths: */
+	std::string result;
+	unsigned int highestNumber=(unsigned int)(-1);
+	for(std::vector<std::string>::const_iterator plIt=pathList.begin();plIt!=pathList.end();++plIt)
+		{
+		try
+			{
+			/* Open the search path as a directory: */
+			std::string dirName=*plIt;
+			if(fileNameStart!=fileNameTemplate)
+				dirName.append(fileNameTemplate,fileNameStart);
+			Directory dir(dirName.c_str());
+			
+			/* Search for files matching the given template: */
+			while(!dir.eod())
+				{
+				/* Match the entry name: */
+				const char* enPtr=dir.getEntryName();
+				if(strncmp(enPtr,fileNameStart,preConversionLen)==0)
+					{
+					/* Convert a sequence of digits to a number: */
+					enPtr+=preConversionLen;
+					unsigned int number=0;
+					while(*enPtr>='0'&&*enPtr<='9')
+						{
+						number=number*10U+(unsigned int)(*enPtr-'0');
+						++enPtr;
+						}
+					
+					/* Compare the entry name's suffix: */
+					if(strcmp(enPtr,conversion+2)==0)
+						{
+						/* Check if this match has the highest number: */
+						if(highestNumber==(unsigned int)(-1)||highestNumber<number)
+							{
+							result=dirName;
+							result.push_back('/');
+							result.append(dir.getEntryName());
+							highestNumber=number;
+							}
+						}
+					}
+				
+				/* Read the next directory entry: */
+				dir.readNextEntry();
+				}
+			}
+		catch(const std::runtime_error&)
+			{
+			/* Ignore the error and carry on... */
+			}
+		}
+	
+	if(highestNumber==(unsigned int)(-1))
+		throw FileNotFound(fileNameTemplate);
+	
+	return result;
 	}
 
 }

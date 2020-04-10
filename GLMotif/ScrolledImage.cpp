@@ -1,7 +1,7 @@
 /***********************************************************************
 ScrolledImage - Compound widget containing an image, and a vertical and
 horizontal scroll bar.
-Copyright (c) 2011-2017 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -44,9 +44,13 @@ void ScrolledImage::init(bool sManageChild)
 	setBorderWidth(ss->textfieldBorderWidth);
 	setBorderType(Widget::LOWERED);
 	
+	#if 0
+	
 	/* Disable the image's borders: */
-	//image->setBorderWidth(image->getBorderWidth());
-	//image->setBorderType(Widget::PLAIN);
+	image->setBorderWidth(image->getBorderWidth());
+	image->setBorderType(Widget::PLAIN);
+	
+	#endif
 	
 	/* Initialize the horizontal scroll bar: */
 	horizontalScrollBar->setPositionRange(0,image->getImage().getSize(0),image->getImage().getSize(0));
@@ -94,7 +98,8 @@ ScrolledImage::ScrolledImage(const char* sName,Container* sParent,const Images::
 	 image(new Image("Image",this,sImage,sResolution,false)),
 	 horizontalScrollBar(new ScrollBar("HorizontalScrollBar",this,ScrollBar::HORIZONTAL,false,false)),
 	 verticalScrollBar(new ScrollBar("VerticalScrollBar",this,ScrollBar::VERTICAL,false,false)),
-	 zoomFactor(1.0f)
+	 dragScrolling(false),
+	 zoomFactor(1.0f),dragging(false)
 	{
 	init(sManageChild);
 	}
@@ -105,7 +110,8 @@ ScrolledImage::ScrolledImage(const char* sName,Container* sParent,const char* sI
 	 image(new Image("Image",this,sImageFileName,sResolution,false)),
 	 horizontalScrollBar(new ScrollBar("HorizontalScrollBar",this,ScrollBar::HORIZONTAL,false,false)),
 	 verticalScrollBar(new ScrollBar("VerticalScrollBar",this,ScrollBar::VERTICAL,false,false)),
-	 zoomFactor(1.0f)
+	 dragScrolling(false),
+	 zoomFactor(1.0f),dragging(false)
 	{
 	init(sManageChild);
 	}
@@ -116,7 +122,8 @@ ScrolledImage::ScrolledImage(const char* sName,Container* sParent,Image* sImage,
 	 image(sImage),
 	 horizontalScrollBar(new ScrollBar("HorizontalScrollBar",this,ScrollBar::HORIZONTAL,false,false)),
 	 verticalScrollBar(new ScrollBar("VerticalScrollBar",this,ScrollBar::VERTICAL,false,false)),
-	 zoomFactor(1.0f)
+	 dragScrolling(false),
+	 zoomFactor(1.0f),dragging(false)
 	{
 	/* Reparent the image widget: */
 	image->reparent(this,false);
@@ -244,6 +251,18 @@ void ScrolledImage::draw(GLContextData& contextData) const
 
 bool ScrolledImage::findRecipient(Event& event)
 	{
+	/* Check if there's a dragging operation: */
+	if(dragging)
+		{
+		/* Calculate the widget point in the image widget's plane: */
+		Event::WidgetPoint wp=event.calcWidgetPoint(image);
+		
+		/* Put ourselves down as the target widget: */
+		event.setTargetWidget(this,wp);
+		
+		return true;
+		}
+	
 	/* Distribute the question to the child widgets: */
 	bool childFound=false;
 	if(!childFound)
@@ -255,7 +274,15 @@ bool ScrolledImage::findRecipient(Event& event)
 	
 	/* If no child was found, return ourselves (and ignore any incoming events): */
 	if(childFound)
+		{
+		/* Check if the event was claimed by the image widget, and drag scrolling is enabled: */
+		if(dragScrolling&&event.getTargetWidget()==image)
+			{
+			/* Put ourselves down as the target widget: */
+			event.overrideTargetWidget(this);
+			}
 		return true;
+		}
 	else
 		{
 		/* Check ourselves: */
@@ -264,6 +291,71 @@ bool ScrolledImage::findRecipient(Event& event)
 			return event.setTargetWidget(this,wp);
 		else
 			return false;
+		}
+	}
+
+void ScrolledImage::pointerButtonDown(Event& event)
+	{
+	/* Check if this is really a drag scrolling event: */
+	const Point& pointerPos=event.getWidgetPoint().getPoint();
+	if(dragScrolling&&image->isInside(pointerPos))
+		{
+		/* Start dragging: */
+		dragging=true;
+		
+		/* Calculate drag scrolling position: */
+		dragPos=image->widgetToImage(pointerPos);
+		}
+	}
+
+void ScrolledImage::pointerButtonUp(Event& event)
+	{
+	/* Stop dragging: */
+	dragging=false;
+	}
+
+void ScrolledImage::pointerMotion(Event& event)
+	{
+	/* Check if dragging: */
+	if(dragging)
+		{
+		/* Calculate the new displayed image region: */
+		const Box& ibox=image->getInterior();
+		GLfloat region[4];
+		for(int i=0;i<2;++i)
+			{
+			/* Check if the image is smaller than the image widget's interior: */
+			GLfloat rs=image->getRegionMax(i)-image->getRegionMin(i);
+			GLfloat is(image->getImage().getSize(i));
+			if(rs>=is)
+				{
+				/* Don't scroll: */
+				region[0+i]=image->getRegionMin(i);
+				region[2+i]=image->getRegionMax(i);
+				}
+			else
+				{
+				/* Scroll to the new pointer position: */
+				region[0+i]=dragPos[i]-(event.getWidgetPoint().getPoint()[i]-ibox.origin[i])*rs/ibox.size[i];
+				
+				/* Limit scrolling to the image's area: */
+				if(region[0+i]<0.0f)
+					region[0+i]=0.0f;
+				else if(region[0+i]>is-rs)
+					region[0+i]=is-rs;
+				
+				region[2+i]=region[0+i]+rs;
+				
+				/* Update the scroll bar: */
+				if(i==0)
+					horizontalScrollBar->setPosition(int(Math::floor(region[0]+0.5)));
+				else
+					verticalScrollBar->setPosition(int(Math::floor(region[1]+0.5)));
+				}
+			}
+		
+		/* Scroll the image widget: */
+		image->setRegion(region);
 		}
 	}
 
@@ -325,6 +417,11 @@ void ScrolledImage::setPreferredSize(const Vector& newPreferredSize)
 	{
 	/* Set the preferred size: */
 	preferredSize=newPreferredSize;
+	}
+
+void ScrolledImage::setDragScrolling(bool newDragScrolling)
+	{
+	dragScrolling=newDragScrolling;
 	}
 
 void ScrolledImage::setZoomFactor(GLfloat newZoomFactor)

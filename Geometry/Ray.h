@@ -1,6 +1,6 @@
 /***********************************************************************
 Ray - Class for affine rays.
-Copyright (c) 2002-2005 Oliver Kreylos
+Copyright (c) 2002-2020 Oliver Kreylos
 
 This file is part of the Templatized Geometry Library (TGL).
 
@@ -92,6 +92,11 @@ class Ray
 	Ray& normalizeDirection(void) // Normalizes direction vector
 		{
 		direction.normalize();
+		return *this;
+		}
+	Ray& offset(Scalar lambda) // Moves the ray's origin along its direction by the given offset
+		{
+		origin+=direction*lambda;
 		return *this;
 		}
 	template <class TransformationParam>

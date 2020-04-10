@@ -1,7 +1,7 @@
 /***********************************************************************
 MaterialEditor - Class for composite widgets to display and edit OpenGL
 material properties.
-Copyright (c) 2013 Oliver Kreylos
+Copyright (c) 2013-2020 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -28,8 +28,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <GL/gl.h>
 #include <GL/GLMaterial.h>
 #include <GLMotif/RowColumn.h>
-#include <GLMotif/HSVColorSelector.h>
-#include <GLMotif/TextFieldSlider.h>
 
 namespace GLMotif {
 
@@ -54,21 +52,19 @@ class MaterialEditor:public RowColumn
 	/* Elements: */
 	private:
 	GLMaterial material; // The currently displayed material properties
-	HSVColorSelector* ambient; // Color selector for the ambient material color
-	HSVColorSelector* diffuse; // Color selector for the diffuse material color
-	HSVColorSelector* emissive; // Color selector for the emissive material color
-	HSVColorSelector* specular; // Color selector for the specular material color
-	TextFieldSlider* shininess; // Slider for specular shininess
+	GLMaterial* trackedMaterial; // Pointer to a material variable that tracks the widget's current value
 	Misc::CallbackList valueChangedCallbacks; // List of callbacks to be called when the current material changes due to a user interaction
 	
 	/* Private methods: */
 	private:
-	void colorSelectorCallback(HSVColorSelector::ValueChangedCallbackData* cbData);
-	void sliderCallback(TextFieldSlider::ValueChangedCallbackData* cbData);
+	void componentChangedCallback(Misc::CallbackData* cbData); // Callback called when one of the material component widgets changes value
 	
 	/* Constructors and destructors: */
 	public:
 	MaterialEditor(const char* sName,Container* sParent,bool sManageChild =true);
+	
+	/* Methods from class Widget: */
+	virtual void updateVariables(void);
 	
 	/* New methods: */
 	void setMaterial(const GLMaterial& newMaterial); // Sets the currently displayed material properties
@@ -76,6 +72,7 @@ class MaterialEditor:public RowColumn
 		{
 		return material;
 		}
+	void track(GLMaterial& newTrackedMaterial); // Tracks the given material variable
 	Misc::CallbackList& getValueChangedCallbacks(void) // Returns list of value changed callbacks
 		{
 		return valueChangedCallbacks;

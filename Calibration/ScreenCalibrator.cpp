@@ -2,7 +2,7 @@
 ScreenCalibrator - Utility to create a calibration transformation
 between Vrui's physical coordinate system and a tracking system's
 internal coordinate system.
-Copyright (c) 2009-2013 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Vrui calibration utility package.
 
@@ -28,6 +28,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <iomanip>
 #include <Misc/ThrowStdErr.h>
 #include <IO/TokenSource.h>
+#include <IO/OpenFile.h>
 #include <Math/Math.h>
 #include <Math/Constants.h>
 #define GEOMETRY_NONSTANDARD_TEMPLATES
@@ -48,7 +49,6 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <GL/gl.h>
 #include <GL/GLGeometryWrappers.h>
 #include <Vrui/Vrui.h>
-#include <Vrui/OpenFile.h>
 #include <Vrui/InputDevice.h>
 #include <Vrui/InputGraphManager.h>
 #include <Vrui/ToolManager.h>
@@ -259,7 +259,7 @@ Methods of class ScreenCalibrator:
 void ScreenCalibrator::readOptitrackSampleFile(const char* fileName,bool flipZ)
 	{
 	/* Open the CSV input file: */
-	IO::TokenSource tok(Vrui::openFile(fileName));
+	IO::TokenSource tok(IO::openFile(fileName));
 	tok.setPunctuation(",\n");
 	tok.setQuotes("\"");
 	tok.skipWs();
@@ -339,7 +339,7 @@ void ScreenCalibrator::readOptitrackSampleFile(const char* fileName,bool flipZ)
 ScreenCalibrator::PointList ScreenCalibrator::readTotalstationSurveyFile(const char* fileName,const char* tag) const
 	{
 	/* Open the CSV input file: */
-	IO::TokenSource tok(Vrui::openFile(fileName));
+	IO::TokenSource tok(IO::openFile(fileName));
 	tok.setPunctuation(",\n");
 	tok.setQuotes("\"");
 	tok.skipWs();

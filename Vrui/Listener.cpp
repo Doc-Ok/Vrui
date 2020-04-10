@@ -1,6 +1,6 @@
 /***********************************************************************
 Listener - Class for listeners/ sound observers in VR environments.
-Copyright (c) 2008-2014 Oliver Kreylos
+Copyright (c) 2008-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -95,6 +95,12 @@ void Listener::update(void)
 		/* Update the head device transformation: */
 		headDeviceTransformation=headDevice->getTransformation();
 		}
+	}
+
+void Listener::setGain(Scalar newGain)
+	{
+	/* Set the listener's gain factor: */
+	gain=newGain;
 	}
 
 }

@@ -1,7 +1,7 @@
 /***********************************************************************
 GetImageFileSize - Functions to extract the image size from a variety of
 file formats reading the minimal required amount of data.
-Copyright (c) 2007 Oliver Kreylos
+Copyright (c) 2007-2018 Oliver Kreylos
 
 This file is part of the Image Handling Library (Images).
 
@@ -22,8 +22,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #ifndef IMAGES_GETIMAGEFILESIZE_INCLUDED
 #define IMAGES_GETIMAGEFILESIZE_INCLUDED
-
-#include <utility>
 
 namespace Images {
 

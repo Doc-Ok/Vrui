@@ -1,7 +1,7 @@
 /***********************************************************************
 VRDeviceDescriptor - Class describing the structure of an input device
 represented by a VR device daemon.
-Copyright (c) 2010-2018 Oliver Kreylos
+Copyright (c) 2010-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -25,6 +25,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #define VRUI_INTERNAL_VRDEVICEDESCRIPTOR_INCLUDED
 
 #include <string>
+#include <Misc/SizedTypes.h>
 #include <Geometry/Vector.h>
 
 /* Forward declarations: */
@@ -49,13 +50,14 @@ class VRDeviceDescriptor
 		TRACK_ORIENT=0x4 // Full 3D orientation
 		};
 	
-	typedef Geometry::Vector<float,3> Vector; // Type for vectors
+	typedef Misc::Float32 Scalar; // Scalar type sent over the network
+	typedef Geometry::Vector<Scalar,3> Vector; // Type for vectors sent over the network
 	
 	/* Elements: */
 	std::string name; // Device name
 	int trackType; // Device's tracking type
 	Vector rayDirection; // Device's preferred pointing direction in local device coordinates; ignored if trackType is TRACK_NONE
-	float rayStart; // Starting parameter of device's ray in physical coordinate units; ignored if trackType is TRACK_NONE
+	Scalar rayStart; // Starting parameter of device's ray in physical coordinate units; ignored if trackType is TRACK_NONE
 	bool hasBattery; // Flag if the device is battery powered and reports a battery state
 	bool canPowerOff; // Flag if the device can be powered off on request
 	int trackerIndex; // Index of device's tracker in VR device daemon's flat namespace, or -1 if trackType is TRACK_NONE

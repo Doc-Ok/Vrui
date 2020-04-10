@@ -1,7 +1,7 @@
 /***********************************************************************
 OutputOperators - Basic iostream output operators for templatized
 geometry objects.
-Copyright (c) 2009-2015 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Templatized Geometry Library (TGL).
 
@@ -131,25 +131,34 @@ class RotationPrinter<ScalarParam,3>
 	public:
 	static ostream& print(ostream& os,const Geometry::Rotation<ScalarParam,3>& r)
 		{
+		streamsize width=os.width();
+		
 		/* Get the rotation axis and angle: */
 		Geometry::Vector<ScalarParam,3> axis=r.getScaledAxis();
 		ScalarParam angle=axis.mag();
-		axis/=angle;
-		
-		/* Normalize the rotation angle between 0 and +180 degrees: */
-		if(angle>=Math::Constants<ScalarParam>::pi)
-			angle-=Math::mul2(Math::Constants<ScalarParam>::pi);
-		if(angle<ScalarParam(0))
+		if(angle!=ScalarParam(0))
 			{
-			angle=-angle;
-			axis=-axis;
+			/* Normalize the rotation axis: */
+			axis/=angle;
+			
+			/* Normalize the rotation angle between 0 and +180 degrees: */
+			if(angle>=Math::Constants<ScalarParam>::pi)
+				angle-=Math::mul2(Math::Constants<ScalarParam>::pi);
+			if(angle<ScalarParam(0))
+				{
+				angle=-angle;
+				axis=-axis;
+				}
+			
+			/* Print the normalized axis and angle: */
+			os<<setw(1)<<'{'<<setw(width)<<axis<<", "<<setw(width)<<angle<<'}';
+			}
+		else
+			{
+			/* Print a default axis and zero angle: */
+			os<<setw(1)<<'{'<<setw(width)<<Geometry::Vector<ScalarParam,3>(1,0,0)<<", "<<setw(width)<<ScalarParam(0)<<'}';
 			}
 		
-		streamsize width=os.width();
-		if(angle==ScalarParam(0))
-			os<<setw(1)<<'{'<<setw(width)<<Geometry::Vector<ScalarParam,3>::zero<<", "<<setw(width)<<ScalarParam(0)<<'}';
-		else
-			os<<setw(1)<<'{'<<setw(width)<<axis<<", "<<setw(width)<<angle<<'}';
 		return os;
 		}
 	};

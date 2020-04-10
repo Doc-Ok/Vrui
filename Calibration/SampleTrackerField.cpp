@@ -4,7 +4,7 @@ a 6-DOF tracker, specifically an electromagnetic one like the Polhemus
 Fastrak or the Razer Hydra, to visualize and hopefully correct large-
 scale distortions due to presence of magnetic objects in the
 environment.
-Copyright (c) 2014 Oliver Kreylos
+Copyright (c) 2014-2018 Oliver Kreylos
 
 This file is part of the Vrui calibration utility package.
 
@@ -30,6 +30,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <stdexcept>
 #include <Misc/Array.h>
 #include <Math/Math.h>
+#include <IO/OpenFile.h>
 #include <Geometry/Point.h>
 #include <Geometry/OrthonormalTransformation.h>
 #include <Geometry/OutputOperators.h>
@@ -45,7 +46,6 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/GenericToolFactory.h>
 #include <Vrui/ToolManager.h>
 #include <Vrui/DisplayState.h>
-#include <Vrui/OpenFile.h>
 
 class SampleTrackerField:public Vrui::Application
 	{
@@ -430,7 +430,7 @@ void SampleTrackerField::sample(bool valid)
 	/* If sampling is complete, select a file name to which to save the sampled grid: */
 	if(nextSample==samples.endIndex())
 		{
-		GLMotif::FileSelectionDialog* saveGridDialog=new GLMotif::FileSelectionDialog(Vrui::getWidgetManager(),"Save Sampled Grid...",Vrui::openDirectory("."),"SampledGrid.grid",".grid");
+		GLMotif::FileSelectionDialog* saveGridDialog=new GLMotif::FileSelectionDialog(Vrui::getWidgetManager(),"Save Sampled Grid...",IO::openDirectory("."),"SampledGrid.grid",".grid");
 		saveGridDialog->getOKCallbacks().add(this,&SampleTrackerField::saveGridOKCallback);
 		saveGridDialog->deleteOnCancel();
 		Vrui::popupPrimaryWidget(saveGridDialog);

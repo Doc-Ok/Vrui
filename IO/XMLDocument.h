@@ -1,7 +1,7 @@
 /***********************************************************************
 XMLDocument - Class representing the structure and contents of an XML
 document as a tree of nodes.
-Copyright (c) 2018 Oliver Kreylos
+Copyright (c) 2018-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -151,6 +151,10 @@ class XMLCharacterData:public XMLNode // Class representing an uninterrupted seq
 		return begin;
 		}
 	bool isSpace(void) const; // Returns true if the character data is empty or entirely whitespace
+	void setData(const char* newData) // Replaces the character data
+		{
+		data=newData;
+		}
 	};
 
 class XMLComment:public XMLNode // Class representing an XML comment
@@ -203,10 +207,11 @@ class XMLProcessingInstruction:public XMLNode // Class representing an XML proce
 class XMLElement:public XMLContainer // Class representing an XML element, i.e., an opening and closing tag and everything inbetween
 	{
 	/* Embedded classes: */
-	private:
+	public:
 	typedef Misc::HashTable<std::string,std::string> AttributeMap; // Type for hash tables mapping attribute names to attribute values
 	
 	/* XMLElements: */
+	private:
 	std::string name; // The element's name encoded as UTF-8
 	AttributeMap attributes; // Map representing the element's attributes
 	bool empty; // Flag if this element used a self-closing opening tag. Even if false, the element may still have no content
@@ -225,17 +230,25 @@ class XMLElement:public XMLContainer // Class representing an XML element, i.e.,
 		{
 		return name;
 		}
+	const AttributeMap& getAttributes(void) const // Returns the element's attribute map
+		{
+		return attributes;
+		}
+	AttributeMap& getAttributes(void) // Ditto
+		{
+		return attributes;
+		}
 	bool hasAttribute(const std::string& attributeName) const // Returns true if an attribute with the given name is associated with this element
 		{
 		/* Check if there is an entry with the given name in the attribute map: */
 		return attributes.isEntry(attributeName);
 		}
-	const std::string getAttributeValue(const std::string& attributeName) const // Returns the value of the given attribute; throws exception if attribute name does not exist
+	const std::string& getAttributeValue(const std::string& attributeName) const // Returns the value of the given attribute; throws exception if attribute name does not exist
 		{
 		/* Look up the given attribute name in the map and return its associated value: */
 		return attributes.getEntry(attributeName).getDest();
 		}
-	void setAttributeValue(const std::string& attributeName,const std::string attributeValue); // Sets the value of the given attribute, replacing any previous association
+	void setAttributeValue(const std::string& attributeName,const std::string& attributeValue); // Sets the value of the given attribute, replacing any previous association
 	void removeAttribute(const std::string& attributeName); // Removes an association of the given attribute name from the element
 	bool isEmpty(void) const // Returns true if this element used a self-closing opening tag. Even if false, the element may still have no content
 		{

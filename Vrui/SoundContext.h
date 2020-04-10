@@ -1,7 +1,7 @@
 /***********************************************************************
 SoundContext - Class for OpenAL contexts that are used to map a listener
 to an OpenAL sound device.
-Copyright (c) 2008-2014 Oliver Kreylos
+Copyright (c) 2008-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -26,6 +26,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 #include <AL/Config.h>
 
+#include <string>
 #if ALSUPPORT_CONFIG_HAVE_OPENAL
 #ifdef __APPLE__
 #include <OpenAL/alc.h>
@@ -67,6 +68,9 @@ class SoundContext
 	float speedOfSound; // Speed of sound in physical coordinate units/s
 	float dopplerFactor; // Exaggeration factor for Doppler effect
 	DistanceAttenuationModel distanceAttenuationModel; // Distance attenuation model
+	float referenceDistance; // Reference distance for distance attenuation in physical coordinate units
+	float rolloffFactor; // Roll-off factor for distance attenuation
+	std::string recordingDeviceName; // Name of a recording device to be used with this sound context
 	
 	/* Constructors and destructors: */
 	public:
@@ -77,6 +81,18 @@ class SoundContext
 	const Listener* getListener(void) const // Returns the listener listening to this sound context
 		{
 		return listener;
+		}
+	float getReferenceDistance(void) const // Returns the reference distance
+		{
+		return referenceDistance;
+		}
+	float getRolloffFactor(void) const // Returns the roll-off factor
+		{
+		return rolloffFactor;
+		}
+	const std::string& getRecordingDeviceName(void) const // Returns the name of the recording device associated with this sound context
+		{
+		return recordingDeviceName;
 		}
 	ALContextData& getContextData(void) // Returns the sound context's context data
 		{

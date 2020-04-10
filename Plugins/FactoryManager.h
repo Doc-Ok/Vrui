@@ -2,7 +2,7 @@
 FactoryManager - Generic base class for managers of factory classes
 derived from a common base class. Intended to manage loading of dynamic
 shared objects.
-Copyright (c) 2003-2013 Oliver Kreylos
+Copyright (c) 2003-2020 Oliver Kreylos
 
 This file is part of the Plugin Handling Library (Plugins).
 
@@ -184,7 +184,11 @@ class FactoryManager
 	FactoryList factories; // List of loaded factories
 	
 	/* Private methods: */
+	ClassIdType getNewClassId(void) const; // Returns a unique class ID
 	FactoryData loadClassFromDSO(const char* className); // Loads class of given name from DSO and returns factory pointer
+	typename FactoryList::const_iterator findFactory(const char* className) const; // Returns an iterator to the factory of the given class name
+	typename FactoryList::iterator findFactory(const char* className); // Ditto
+	void destroyFactory(typename FactoryList::iterator factoryIt); // Destroys the given object class at runtime; throws exception if class cannot be removed due to dependencies
 	
 	/* Constructors and destructors: */
 	public:
@@ -202,11 +206,21 @@ class FactoryManager
 		}
 	ManagedFactory* loadClass(const char* className); // Loads an object class at runtime and returns class object pointer
 	void addClass(ManagedFactory* newFactory,DestroyFactoryFunction newDestroyFactoryFunction =0); // Adds an existing factory to the manager
-	void releaseClass(const char* className); // Destroys an object class at runtime; throws exception if class cannot be removed due to dependencies
+	void releaseClass(ManagedFactory* factory); // Destroys an object class at runtime; throws exception if class cannot be removed due to dependencies
+	void releaseClass(const char* className) // Ditto, identifying the class by name
+		{
+		/* Find and destroy the factory for the class of the given name: */
+		destroyFactory(findFactory(className));
+		}
 	void releaseClasses(void); // Releases all loaded classes
 	ClassIdType getClassId(const ManagedFactory* factory) const; // Returns class ID based on factory object
 	ManagedFactory* getFactory(ClassIdType classId) const; // Returns factory object based on class ID
-	ManagedFactory* getFactory(const char* className) const; // Returns factory object based on class name
+	ManagedFactory* getFactory(const char* className) const // Returns factory object based on class name
+		{
+		/* Find the factory in the list and return it: */
+		typename FactoryList::const_iterator fIt=findFactory(className);
+		return fIt!=factories.end()?fIt->factory:0;
+		}
 	ConstFactoryIterator begin(void) const // Returns iterator to the beginning of the managed class list
 		{
 		return ConstFactoryIterator(factories.begin());

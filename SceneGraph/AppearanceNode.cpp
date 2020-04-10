@@ -1,7 +1,7 @@
 /***********************************************************************
 AppearanceNode - Class defining the appearance (material properties,
 textures) of a shape node.
-Copyright (c) 2009-2010 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -102,19 +102,18 @@ void AppearanceNode::setGLState(GLRenderState& renderState) const
 	else
 		{
 		renderState.disableMaterials();
-		renderState.emissiveColor=GLRenderState::Color(0.0f,0.0f,0.0f);
+		renderState.setEmissiveColor(GLRenderState::Color(0.0f,0.0f,0.0f));
 		}
 	
 	if(texture.getValue()!=0)
 		{
+		/* Apply the texture: */
 		texture.getValue()->setGLState(renderState);
+		
 		if(textureTransform.getValue()!=0)
 			{
-			/* Set the texture transformation: */
-			glMatrixMode(GL_TEXTURE);
-			glPushMatrix();
-			glMultMatrix(textureTransform.getValue()->getTransform());
-			glMatrixMode(GL_MODELVIEW);
+			/* Apply the texture transformation: */
+			textureTransform.getValue()->setGLState(renderState);
 			}
 		}
 	else
@@ -131,12 +130,29 @@ void AppearanceNode::resetGLState(GLRenderState& renderState) const
 		if(textureTransform.getValue()!=0)
 			{
 			/* Reset the texture transformation: */
-			glMatrixMode(GL_TEXTURE);
-			glPopMatrix();
-			glMatrixMode(GL_MODELVIEW);
+			textureTransform.getValue()->resetGLState(renderState);
 			}
+		
+		/* Disable the texture: */
 		texture.getValue()->resetGLState(renderState);
 		}
+	}
+
+bool AppearanceNode::requiresTexCoords(void) const
+	{
+	/* Require texture coordinates if there is a texture node: */
+	return texture.getValue()!=0;
+	}
+
+bool AppearanceNode::requiresColors(void) const
+	{
+	return false;
+	}
+
+bool AppearanceNode::requiresNormals(void) const
+	{
+	/* Require normals if there is a material node, and it requires normals: */
+	return material.getValue()!=0&&material.getValue()->requiresNormals();
 	}
 
 }

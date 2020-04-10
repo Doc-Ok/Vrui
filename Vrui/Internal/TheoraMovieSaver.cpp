@@ -1,7 +1,7 @@
 /***********************************************************************
 TheoraMovieSaver - Helper class to save movies as Theora video streams
 packed into an Ogg container.
-Copyright (c) 2010-2017 Oliver Kreylos
+Copyright (c) 2010-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -28,7 +28,6 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Misc/StandardValueCoders.h>
 #include <Misc/ConfigurationFile.h>
 #include <IO/File.h>
-#include <IO/OpenFile.h>
 #include <Video/FrameBuffer.h>
 #include <Video/ImageExtractorRGB8.h>
 #include <Video/OggPage.h>
@@ -200,7 +199,7 @@ void* TheoraMovieSaver::frameSavingThreadMethod(void)
 
 TheoraMovieSaver::TheoraMovieSaver(const Misc::ConfigurationFileSection& configFileSection)
 	:MovieSaver(configFileSection),
-	 movieFile(IO::openFile(configFileSection.retrieveString("./movieFileName").c_str(),IO::File::WriteOnly)),
+	 movieFile(baseDirectory->openFile(configFileSection.retrieveString("./movieFileName").c_str(),IO::File::WriteOnly)),
 	 oggStream(1),
 	 theoraBitrate(0),theoraQuality(32),theoraGopSize(32),
 	 done(false),
@@ -232,6 +231,9 @@ TheoraMovieSaver::TheoraMovieSaver(const Misc::ConfigurationFileSection& configF
 
 TheoraMovieSaver::~TheoraMovieSaver(void)
 	{
+	/* Stop sound recording at this moment: */
+	stopSound();
+	
 	/* Signal the frame capturing and saving threads to shut down: */
 	done=true;
 	captureCond.signal();

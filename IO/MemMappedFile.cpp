@@ -1,7 +1,7 @@
 /***********************************************************************
 MemMappedFile - Class for read/write access to memory-mapped files using
 the File abstraction; mostly for simplified resource management.
-Copyright (c) 2011 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <IO/MemMappedFile.h>
 
+#include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -68,8 +69,8 @@ void MemMappedFile::openFile(const char* fileName,File::AccessMode accessMode,in
 	/* Check for errors and throw an exception: */
 	if(fd<0)
 		{
-		int errorCode=errno;
-		throw OpenError(Misc::printStdErrMsg("IO::MemMappedFile: Unable to open file %s for %s due to error %d",fileName,getAccessModeName(accessMode),errorCode));
+		char buffer[1024];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::MemMappedFile: Unable to open file %s for %s due to error %d (%s)",fileName,getAccessModeName(accessMode),errno,strerror(errno)));
 		}
 	
 	/* Get the file's total size: */
@@ -77,7 +78,8 @@ void MemMappedFile::openFile(const char* fileName,File::AccessMode accessMode,in
 	if(fstat(fd,&statBuffer)<0)
 		{
 		close(fd);
-		throw OpenError(Misc::printStdErrMsg("IO::MemMappedFile: Unable to determine size of file %s",fileName));
+		char buffer[1024];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::MemMappedFile: Unable to determine size of file %s",fileName));
 		}
 	memSize=statBuffer.st_size;
 	
@@ -104,7 +106,8 @@ void MemMappedFile::openFile(const char* fileName,File::AccessMode accessMode,in
 	if(memBase==MAP_FAILED)
 		{
 		close(fd);
-		throw OpenError(Misc::printStdErrMsg("IO::MemMappedFile: Unable to memory-map file %s",fileName));
+		char buffer[1024];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::MemMappedFile: Unable to memory-map file %s",fileName));
 		}
 	
 	/* Close the file again: */
@@ -153,7 +156,7 @@ MemMappedFile::~MemMappedFile(void)
 		{
 		/* Unmap the file: */
 		if(munmap(memBase,memSize)<0)
-			Misc::userError("IO::MemMappedFile: Fatal error while unmapping memory");
+			Misc::formattedUserError("IO::MemMappedFile: Fatal error %d (%s) while unmapping memory",errno,strerror(errno));
 		}
 	}
 

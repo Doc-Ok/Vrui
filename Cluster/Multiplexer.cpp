@@ -1,7 +1,7 @@
 /***********************************************************************
 Multiplexer - Class to share several intra-cluster multicast pipes
 across a single UDP socket connection.
-Copyright (c) 2005-2012 Oliver Kreylos
+Copyright (c) 2005-2020 Oliver Kreylos
 
 This file is part of the Cluster Abstraction Library (Cluster).
 
@@ -458,7 +458,8 @@ void* Multiplexer::packetHandlingThreadMaster(void)
 								newPipeState=new PipeState(nodeIndex,numSlaves);
 								
 								/* Add the new pipe state to the new pipe map: */
-								newPipes[senderId]=newPipeState;
+								// newPipes[senderId]=newPipeState; // Gives "potentially uninitialized" warning
+								newPipes.setEntry(NewPipeHasher::Entry(senderId,newPipeState));
 								}
 							else
 								newPipeState=npIt->getDest();
@@ -1280,7 +1281,8 @@ unsigned int Multiplexer::openPipe(void)
 		newPipeState=new PipeState(nodeIndex,numSlaves);
 		
 		/* Add the new pipe state to the new pipe map: */
-		newPipes[threadId]=newPipeState;
+		// newPipes[threadId]=newPipeState; // Gives "potentially uninitialized" warning
+		newPipes.setEntry(NewPipeHasher::Entry(threadId,newPipeState));
 		}
 	else
 		newPipeState=npIt->getDest();

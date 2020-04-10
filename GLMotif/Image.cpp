@@ -1,6 +1,6 @@
 /***********************************************************************
 Image - Class for widgets displaying image as textures.
-Copyright (c) 2011-2017 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -32,8 +32,16 @@ Methods of class Image:
 
 void Image::uploadTexture(GLuint textureObjectId,bool npotdtSupported,const unsigned int textureSize[2],GLContextData& contextData) const
 	{
-	/* Upload the image into the bound texture object: */
-	image.glTexImage2D(GL_TEXTURE_2D,0,!npotdtSupported);
+	if(getMipmapLevel()>0)
+		{
+		/* Upload the image as a mipmap into the bound texture object: */
+		image.glTexImage2DMipmap(GL_TEXTURE_2D,!npotdtSupported);
+		}
+	else
+		{
+		/* Upload the image into mipmap level 0 of the bound texture object: */
+		image.glTexImage2D(GL_TEXTURE_2D,0,!npotdtSupported);
+		}
 	}
 
 Image::Image(const char* sName,Container* sParent,const Images::BaseImage& sImage,const GLfloat sResolution[2],bool sManageChild)

@@ -1,6 +1,6 @@
 /***********************************************************************
 Popup - Class for top-level GLMotif UI components.
-Copyright (c) 2001-2010 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <GLMotif/Popup.h>
 
+#include <Math/Math.h>
 #include <GL/gl.h>
 #include <GL/GLColorTemplates.h>
 #include <GL/GLVertexTemplates.h>
@@ -36,8 +37,8 @@ Methods of class Popup:
 **********************/
 
 Popup::Popup(const char* sName,WidgetManager* sManager)
-	:Container(sName,0,false),manager(sManager),
-	 title(0),child(0)
+	:SingleChildContainer(sName,0,false),manager(sManager),
+	 title(0)
 	{
 	/* Get the style sheet: */
 	const StyleSheet* ss=manager->getStyleSheet();
@@ -61,8 +62,9 @@ Popup::~Popup(void)
 	/* Unmanage and delete the title bar: */
 	deleteChild(title);
 	
-	/* Unmanage and delete the child widget: */
+	/* Unmanage and delete the child widget (has to be done here before the widget manager pointer disappears): */
 	deleteChild(child);
+	child=0;
 	}
 
 Vector Popup::calcNaturalSize(void) const
@@ -105,8 +107,13 @@ ZRange Popup::calcZRange(void) const
 	if(child!=0)
 		myZRange+=child->calcZRange();
 	
-	/* Adjust the minimum z value to accomodate the popup's back side: */
-	myZRange.first-=getBorderWidth();
+	/* Make a little bit of room between the deepest child widget and the backside: */
+	GLfloat minThickness=manager->getStyleSheet()->popupThickness;
+	myZRange.first-=minThickness*0.1f;
+	
+	/* Ensure that the popup has some minimum thickness: */
+	if(myZRange.first>getExterior().origin[2]-minThickness)
+		myZRange.first=getExterior().origin[2]-minThickness;
 	
 	return myZRange;
 	}
@@ -252,22 +259,6 @@ void Popup::draw(GLContextData& contextData) const
 		child->draw(contextData);
 	}
 
-bool Popup::findRecipient(Event& event)
-	{
-	/* Distribute the question to the child widget: */
-	if(child==0||!child->findRecipient(event))
-		{
-		/* Check ourselves: */
-		Event::WidgetPoint wp=event.calcWidgetPoint(this);
-		if(isInside(wp.getPoint()))
-			return event.setTargetWidget(this,wp);
-		else
-			return false;
-		}
-	else
-		return true;
-	}
-
 void Popup::addChild(Widget* newChild)
 	{
 	if(newChild!=title)
@@ -327,18 +318,6 @@ void Popup::requestResize(Widget* child,const Vector&)
 	
 	/* Resize the widget: */
 	resize(Box(Vector(0.0f,0.0f,0.0f),size));
-	}
-
-Widget* Popup::getFirstChild(void)
-	{
-	/* Return the only child: */
-	return child;
-	}
-
-Widget* Popup::getNextChild(Widget*)
-	{
-	/* Since there is only one child, always return null: */
-	return 0;
 	}
 
 void Popup::setMarginWidth(GLfloat newMarginWidth)

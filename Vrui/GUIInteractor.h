@@ -1,7 +1,7 @@
 /***********************************************************************
 GUIInteractor - Helper class to implement tool classes that interact
 with graphical user interface elements.
-Copyright (c) 2010-2015 Oliver Kreylos
+Copyright (c) 2010-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -51,6 +51,7 @@ class GUIInteractor
 	InputDevice* device; // Pointer to input device with which the interaction tool is associated
 	Ray ray; // The current interaction ray
 	bool pointing; // Flag if the interactor is pointing at a GUI widget
+	Scalar pointingLambda; // Ray parameter for widget intersection if the interactor is pointing at a GUI widget
 	bool interacting; // Flag if the interactor is sending pointer button and motion events to GUI widgets
 	GLMotif::Widget* draggedWidget; // Pointer to the currently dragged widget, or 0 if not dragging
 	NavTrackerState draggingTransform; // Current dragging transformation

@@ -1,7 +1,7 @@
 /***********************************************************************
 VRMLFile - Class to represent a VRML 2.0 file and state required to
 parse its contents.
-Copyright (c) 2009-2013 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -29,14 +29,12 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <Misc/HashTable.h>
 #include <IO/File.h>
 #include <IO/TokenSource.h>
+#include <IO/Directory.h>
 #include <SceneGraph/FieldTypes.h>
 #include <SceneGraph/Node.h>
 #include <SceneGraph/GroupNode.h>
 
 /* Forward declarations: */
-namespace Cluster {
-class Multiplexer;
-}
 namespace SceneGraph {
 class NodeCreator;
 }
@@ -54,17 +52,16 @@ class VRMLFile:public IO::TokenSource
 		{
 		/* Constructors and destructors: */
 		public:
-		ParseError(const VRMLFile& vrmlFile,std::string error);
+		ParseError(const VRMLFile& vrmlFile,const std::string& error);
 		};
 	
 	friend class ParseError;
 	
 	/* Elements: */
 	private:
-	std::string sourceUrl; // Full URL of the VRML file
-	std::string::const_iterator urlPrefix; // Prefix for relative URLs
+	IO::DirectoryPtr baseDirectory; // Directory containing the VRML file and base for relative URLs
+	std::string sourceUrl; // URL of the VRML file
 	NodeCreator& nodeCreator; // Reference to the node creator
-	Cluster::Multiplexer* multiplexer; // Pointer to a multicast pipe multiplexer when parsing VRML files in a cluster environment
 	NodeMap nodeMap; // Map of named nodes
 	size_t currentLine; // Number of currently processed line
 	
@@ -96,10 +93,12 @@ class VRMLFile:public IO::TokenSource
 				break;
 			}
 		}
+	void init(void); // Initializes a VRML file
 	
 	/* Constructors and destructors: */
 	public:
-	VRMLFile(std::string sSourceUrl,IO::FilePtr sSource,NodeCreator& sNodeCreator,Cluster::Multiplexer* sMultiplexer =0); // Creates a VRML parser for the given character source and node creator
+	VRMLFile(IO::Directory& sBaseDirectory,const std::string& sSourceUrl,NodeCreator& sNodeCreator); // Creates a VRML parser for the given URL relative to the given base directory
+	VRMLFile(const std::string& sSourceUrl,NodeCreator& sNodeCreator); // Creates a VRML parser for the given URL relative to the current directory
 	
 	/* Overloaded methods from IO::TokenSource: */
 	bool eof(void)
@@ -112,7 +111,7 @@ class VRMLFile:public IO::TokenSource
 		skipExtendedWhitespace();
 		return IO::TokenSource::peekc();
 		}
-	const char* readNextToken(void) // Reads the next token while skiping line comments
+	const char* readNextToken(void) // Reads the next token while skipping line comments
 		{
 		skipExtendedWhitespace();
 		return IO::TokenSource::readNextToken();
@@ -120,6 +119,9 @@ class VRMLFile:public IO::TokenSource
 	
 	/* Main method: */
 	void parse(GroupNodePointer root); // Adds top-level nodes from the VRML file to the given group node
+	
+	/* Post-parsing query methods: */
+	NodePointer getNode(const std::string& nodeName); // Returns a pointer to node that was named in the VRML file; returns 0 if the name is not defined
 	
 	/* Methods called during parsing: */
 	template <class ValueParam>
@@ -132,12 +134,16 @@ class VRMLFile:public IO::TokenSource
 		/* Read the base-class node: */
 		NodePointer node=parseValue<NodePointer>();
 		
-		/* Check if the node type matches: */
-		if(node!=0&&dynamic_cast<typename NodePointerParam::Target*>(node.getPointer())==0)
-			throw ParseError(*this,"Mismatching node type");
-		
-		/* Set the field's node pointer: */
-		field.setValue(node);
+		/* Check if the node is valid: */
+		if(node!=0)
+			{
+			/* Check if the node type matches: */
+			if(dynamic_cast<typename NodePointerParam::Target*>(node.getPointer())==0)
+				throw ParseError(*this,"Mismatching node type");
+			
+			/* Set the field's node pointer: */
+			field.setValue(node);
+			}
 		}
 	template <class NodePointerParam>
 	void parseMFNode(MF<NodePointerParam>& field) // Parses a multi-valued node field
@@ -157,12 +163,16 @@ class VRMLFile:public IO::TokenSource
 				/* Read a base-class node: */
 				NodePointer node=parseValue<NodePointer>();
 				
-				/* Check if the node type matches: */
-				if(node!=0&&dynamic_cast<typename NodePointerParam::Target*>(node.getPointer())==0)
-					throw ParseError(*this,"Mismatching node type");
-				
-				/* Set the field's node pointer: */
-				field.appendValue(node);
+				/* Check if the node is valid: */
+				if(node!=0)
+					{
+					/* Check if the node type matches: */
+					if(dynamic_cast<typename NodePointerParam::Target*>(node.getPointer())==0)
+						throw ParseError(*this,"Mismatching node type");
+					
+					/* Add the node to the field's node list: */
+					field.appendValue(node);
+					}
 				}
 			
 			/* Skip the closing bracket: */
@@ -175,27 +185,34 @@ class VRMLFile:public IO::TokenSource
 			/* Read a base-class node: */
 			NodePointer node=parseValue<NodePointer>();
 			
-			/* Check if the node type matches: */
-			if(node!=0&&dynamic_cast<typename NodePointerParam::Target*>(node.getPointer())==0)
-				throw ParseError(*this,"Mismatching node type");
-			
-			/* Set the field's node pointer: */
-			field.appendValue(node);
+			/* Check if the node is valid: */
+			if(node!=0)
+				{
+				/* Check if the node type matches: */
+				if(dynamic_cast<typename NodePointerParam::Target*>(node.getPointer())==0)
+					throw ParseError(*this,"Mismatching node type");
+				
+				/* Set the field's node pointer: */
+				field.appendValue(node);
+				}
 			}
 		}
 	NodeCreator& getNodeCreator(void) // Returns the VRML file's node creator
 		{
 		return nodeCreator;
 		}
-	Cluster::Multiplexer* getMultiplexer(void) const // Returns the optional multicast pipe multiplexer
-		{
-		return multiplexer;
-		}
 	NodePointer createNode(const char* nodeType); // Creates a new node of the given type
 	void defineNode(const char* nodeName,NodePointer node); // Stores the given node under the given name, for future instantiation
 	NodePointer useNode(const char* nodeName); // Retrieves the node most recently stored under the given name
-	std::string getFullUrl(std::string localUrl) const; // Converts a file-relative URL into a fully-qualified URL
+	IO::Directory& getBaseDirectory(void) // Returns the base directory for relative URLs
+		{
+		return *baseDirectory;
+		}
 	};
+
+/* Namespace-global functions: */
+GroupNodePointer readVRMLFile(IO::Directory& baseDirectory,const std::string& sourceUrl); // Convenience function to read the contents of a VRML file of the given URL relative to the given base directory into a new group node
+GroupNodePointer readVRMLFile(const std::string& sourceUrl); // Ditto, with URL relative to current directory
 
 }
 

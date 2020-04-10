@@ -1,7 +1,7 @@
 /***********************************************************************
 MultiDeviceNavigationTool - Class to use multiple 3-DOF devices for full
 navigation (translation, rotation, scaling).
-Copyright (c) 2007-2015 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -46,6 +46,7 @@ class MultiDeviceNavigationToolFactory:public ToolFactory
 		Scalar minRotationScalingDistance; // Minimum distance from a device to the centroid for rotation and scaling to take effect
 		Scalar rotationFactor; // Scale factor for rotations
 		Scalar scalingFactor; // Scale factor for scalings
+		bool mutualExclusion; // Flag whether rotation and scaling are mutually exclusive
 		
 		/* Constructors and destructors: */
 		Configuration(void); // Creates default configuration
@@ -81,13 +82,20 @@ class MultiDeviceNavigationTool:public NavigationTool
 	
 	/* Transient navigation state: */
 	int numPressedButtons; // Number of currently pressed buttons
+	NavTransform initialNav; // Navigation transformation at the time the tool activates
+	bool selectNavMode; // Flag if the tool is currently deciding which navigation mode to select if more than one device is active
+	bool allowRotation; // Flag whether rotation is allowed in current navigation mode
+	bool allowScaling; // Flag whether scaling is allowed in current navigation mode
+	Point* firstDevicePositions; // Array of device positions from the last time a device changed state
 	bool* lastDeviceButtonStates; // Array of device button states from the last frame
 	Point* lastDevicePositions; // Array of device positions from the last frame
-	Point lastCentroid; // Centroid of all active devices from the last frame
+	Point* devicePositions; // Array of device positions in the current frame
+	NavTransform nav; // Current navigation transformation
 	
 	/* Constructors and destructors: */
 	public:
 	MultiDeviceNavigationTool(const ToolFactory* sFactory,const ToolInputAssignment& inputAssignment);
+	virtual ~MultiDeviceNavigationTool(void);
 	
 	/* Methods from Tool: */
 	virtual void configure(const Misc::ConfigurationFileSection& configFileSection);

@@ -1,7 +1,7 @@
 /***********************************************************************
 ReadPNGImage - Functions to read RGB or RGBA images from image files in
 PNG formats over an IO::File abstraction.
-Copyright (c) 2011-2018 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the Image Handling Library (Images).
 
@@ -29,7 +29,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <png.h>
 #include <stdexcept>
 #include <Misc/Endianness.h>
-#include <Misc/ThrowStdErr.h>
+#include <Misc/MessageLogger.h>
 #include <IO/File.h>
 #include <GL/gl.h>
 #include <Images/BaseImage.h>
@@ -40,247 +40,137 @@ namespace Images {
 
 namespace {
 
-/***************************************************************
-Helper functions to redirect PNG I/O to an IO::File data source:
-***************************************************************/
+/**************
+Helper classes:
+**************/
 
-void pngReadDataFunction(png_structp pngReadStruct,png_bytep buffer,png_size_t size)
+class PNGReader
 	{
-	/* Get the pointer to the IO::File object: */
-	IO::File* source=static_cast<IO::File*>(png_get_io_ptr(pngReadStruct));
+	/* Elements: */
+	private:
+	IO::File& source; // Handle for the PNG image file
+	png_structp pngReadStruct; // Structure representing state of an open PNG image file inside the PNG library
+	png_infop pngInfoStruct; // Structure containing information about the image in an open PNG image file
+	png_byte** rowPointers; // Array of row pointers to vertically flip an image during reading
+	public:
+	png_uint_32 imageSize[2];
+	int elementSize;
+	int colorType;
+	unsigned int numChannels;
 	
-	/* Read the requested number of bytes from the source, and let the source handle errors: */
-	source->read(buffer,size);
-	}
-
-void pngErrorFunction(png_structp pngReadStruct,png_const_charp errorMsg)
-	{
-	/* Throw an exception: */
-	throw std::runtime_error(errorMsg);
-	}
-
-void pngWarningFunction(png_structp pngReadStruct,png_const_charp warningMsg)
-	{
-	/* Ignore warnings */
-	}
-
-}
-
-RGBImage readPNGImage(const char* imageName,IO::File& source)
-	{
-	/* Check for PNG file signature: */
-	unsigned char pngSignature[8];
-	source.read(pngSignature,8);
-	if(!png_check_sig(pngSignature,8))
-		Misc::throwStdErr("Images::readPNGImage: illegal PNG header in image \"%s\"",imageName);
-	
-	/* Allocate the PNG library data structures: */
-	png_structp pngReadStruct=png_create_read_struct(PNG_LIBPNG_VER_STRING,0,pngErrorFunction,pngWarningFunction);
-	if(pngReadStruct==0)
-		Misc::throwStdErr("Images::readPNGImage: Internal error in PNG library");
-	png_infop pngInfoStruct=png_create_info_struct(pngReadStruct);
-	if(pngInfoStruct==0)
+	/* Private methods: */
+	static void readDataFunction(png_structp pngReadStruct,png_bytep buffer,png_size_t size) // Called by the PNG library to read additional data from the source
 		{
-		png_destroy_read_struct(&pngReadStruct,0,0);
-		Misc::throwStdErr("Images::readPNGImage: Internal error in PNG library");
+		/* Get the pointer to the IO::File object: */
+		IO::File* source=static_cast<IO::File*>(png_get_io_ptr(pngReadStruct));
+		
+		/* Read the requested number of bytes from the source, and let the source handle errors: */
+		source->read(buffer,size);
+		}
+	static void errorFunction(png_structp pngReadStruct,png_const_charp errorMsg) // Called by the PNG library to report an error
+		{
+		/* Throw an exception: */
+		throw std::runtime_error(errorMsg);
+		}
+	static void warningFunction(png_structp pngReadStruct,png_const_charp warningMsg) // Called by the PNG library to report a recoverable error
+		{
+		/* Show warning to user: */
+		Misc::consoleWarning(warningMsg);
 		}
 	
-	/* Initialize PNG I/O to read from the supplied data source: */
-	png_set_read_fn(pngReadStruct,&source,pngReadDataFunction);
-	
-	RGBImage result;
-	RGBImage::Color** rowPointers=0;
-	try
+	/* Constructors and destructors: */
+	public:
+	PNGReader(IO::File& sSource)
+		:source(sSource),
+		 pngReadStruct(0),pngInfoStruct(0),rowPointers(0)
 		{
-		/* Read PNG image header: */
+		/* Check for PNG file signature: */
+		unsigned char pngSignature[8];
+		source.read(pngSignature,8);
+		if(!png_check_sig(pngSignature,8))
+			throw std::runtime_error("Images::PNGReader: illegal PNG header");
+		
+		/* Allocate the PNG library data structures: */
+		if((pngReadStruct=png_create_read_struct(PNG_LIBPNG_VER_STRING,0,errorFunction,warningFunction))==0
+		   ||(pngInfoStruct=png_create_info_struct(pngReadStruct))==0)
+		  {
+		  /* Clean up and throw an exception: */
+			png_destroy_read_struct(&pngReadStruct,0,0);
+			throw std::runtime_error("Images::PNGReader: Internal error in PNG library");
+			}
+		
+		/* Initialize PNG I/O to read from the supplied data source: */
+		png_set_read_fn(pngReadStruct,&source,readDataFunction);
+		
+		/* Tell the PNG library that the signature has been read: */
 		png_set_sig_bytes(pngReadStruct,8);
-		png_read_info(pngReadStruct,pngInfoStruct);
-		png_uint_32 imageSize[2];
-		int elementSize;
-		int colorType;
-		png_get_IHDR(pngReadStruct,pngInfoStruct,&imageSize[0],&imageSize[1],&elementSize,&colorType,0,0,0);
-		
-		/* Set up image processing: */
-		if(colorType==PNG_COLOR_TYPE_PALETTE)
-			png_set_expand(pngReadStruct);
-		else if(colorType==PNG_COLOR_TYPE_GRAY&&elementSize<8)
-			png_set_expand(pngReadStruct);
-		if(elementSize==16)
-			png_set_strip_16(pngReadStruct);
-		if(colorType==PNG_COLOR_TYPE_GRAY||colorType==PNG_COLOR_TYPE_GRAY_ALPHA)
-			png_set_gray_to_rgb(pngReadStruct);
-		if(colorType==PNG_COLOR_TYPE_GRAY_ALPHA||colorType==PNG_COLOR_TYPE_RGB_ALPHA)
-			png_set_strip_alpha(pngReadStruct);
-		double gamma;
-		if(png_get_gAMA(pngReadStruct,pngInfoStruct,&gamma))
-			png_set_gamma(pngReadStruct,2.2,gamma);
-		png_read_update_info(pngReadStruct,pngInfoStruct);
-		
-		/* Initialize the result image: */
-		result=RGBImage(imageSize[0],imageSize[1]);
-		
-		/* Create row pointers to flip the image during reading: */
-		rowPointers=new RGBImage::Color*[result.getHeight()];
-		for(unsigned int y=0;y<result.getHeight();++y)
-			rowPointers[y]=result.modifyPixelRow(result.getHeight()-1-y);
-		
-		/* Read the PNG image: */
-		png_read_image(pngReadStruct,reinterpret_cast<png_byte**>(rowPointers));
-		
-		/* Finish reading image: */
-		png_read_end(pngReadStruct,0);
 		}
-	catch(std::runtime_error err)
+	~PNGReader(void)
 		{
-		/* Clean up: */
+		/* Delete the image row pointers: */
 		delete[] rowPointers;
-		png_destroy_read_struct(&pngReadStruct,&pngInfoStruct,0);
 		
-		/* Wrap and re-throw the exception: */
-		Misc::throwStdErr("Images::readPNGImage: Caught exception \"%s\" while reading image \"%s\"",err.what(),imageName);
+		/* Destroy the PNG library structures: */
+		png_destroy_read_struct(&pngReadStruct,&pngInfoStruct,0);
 		}
 	
-	/* Clean up: */
-	delete[] rowPointers;
-	png_destroy_read_struct(&pngReadStruct,&pngInfoStruct,0);
-	
-	/* Return the read image: */
-	return result;
-	}
-
-RGBAImage readTransparentPNGImage(const char* imageName,IO::File& source)
-	{
-	/* Check for PNG file signature: */
-	unsigned char pngSignature[8];
-	source.read(pngSignature,8);
-	if(!png_check_sig(pngSignature,8))
-		Misc::throwStdErr("Images::readTransparentPNGImage: illegal PNG header in image \"%s\"",imageName);
-	
-	/* Allocate the PNG library data structures: */
-	png_structp pngReadStruct=png_create_read_struct(PNG_LIBPNG_VER_STRING,0,pngErrorFunction,pngWarningFunction);
-	if(pngReadStruct==0)
-		Misc::throwStdErr("Images::readTransparentPNGImage: Internal error in PNG library");
-	png_infop pngInfoStruct=png_create_info_struct(pngReadStruct);
-	if(pngInfoStruct==0)
-		{
-		png_destroy_read_struct(&pngReadStruct,0,0);
-		Misc::throwStdErr("Images::readTransparentPNGImage: Internal error in PNG library");
-		}
-	
-	/* Initialize PNG I/O to read from the supplied data source: */
-	png_set_read_fn(pngReadStruct,&source,pngReadDataFunction);
-	
-	RGBAImage result;
-	RGBAImage::Color** rowPointers=0;
-	try
+	/* Methods: */
+	void readHeader(void) // Reads a PNG image header from the source file
 		{
 		/* Read PNG image header: */
-		png_set_sig_bytes(pngReadStruct,8);
 		png_read_info(pngReadStruct,pngInfoStruct);
-		png_uint_32 imageSize[2];
-		int elementSize;
-		int colorType;
 		png_get_IHDR(pngReadStruct,pngInfoStruct,&imageSize[0],&imageSize[1],&elementSize,&colorType,0,0,0);
 		
-		/* Set up image processing: */
-		if(colorType==PNG_COLOR_TYPE_PALETTE)
-			png_set_expand(pngReadStruct);
-		else if(colorType==PNG_COLOR_TYPE_GRAY&&elementSize<8)
-			png_set_expand(pngReadStruct);
-		if(elementSize==16)
-			png_set_strip_16(pngReadStruct);
-		if(colorType==PNG_COLOR_TYPE_GRAY||colorType==PNG_COLOR_TYPE_GRAY_ALPHA)
-			png_set_gray_to_rgb(pngReadStruct);
-		if(colorType==PNG_COLOR_TYPE_GRAY||colorType==PNG_COLOR_TYPE_RGB)
-			png_set_filler(pngReadStruct,0xff,PNG_FILLER_AFTER);
-		double gamma;
-		if(png_get_gAMA(pngReadStruct,pngInfoStruct,&gamma))
-			png_set_gamma(pngReadStruct,2.2,gamma);
-		png_read_update_info(pngReadStruct,pngInfoStruct);
-		
-		/* Initialize the result image: */
-		result=RGBAImage(imageSize[0],imageSize[1]);
-		
-		/* Create row pointers to flip the image during reading: */
-		rowPointers=new RGBAImage::Color*[result.getHeight()];
-		for(unsigned int y=0;y<result.getHeight();++y)
-			rowPointers[y]=result.modifyPixelRow(result.getHeight()-1-y);
-		
-		/* Read the PNG image: */
-		png_read_image(pngReadStruct,reinterpret_cast<png_byte**>(rowPointers));
-		
-		/* Finish reading image: */
-		png_read_end(pngReadStruct,0);
+		/* Create the row pointers array: */
+		rowPointers=new png_byte*[imageSize[1]];
 		}
-	catch(std::runtime_error err)
+	void setupProcessing(bool forceRGB,bool force8Bit,bool stripAlpha,bool forceAlpha)
 		{
-		/* Clean up: */
-		delete[] rowPointers;
-		png_destroy_read_struct(&pngReadStruct,&pngInfoStruct,0);
-		
-		/* Wrap and re-throw the exception: */
-		Misc::throwStdErr("Images::readTransparentPNGImage: Caught exception \"%s\" while reading image \"%s\"",err.what(),imageName);
-		}
-	
-	/* Clean up: */
-	delete[] rowPointers;
-	png_destroy_read_struct(&pngReadStruct,&pngInfoStruct,0);
-	
-	/* Return the read image: */
-	return result;
-	}
-
-BaseImage readGenericPNGImage(const char* imageName,IO::File& source)
-	{
-	/* Check for PNG file signature: */
-	unsigned char pngSignature[8];
-	source.read(pngSignature,8);
-	if(!png_check_sig(pngSignature,8))
-		Misc::throwStdErr("Images::readGenericPNGImage: illegal PNG header in image \"%s\"",imageName);
-	
-	/* Allocate the PNG library data structures: */
-	png_structp pngReadStruct=png_create_read_struct(PNG_LIBPNG_VER_STRING,0,pngErrorFunction,pngWarningFunction);
-	if(pngReadStruct==0)
-		Misc::throwStdErr("Images::readGenericPNGImage: Internal error in PNG library");
-	png_infop pngInfoStruct=png_create_info_struct(pngReadStruct);
-	if(pngInfoStruct==0)
-		{
-		png_destroy_read_struct(&pngReadStruct,0,0);
-		Misc::throwStdErr("Images::readGenericPNGImage: Internal error in PNG library");
-		}
-	
-	/* Initialize PNG I/O to read from the supplied data source: */
-	png_set_read_fn(pngReadStruct,&source,pngReadDataFunction);
-	
-	BaseImage result;
-	unsigned char** rowPointers=0;
-	try
-		{
-		/* Read PNG image header: */
-		png_set_sig_bytes(pngReadStruct,8);
-		png_read_info(pngReadStruct,pngInfoStruct);
-		png_uint_32 imageSize[2];
-		int elementSize;
-		int colorType;
-		png_get_IHDR(pngReadStruct,pngInfoStruct,&imageSize[0],&imageSize[1],&elementSize,&colorType,0,0,0);
-		
 		/* Determine image format and set up image processing: */
+		bool isGray=colorType==PNG_COLOR_TYPE_GRAY||colorType==PNG_COLOR_TYPE_GRAY_ALPHA;
+		bool haveAlpha=colorType==PNG_COLOR_TYPE_GRAY_ALPHA||colorType==PNG_COLOR_TYPE_RGB_ALPHA;
 		if(colorType==PNG_COLOR_TYPE_PALETTE)
 			{
 			/* Expand paletted images to RGB: */
 			png_set_palette_to_rgb(pngReadStruct);
 			}
-		else if(colorType==PNG_COLOR_TYPE_GRAY&&elementSize<8)
+		if(isGray&&elementSize<8)
 			{
 			/* Expand bitmaps to 8-bit grayscale: */
 			png_set_expand_gray_1_2_4_to_8(pngReadStruct);
 			}
-		
-		/* Check for transparency in a tRNS chunk: */
-		if(png_get_valid(pngReadStruct,pngInfoStruct,PNG_INFO_tRNS))
+		if(forceRGB&&isGray)
+			{
+			/* Convert grayscale pixels to RGB: */
+			png_set_gray_to_rgb(pngReadStruct);
+			}
+		if(force8Bit&&elementSize==16)
+			{
+			/* Reduce 16-bit pixels to 8-bit: */
+			png_set_strip_16(pngReadStruct);
+			}
+		#if __BYTE_ORDER==__LITTLE_ENDIAN
+		if(!force8Bit&&elementSize==16)
+			{
+			/* Swap 16-bit pixels from big endian network order to little endian host order: */
+			png_set_swap(pngReadStruct);
+			}
+		#endif
+		if(stripAlpha&&haveAlpha)
+			{
+			/* Strip the alpha channel: */
+			png_set_strip_alpha(pngReadStruct);
+			}
+		if(!stripAlpha&&png_get_valid(pngReadStruct,pngInfoStruct,PNG_INFO_tRNS))
 			{
 			/* Create a full alpha channel from tRNS chunk: */
 			png_set_tRNS_to_alpha(pngReadStruct);
+			haveAlpha=true;
+			}
+		if(forceAlpha&&!haveAlpha)
+			{
+			/* Create a dummy alpha channel: */
+			png_set_filler(pngReadStruct,0xff,PNG_FILLER_AFTER);
 			}
 		
 		/* Apply the image's stored gamma curve: */
@@ -288,56 +178,90 @@ BaseImage readGenericPNGImage(const char* imageName,IO::File& source)
 		if(png_get_gAMA(pngReadStruct,pngInfoStruct,&gamma))
 			png_set_gamma(pngReadStruct,2.2,gamma);
 		
-		#if __BYTE_ORDER==__LITTLE_ENDIAN
-		
-		/* Swap 16-bit pixels from big endian network order to little endian host order: */
-		if(elementSize==16)
-			png_set_swap(pngReadStruct);
-		
-		#endif
-		
 		/* Update the PNG processor and retrieve the potentially changed image format: */
 		png_read_update_info(pngReadStruct,pngInfoStruct);
-		unsigned int numChannels=png_get_channels(pngReadStruct,pngInfoStruct);
+		numChannels=png_get_channels(pngReadStruct,pngInfoStruct);
 		elementSize=png_get_bit_depth(pngReadStruct,pngInfoStruct);
-		unsigned int channelSize=(elementSize+7)/8;
-		
-		/* Determine the image's texture format: */
-		GLenum channelType=channelSize==2?GL_UNSIGNED_SHORT:GL_UNSIGNED_BYTE;
-		static const GLenum formats[4]={GL_LUMINANCE,GL_LUMINANCE_ALPHA,GL_RGB,GL_RGBA};
-		GLenum format=formats[numChannels-1];
-		
-		/* Initialize the result image: */
-		result=BaseImage(imageSize[0],imageSize[1],numChannels,channelSize,format,channelType);
-		
-		/* Create row pointers to flip the image during reading: */
-		rowPointers=new unsigned char*[result.getHeight()];
-		ptrdiff_t rowStride=result.getRowStride();
-		rowPointers[0]=static_cast<unsigned char*>(result.replacePixels())+(result.getHeight()-1)*rowStride;
-		for(unsigned int y=1;y<result.getHeight();++y)
+		}
+	void readImage(png_byte* pixels,ptrdiff_t rowStride) // Reads image into the given pixel buffer of appropriate size
+		{
+		/* Set up the row pointers array: */
+		rowPointers[0]=pixels+(imageSize[1]-1)*rowStride;
+		for(png_uint_32 y=1;y<imageSize[1];++y)
 			rowPointers[y]=rowPointers[y-1]-rowStride;
 		
 		/* Read the PNG image: */
-		png_read_image(pngReadStruct,reinterpret_cast<png_byte**>(rowPointers));
+		png_read_image(pngReadStruct,rowPointers);
 		
-		/* Finish reading image: */
+		/* Finish reading the image: */
 		png_read_end(pngReadStruct,0);
 		}
-	catch(std::runtime_error err)
-		{
-		/* Clean up: */
-		delete[] rowPointers;
-		png_destroy_read_struct(&pngReadStruct,&pngInfoStruct,0);
-		
-		/* Wrap and re-throw the exception: */
-		Misc::throwStdErr("Images::readGenericPNGImage: Caught exception \"%s\" while reading image \"%s\"",err.what(),imageName);
-		}
+	};
+
+}
+
+RGBImage readPNGImage(IO::File& source)
+	{
+	/* Create a PNG image reader for the given source file: */
+	PNGReader reader(source);
 	
-	/* Clean up: */
-	delete[] rowPointers;
-	png_destroy_read_struct(&pngReadStruct,&pngInfoStruct,0);
+	/* Read a PNG header: */
+	reader.readHeader();
 	
-	/* Return the read image: */
+	/* Set up image processing: */
+	reader.setupProcessing(true,true,true,false);
+	
+	/* Create the result image: */
+	RGBImage result(reader.imageSize[0],reader.imageSize[1]);
+	
+	/* Read the PNG image: */
+	reader.readImage(reinterpret_cast<png_byte*>(result.replacePixels()),result.getRowStride());
+	
+	return result;
+	}
+
+RGBAImage readTransparentPNGImage(IO::File& source)
+	{
+	/* Create a PNG image reader for the given source file: */
+	PNGReader reader(source);
+	
+	/* Read a PNG header: */
+	reader.readHeader();
+	
+	/* Set up image processing: */
+	reader.setupProcessing(true,true,false,true);
+	
+	/* Create the result image: */
+	RGBAImage result(reader.imageSize[0],reader.imageSize[1]);
+	
+	/* Read the PNG image: */
+	reader.readImage(reinterpret_cast<png_byte*>(result.replacePixels()),result.getRowStride());
+	
+	return result;
+	}
+
+BaseImage readGenericPNGImage(IO::File& source)
+	{
+	/* Create a PNG image reader for the given source file: */
+	PNGReader reader(source);
+	
+	/* Read a PNG header: */
+	reader.readHeader();
+	
+	/* Set up image processing: */
+	reader.setupProcessing(false,false,false,false);
+	
+	/* Determine the image's texture format: */
+	static const GLenum formats[4]={GL_LUMINANCE,GL_LUMINANCE_ALPHA,GL_RGB,GL_RGBA};
+	GLenum format=formats[reader.numChannels-1];
+	GLenum channelType=reader.elementSize==16?GL_UNSIGNED_SHORT:GL_UNSIGNED_BYTE;
+	
+	/* Create the result image: */
+	BaseImage result(reader.imageSize[0],reader.imageSize[1],reader.numChannels,(reader.elementSize+7)/8,format,channelType);
+	
+	/* Read the PNG image: */
+	reader.readImage(reinterpret_cast<png_byte*>(result.replacePixels()),result.getRowStride());
+	
 	return result;
 	}
 

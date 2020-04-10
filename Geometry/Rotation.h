@@ -1,6 +1,6 @@
 /***********************************************************************
 Rotation - Class for 2D and 3D rotations.
-Copyright (c) 2002-2013 Oliver Kreylos
+Copyright (c) 2002-2018 Oliver Kreylos
 
 This file is part of the Templatized Geometry Library (TGL).
 
@@ -414,38 +414,44 @@ class Rotation<ScalarParam,3>
 		}
 	Vector getAxis(void) const // Returns rotation axis
 		{
-		Scalar factor=Math::sqrt(q[0]*q[0]+q[1]*q[1]+q[2]*q[2]);
-		if(factor==Scalar(0))
-			return Vector(Scalar(1),Scalar(0),Scalar(0)); // Return "default" axis for identity rotation
-		else
+		Scalar factor2=q[0]*q[0]+q[1]*q[1]+q[2]*q[2];
+		if(factor2>Scalar(0))
+			{
+			Scalar factor=Math::sqrt(factor2);
 			return Vector(q[0]/factor,q[1]/factor,q[2]/factor);
-		}
-	Scalar getAngle(void) const // Returns rotation angle in radians
-		{
-		Scalar ac=Math::acos(q[3]);
-		if(Math::isNan(ac))
-			return Scalar(0);
+			}
 		else
-			return ac*Scalar(2);
+			return Vector(Scalar(1),Scalar(0),Scalar(0)); // Return "default" axis for identity rotation
 		}
-	Vector getScaledAxis(void) const // Returns rotation axis and angle as scaled axis
+	Scalar getAngle(void) const // Returns rotation angle around axis returned by getAxis() in radians in the range (-pi, pi]
 		{
-		/* Calculate rotation angle in radians: */
-		Scalar ac=Math::acos(q[3]);
-		if(Math::isNan(ac))
+		Scalar factor2=q[0]*q[0]+q[1]*q[1]+q[2]*q[2];
+		if(factor2>Scalar(0))
+			{
+			/* Calculate rotation angle in radians in range (-pi, pi]: */
+			Scalar mag2=factor2+q[3]*q[3];
+			return Math::copysign(Scalar(2)*Math::acos(Math::abs(q[3])/Math::sqrt(mag2)),q[3]);
+			}
+		else
+			return Scalar(0);
+		}
+	Vector getScaledAxis(void) const // Returns rotation axis and angle as scaled axis, with magnitude of vector in the range [0, pi]
+		{
+		Scalar factor2=q[0]*q[0]+q[1]*q[1]+q[2]*q[2];
+		if(factor2>Scalar(0))
+			{
+			/* Calculate rotation angle in radians in range (-pi, pi]: */
+			Scalar mag2=factor2+q[3]*q[3];
+			Scalar angle=Math::copysign(Scalar(2)*Math::acos(Math::abs(q[3])/Math::sqrt(mag2)),q[3]);
+			
+			/* Divide angle by length of axis vector: */
+			angle/=Math::sqrt(factor2);
+			
+			/* Return the scaled rotation axis: */
+			return Vector(q[0]*angle,q[1]*angle,q[2]*angle);
+			}
+		else
 			return Vector::zero;
-		Scalar angle=ac*Scalar(2);
-		if(angle<-Math::rad(Scalar(180)))
-			angle+=Math::rad(Scalar(360));
-		else if(angle>Math::rad(Scalar(180)))
-			angle-=Math::rad(Scalar(360));
-		
-		/* Return normalized rotation axis scaled by rotation angle: */
-		Scalar factor=Math::sqrt(q[0]*q[0]+q[1]*q[1]+q[2]*q[2]);
-		if(angle==Scalar(0)||factor==Scalar(0))
-			return Vector::zero;
-		
-		return Vector((q[0]*angle)/factor,(q[1]*angle)/factor,(q[2]*angle)/factor);
 		}
 	
 	/* Coordinate system methods: */

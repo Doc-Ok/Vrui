@@ -1,7 +1,7 @@
 /***********************************************************************
 ScrolledImage - Compound widget containing an image, and a vertical and
 horizontal scroll bar.
-Copyright (c) 2011-2017 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -38,7 +38,10 @@ class ScrolledImage:public Container
 	Image* image; // Pointer to the image widget
 	ScrollBar* horizontalScrollBar; // Pointer to the horizontal scroll bar
 	ScrollBar* verticalScrollBar; // Pointer to the vertical scroll bar
+	bool dragScrolling; // Flag whether the image can be scrolled by dragging the image widget
 	GLfloat zoomFactor; // Zoom factor between image's original resolution and display resolution
+	bool dragging; // Flag if the image widget is currently being dragged
+	Point dragPos; // Image-space position that was grabbed in a drag scrolling operation
 	
 	/* Private methods: */
 	void init(bool manageChild); // Initializes the widget
@@ -57,6 +60,9 @@ class ScrolledImage:public Container
 	virtual void resize(const Box& newExterior);
 	virtual void draw(GLContextData& contextData) const;
 	virtual bool findRecipient(Event& event);
+	virtual void pointerButtonDown(Event& event);
+	virtual void pointerButtonUp(Event& event);
+	virtual void pointerMotion(Event& event);
 	
 	/* Methods inherited from Container: */
 	virtual void addChild(Widget* newChild);
@@ -75,6 +81,11 @@ class ScrolledImage:public Container
 		{
 		return image;
 		}
+	bool getDragScrolling(void) const // Returns the drag scrolling flag
+		{
+		return dragScrolling;
+		}
+	void setDragScrolling(bool newDragScrolling); // Sets the drag scrolling flag
 	GLfloat getZoomFactor(void) const // Returns the image's current zoom factor
 		{
 		return zoomFactor;

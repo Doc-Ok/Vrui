@@ -1,6 +1,6 @@
 /***********************************************************************
 GLMarshallers - Marshaller classes for OpenGL abstraction classes.
-Copyright (c) 2010 Oliver Kreylos
+Copyright (c) 2010-2020 Oliver Kreylos
 
 This file is part of the OpenGL Support Library (GLSupport).
 
@@ -50,6 +50,8 @@ class Marshaller<GLColor<ScalarParam,numComponentsParam> >
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
 
@@ -66,6 +68,8 @@ class Marshaller<GLVector<ScalarParam,numComponentsParam> >
 	static size_t getSize(const Value& value);
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
+	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
 	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
@@ -85,6 +89,8 @@ class Marshaller<GLBox<ScalarParam,numComponentsParam> >
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
 
@@ -101,6 +107,8 @@ class Marshaller<GLMaterial>
 	static size_t getSize(const Value& value);
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
+	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
 	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};

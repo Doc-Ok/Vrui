@@ -1,7 +1,7 @@
 /***********************************************************************
 GLGeometryVertex - Class to encapsulate OpenGL vertex properties using
 geometry data types.
-Copyright (c) 2009-2010 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the OpenGL C++ Wrapper Library (GLWrappers).
 
@@ -30,6 +30,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <GL/GLNormalTemplates.h>
 #include <GL/GLVertexTemplates.h>
 #include <GL/GLVertexArrayTemplates.h>
+
+namespace GLGeometry {
 
 namespace {
 
@@ -328,6 +330,8 @@ class GLVertexPointerImplementation<void,0,
 
 }
 
+}
+
 /********************************
 Generic version of glVertex call:
 ********************************/
@@ -342,10 +346,10 @@ void glVertex(const GLGeometry::Vertex<TexCoordScalarParam,numTexCoordComponents
                                        NormalScalarParam,
                                        PositionScalarParam,numPositionComponentsParam>& vertex)
 	{
-	GLVertexPointerImplementation<TexCoordScalarParam,numTexCoordComponentsParam,
-	                              ColorScalarParam,numColorComponentsParam,
-	                              NormalScalarParam,
-	                              PositionScalarParam,numPositionComponentsParam>::glVertex(vertex);
+	GLGeometry::GLVertexPointerImplementation<TexCoordScalarParam,numTexCoordComponentsParam,
+	                                          ColorScalarParam,numColorComponentsParam,
+	                                          NormalScalarParam,
+	                                          PositionScalarParam,numPositionComponentsParam>::glVertex(vertex);
 	}
 
 /***************************************
@@ -362,10 +366,10 @@ void glVertexPointer(const GLGeometry::Vertex<TexCoordScalarParam,numTexCoordCom
                                               NormalScalarParam,
                                               PositionScalarParam,numPositionComponentsParam>* vertexPointer)
 	{
-	GLVertexPointerImplementation<TexCoordScalarParam,numTexCoordComponentsParam,
-	                              ColorScalarParam,numColorComponentsParam,
-	                              NormalScalarParam,
-	                              PositionScalarParam,numPositionComponentsParam>::glVertexPointer(vertexPointer);
+	GLGeometry::GLVertexPointerImplementation<TexCoordScalarParam,numTexCoordComponentsParam,
+	                                          ColorScalarParam,numColorComponentsParam,
+	                                          NormalScalarParam,
+	                                          PositionScalarParam,numPositionComponentsParam>::glVertexPointer(vertexPointer);
 	}
 
 template <class TexCoordScalarParam,int numTexCoordComponentsParam,
@@ -379,8 +383,8 @@ void glVertexPointer(int vertexPartsMask,
                                               NormalScalarParam,
                                               PositionScalarParam,numPositionComponentsParam>* vertexPointer)
 	{
-	GLVertexPointerImplementation<TexCoordScalarParam,numTexCoordComponentsParam,
-	                              ColorScalarParam,numColorComponentsParam,
-	                              NormalScalarParam,
-	                              PositionScalarParam,numPositionComponentsParam>::glVertexPointer(vertexPartsMask,vertexPointer);
+	GLGeometry::GLVertexPointerImplementation<TexCoordScalarParam,numTexCoordComponentsParam,
+	                                          ColorScalarParam,numColorComponentsParam,
+	                                          NormalScalarParam,
+	                                          PositionScalarParam,numPositionComponentsParam>::glVertexPointer(vertexPartsMask,vertexPointer);
 	}

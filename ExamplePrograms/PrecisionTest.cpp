@@ -1,7 +1,7 @@
 /***********************************************************************
 PrecisionTest - Simple utility to measure the 3D picking accuracy of a
 user in a holographic display.
-Copyright (c) 2013-2015 Oliver Kreylos
+Copyright (c) 2013-2019 Oliver Kreylos
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -29,14 +29,12 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <GL/GLMaterial.h>
 #include <GL/GLModels.h>
 #include <GL/GLGeometryWrappers.h>
-#include <GL/GLTransformationWrappers.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/InputDevice.h>
 #include <Vrui/GlyphRenderer.h>
 #include <Vrui/InputGraphManager.h>
 #include <Vrui/VRScreen.h>
 #include <Vrui/Viewer.h>
-#include <Vrui/DisplayState.h>
 #include <Vrui/Application.h>
 
 class PrecisionTest:public Vrui::Application
@@ -189,7 +187,7 @@ void PrecisionTest::display(GLContextData& contextData) const
 	glPushMatrix();
 	
 	/* Go to physical space: */
-	glLoadMatrix(Vrui::getDisplayState(contextData).modelviewPhysical);
+	Vrui::goToPhysicalSpace(contextData);
 	
 	/* Go to marker's position: */
 	glTranslate(markerPos-Point::origin);
@@ -201,6 +199,7 @@ void PrecisionTest::display(GLContextData& contextData) const
 	glDrawCylinder(Vrui::getUiSize()*Vrui::Scalar(0.25),Vrui::getUiSize()*Vrui::Scalar(4.0),12);
 	glRotate(90.0,0.0,0.0,1.0);
 	
+	/* Return to navigational space: */
 	glPopMatrix();
 	
 	glPopAttrib();

@@ -1,7 +1,7 @@
 /***********************************************************************
 StandardDirectory - Pair of classes to access cluster-transparent
 standard filesystem directories.
-Copyright (c) 2011-2014 Oliver Kreylos
+Copyright (c) 2011-2018 Oliver Kreylos
 
 This file is part of the Cluster Abstraction Library (Cluster).
 
@@ -41,6 +41,7 @@ class StandardDirectory:public IO::Directory // Common base class for master- an
 	/* Constructors and destructors: */
 	public:
 	StandardDirectory(Multiplexer* sMultiplexer,const char* sPathName); // Opens the directory of the given path name
+	StandardDirectory(Multiplexer* sMultiplexer,const char* sPathNameBegin,const char* sPathNameEnd); // Ditto, with path name defined by beginning and ending iterators
 	protected:
 	StandardDirectory(Multiplexer* sMultiplexer,const char* sPathName,int); // Ditto, but assumes that path is absolute and normalized
 	public:
@@ -68,6 +69,7 @@ class StandardDirectoryMaster:public StandardDirectory
 	/* Constructors and destructors: */
 	public:
 	StandardDirectoryMaster(Multiplexer* sMultiplexer,const char* sPathName); // Opens the directory of the given path name
+	StandardDirectoryMaster(Multiplexer* sMultiplexer,const char* sPathNameBegin,const char* sPathNameEnd); // Ditto, with path name defined by beginning and ending iterators
 	private:
 	StandardDirectoryMaster(Multiplexer* sMultiplexer,const char* sPathName,int); // Ditto, but assumes that path is absolute and normalized
 	public:
@@ -91,6 +93,7 @@ class StandardDirectorySlave:public StandardDirectory
 	/* Constructors and destructors: */
 	public:
 	StandardDirectorySlave(Multiplexer* sMultiplexer,const char* sPathName); // Opens the directory of the given path name
+	StandardDirectorySlave(Multiplexer* sMultiplexer,const char* sPathNameBegin,const char* sPathNameEnd); // Ditto, with path name defined by beginning and ending iterators
 	private:
 	StandardDirectorySlave(Multiplexer* sMultiplexer,const char* sPathName,int); // Ditto, but assumes that path is absolute and normalized
 	public:

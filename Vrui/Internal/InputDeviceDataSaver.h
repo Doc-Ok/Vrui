@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDeviceDataSaver - Class to save input device data to a file for
 later playback.
-Copyright (c) 2004-2014 Oliver Kreylos
+Copyright (c) 2004-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -26,6 +26,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 #include <string>
 #include <IO/File.h>
+#include <Vrui/InputGraphManager.h>
 
 /* Forward declarations: */
 namespace Misc {
@@ -52,12 +53,15 @@ class InputDeviceDataSaver
 	IO::FilePtr inputDeviceDataFile; // File input device data is saved to
 	int numInputDevices; // Number of saved (physical) input devices
 	InputDevice** inputDevices; // Array of pointers to saved input devices
+	bool* validFlags; // Array of flags indicating whether a saved input device is enabled
 	TextEventDispatcher* textEventDispatcher; // Pointer to the dispatcher for GLMotif text and text control events
 	Sound::SoundRecorder* soundRecorder; // Pointer to sound recorder object to record commentary tracks
 	#ifdef VRUI_INPUTDEVICEDATASAVER_USE_KINECT
 	KinectRecorder* kinectRecorder; // Pointer to 3D video recorder object
 	#endif
-	unsigned int firstFrameCountdown; // Counter to indicate the first frame of the Vrui application
+	
+	/* Private methods: */
+	void inputDeviceStateChangeCallback(InputGraphManager::InputDeviceStateChangeCallbackData* cbData); // Callback called when an input device changes state
 	
 	/* Constructors and destructors: */
 	public:
@@ -65,6 +69,7 @@ class InputDeviceDataSaver
 	~InputDeviceDataSaver(void);
 	
 	/* Methods: */
+	void prepareMainLoop(void); // Notifies input device data saver that Vrui main loop is about to start
 	void saveCurrentState(double currentTimeStamp); // Saves current state of input devices
 	};
 

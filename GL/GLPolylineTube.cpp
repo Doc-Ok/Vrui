@@ -1,6 +1,6 @@
 /***********************************************************************
 GLPolylineTube - Class to render a polyline as a cylindrical tube.
-Copyright (c) 2006-2013 Oliver Kreylos
+Copyright (c) 2006-2019 Oliver Kreylos
 
 This file is part of the OpenGL Support Library (GLSupport).
 
@@ -69,6 +69,13 @@ Methods of class GLPolylineTube:
 void GLPolylineTube::updateTubeVertices(GLPolylineTube::DataItem* dataItem) const
 	{
 	typedef Geometry::Vector<Scalar,3> Vector;
+	
+	/* Bail out and mark the vertex buffer as up-to-date if there are no vertices: */
+	if(vertices.empty())
+		{
+		dataItem->vertexVersion=vertexVersion;
+		return;
+		}
 	
 	size_t numTubeVertices=vertices.size()*size_t(numTubeSegments);
 	Vertex* vertexPtr;
@@ -149,11 +156,20 @@ void GLPolylineTube::updateTubeVertices(GLPolylineTube::DataItem* dataItem) cons
 		glUnmapBufferARB(GL_ARRAY_BUFFER_ARB);
 		glBindBufferARB(GL_ARRAY_BUFFER_ARB,0);
 		}
+	
+	/* Mark the vertices as up-to-date: */
 	dataItem->vertexVersion=vertexVersion;
 	}
 
 void GLPolylineTube::updateTubeIndices(GLPolylineTube::DataItem* dataItem) const
 	{
+	/* Bail out and mark the index buffer as up-to-date if there are no vertices: */
+	if(vertices.empty())
+		{
+		dataItem->indexVersion=indexVersion;
+		return;
+		}
+	
 	size_t numTubeIndices=(size_t(numTubeSegments)+1)*2*(vertices.size()-1);
 	GLuint* indexPtr;
 	if(dataItem->indexBufferId!=0)
@@ -195,6 +211,8 @@ void GLPolylineTube::updateTubeIndices(GLPolylineTube::DataItem* dataItem) const
 		glUnmapBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB);
 		glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,0);
 		}
+	
+	/* Mark the indices as up-to-date: */
 	dataItem->indexVersion=indexVersion;
 	}
 
@@ -228,6 +246,14 @@ void GLPolylineTube::initContext(GLContextData& contextData) const
 	/* Upload the current version of the tube geometry to OpenGL: */
 	updateTubeVertices(dataItem);
 	updateTubeIndices(dataItem);
+	}
+
+void GLPolylineTube::clear(void)
+	{
+	/* Clear the polyline and up the version number: */
+	vertices.clear();
+	++vertexVersion;
+	++indexVersion;
 	}
 
 void GLPolylineTube::setVertex(size_t vertexIndex,const GLPolylineTube::Point& newVertex)

@@ -2,7 +2,7 @@
 InputDeviceAdapterDeviceDaemon - Class to convert from Vrui's own
 distributed device driver architecture to Vrui's internal device
 representation.
-Copyright (c) 2004-2018 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -49,6 +49,7 @@ Realtime::TimePointMonotonic lastUpdate;
 #endif
 
 #ifdef SAVE_TRACKERSTATES
+#include <Misc/Marshaller.h>
 #include <IO/File.h>
 #include <IO/OpenFile.h>
 #include <Geometry/GeometryMarshallers.h>
@@ -75,7 +76,7 @@ void InputDeviceAdapterDeviceDaemon::packetNotificationCallback(VRDeviceClient* 
 	
 	#ifdef SAVE_TRACKERSTATES
 	realFile->write<Misc::UInt32>(client->getState().getTrackerTimeStamp(0));
-	Misc::Marshaller<VRDeviceState::TrackerState::PositionOrientation>::write(client->getState().getTrackerState(0).positionOrientation,*realFile);
+	Misc::write(client->getState().getTrackerState(0).positionOrientation,*realFile);
 	#endif
 	
 	/* Simply request a new Vrui frame: */
@@ -84,12 +85,8 @@ void InputDeviceAdapterDeviceDaemon::packetNotificationCallback(VRDeviceClient* 
 
 void InputDeviceAdapterDeviceDaemon::errorCallback(const VRDeviceClient::ProtocolError& error)
 	{
-	/* Log the error message and request a new Vrui frame to wake up the main thread: */
-	{
-	Threads::Spinlock::Lock errorMessageLock(errorMessageMutex);
-	errorMessages.push_back(error.what());
-	}
-	requestUpdate();
+	/* Show the error message to the user; it's probably quite important: */
+	Misc::formattedUserError("Vrui::InputDeviceAdapterDeviceDaemon: %s",error.what());
 	}
 
 void InputDeviceAdapterDeviceDaemon::batteryStateUpdatedCallback(unsigned int deviceIndex)
@@ -97,19 +94,23 @@ void InputDeviceAdapterDeviceDaemon::batteryStateUpdatedCallback(unsigned int de
 	/* Get the new battery level of the changed device: */
 	unsigned int newBatteryState=deviceClient.getBatteryState(deviceIndex).batteryLevel;
 	
-	/* Check if the device just went low: */
-	if(batteryStates[deviceIndex]>10U&&newBatteryState<=10U)
+	/* Map the virtual device index to an input device index: */
+	int managedDeviceIndex=batteryStateIndexMap[deviceIndex];
+	if(managedDeviceIndex>=0)
 		{
-		/* Put a notification into the message queue: */
-		Threads::Spinlock::Lock errorMessageLock(errorMessageMutex);
-		lowBatteryWarnings.push_back(deviceIndex);
+		/* Check if the device just went low: */
+		if(batteryStates[managedDeviceIndex]>=10U&&newBatteryState<10U)
+			{
+			/* Show a warning to the user; it's probably time to charge the device: */
+			Misc::formattedUserWarning("Vrui::InputDeviceAdapterDeviceDaemon: Input device %s is low on battery",inputDevices[managedDeviceIndex]->getDeviceName());
+			}
+		
+		/* Update the battery state array: */
+		batteryStates[managedDeviceIndex]=newBatteryState;
+		
+		/* Request a new Vrui frame to wake up the main thread: */
+		requestUpdate();
 		}
-	
-	/* Update the battery state array: */
-	batteryStates[deviceIndex]=newBatteryState;
-	
-	/* Request a new Vrui frame to wake up the main thread: */
-	requestUpdate();
 	}
 
 void InputDeviceAdapterDeviceDaemon::createInputDevice(int deviceIndex,const Misc::ConfigurationFileSection& configFileSection)
@@ -179,6 +180,16 @@ void InputDeviceAdapterDeviceDaemon::createInputDevice(int deviceIndex,const Mis
 			for(int i=0;i<vd.numValuators;++i)
 				valuatorNames.push_back(vd.valuatorNames[i]);
 			
+			/* Enter the virtual device into the battery state index map: */
+			batteryStateIndexMap[vdIndex]=deviceIndex;
+			
+			/* Check if the virtual device has haptic features: */
+			if(vd.numHapticFeatures>0)
+				{
+				/* Register the device's first haptic feature with the input device manager: */
+				inputDeviceManager->addHapticFeature(newDevice,this,vd.hapticFeatureIndices[0]);
+				}
+			
 			/* Skip the usual device creation procedure: */
 			return;
 			}
@@ -225,7 +236,7 @@ InputDeviceAdapterDeviceDaemon::InputDeviceAdapterDeviceDaemon(InputDeviceManage
 	 deviceClient(configFileSection),
 	 predictMotion(configFileSection.retrieveValue<bool>("./predictMotion",false)),
 	 motionPredictionDelta(configFileSection.retrieveValue<double>("./motionPredictionDelta",0.0)),
-	 validFlags(0),batteryStates(0)
+	 validFlags(0),batteryStateIndexMap(0),batteryStates(0)
 	{
 	#ifdef SAVE_TRACKERSTATES
 	realFile=IO::openFile("RealTrackerData.dat",IO::File::WriteOnly);
@@ -233,6 +244,11 @@ InputDeviceAdapterDeviceDaemon::InputDeviceAdapterDeviceDaemon(InputDeviceManage
 	predictedFile=IO::openFile("PredictedTrackerData.dat",IO::File::WriteOnly);
 	predictedFile->setEndianness(Misc::LittleEndian);
 	#endif
+	
+	/* Initialize the battery state index map: */
+	batteryStateIndexMap=new int[deviceClient.getNumVirtualDevices()];
+	for(int i=0;i<deviceClient.getNumVirtualDevices();++i)
+		batteryStateIndexMap[i]=-1;
 	
 	/* Initialize input device adapter: */
 	InputDeviceAdapterIndexMap::initializeAdapter(deviceClient.getState().getNumTrackers(),deviceClient.getState().getNumButtons(),deviceClient.getState().getNumValuators(),configFileSection);
@@ -270,6 +286,7 @@ InputDeviceAdapterDeviceDaemon::~InputDeviceAdapterDeviceDaemon(void)
 	
 	/* Clean up: */
 	delete[] validFlags;
+	delete[] batteryStateIndexMap;
 	delete[] batteryStates;
 	}
 
@@ -344,19 +361,6 @@ int InputDeviceAdapterDeviceDaemon::getFeatureIndex(InputDevice* device,const ch
 
 void InputDeviceAdapterDeviceDaemon::updateInputDevices(void)
 	{
-	/* Check for error messages or low battery warnings from the device client: */
-	{
-	Threads::Spinlock::Lock errorMessageLock(errorMessageMutex);
-	
-	for(std::vector<std::string>::iterator emIt=errorMessages.begin();emIt!=errorMessages.end();++emIt)
-		Misc::formattedUserError("Vrui::InputDeviceAdapterDeviceDaemon: %s",emIt->c_str());
-	errorMessages.clear();
-	
-	for(std::vector<unsigned int>::iterator lbIt=lowBatteryWarnings.begin();lbIt!=lowBatteryWarnings.end();++lbIt)
-		Misc::formattedUserWarning("Vrui::InputDeviceAdapterDeviceDaemon: Input device %s is low on battery",inputDevices[*lbIt]->getDeviceName());
-	lowBatteryWarnings.clear();
-	}
-	
 	/* Update all managed input devices: */
 	deviceClient.lockState();
 	const VRDeviceState& state=deviceClient.getState();
@@ -401,21 +405,11 @@ void InputDeviceAdapterDeviceDaemon::updateInputDevices(void)
 			int trackerIndex=trackerIndexMapping[deviceIndex];
 			if(trackerIndex>=0)
 				{
-				/* Check if the tracker's validity changed: */
-				if(validFlags[trackerIndex]!=state.getTrackerValid(trackerIndex))
-					{
-					/* Enable or disable the input device: */
-					if(state.getTrackerValid(trackerIndex))
-						inputDeviceManager->getInputGraphManager()->enable(device);
-					else
-						inputDeviceManager->getInputGraphManager()->disable(device);
-					
-					/* Update the validity flag: */
-					validFlags[trackerIndex]=state.getTrackerValid(trackerIndex);
-					}
+				/* Get the tracker's valid flag: */
+				bool valid=state.getTrackerValid(trackerIndex);
 				
 				/* Only process tracking and feature data if the tracking data is valid: */
-				if(validFlags[trackerIndex])
+				if(valid)
 					{
 					/* Get device's tracker state from VR device client: */
 					const VRDeviceState::TrackerState& ts=state.getTrackerState(trackerIndex);
@@ -431,15 +425,21 @@ void InputDeviceAdapterDeviceDaemon::updateInputDevices(void)
 					
 					#ifdef SAVE_TRACKERSTATES
 					predictedFile->write<Misc::UInt32>(nowTs+Misc::UInt32(predictionDelta*1.0e6f+0.5f));
-					Misc::Marshaller<PO>::write(PO(predictTrans,predictRot),*predictedFile);
+					Misc::write(PO(predictTrans,predictRot),*predictedFile);
 					#endif
 					
-					/* Set device's transformation: */
-					device->setTransformation(TrackerState(predictTrans,predictRot));
+					/* Set device's tracking state: */
+					device->setTrackingState(TrackerState(predictTrans,predictRot),Vector(ts.linearVelocity),Vector(ts.angularVelocity));
+					}
+				
+				/* Check if the tracker's validity changed: */
+				if(validFlags[trackerIndex]!=valid)
+					{
+					/* Enable or disable the input device: */
+					inputDeviceManager->getInputGraphManager()->setEnabled(device,valid);
 					
-					/* Set device's linear and angular velocities: */
-					device->setLinearVelocity(Vector(ts.linearVelocity));
-					device->setAngularVelocity(Vector(ts.angularVelocity));
+					/* Update the validity flag: */
+					validFlags[trackerIndex]=valid;
 					}
 				}
 			
@@ -463,31 +463,27 @@ void InputDeviceAdapterDeviceDaemon::updateInputDevices(void)
 			int trackerIndex=trackerIndexMapping[deviceIndex];
 			if(trackerIndex>=0)
 				{
-				/* Check if the tracker's validity changed: */
-				if(validFlags[trackerIndex]!=state.getTrackerValid(trackerIndex))
-					{
-					/* Enable or disable the input device: */
-					if(state.getTrackerValid(trackerIndex))
-						inputDeviceManager->getInputGraphManager()->enable(device);
-					else
-						inputDeviceManager->getInputGraphManager()->disable(device);
-					
-					/* Update the validity flag: */
-					validFlags[trackerIndex]=state.getTrackerValid(trackerIndex);
-					}
+				/* Get the tracker's valid flag: */
+				bool valid=state.getTrackerValid(trackerIndex);
 				
 				/* Only process tracking data if the tracking data is valid: */
-				if(validFlags[trackerIndex])
+				if(valid)
 					{
 					/* Get device's tracker state from VR device client: */
 					const VRDeviceState::TrackerState& ts=state.getTrackerState(trackerIndex);
 					
-					/* Set device's transformation: */
-					device->setTransformation(ts.positionOrientation);
+					/* Set device's tracking state: */
+					device->setTrackingState(ts.positionOrientation,Vector(ts.linearVelocity),Vector(ts.angularVelocity));
+					}
+				
+				/* Check if the tracker's validity changed: */
+				if(validFlags[trackerIndex]!=valid)
+					{
+					/* Enable or disable the input device: */
+					inputDeviceManager->getInputGraphManager()->setEnabled(device,valid);
 					
-					/* Set device's linear and angular velocities: */
-					device->setLinearVelocity(Vector(ts.linearVelocity));
-					device->setAngularVelocity(Vector(ts.angularVelocity));
+					/* Update the validity flag: */
+					validFlags[trackerIndex]=valid;
 					}
 				}
 			
@@ -560,6 +556,12 @@ TrackerState InputDeviceAdapterDeviceDaemon::peekTrackerState(int deviceIndex)
 		/* Fall back to base class, which will throw an exception: */
 		return InputDeviceAdapter::peekTrackerState(deviceIndex);
 		}
+	}
+
+void InputDeviceAdapterDeviceDaemon::hapticTick(unsigned int hapticFeatureIndex,unsigned int duration,unsigned int frequency,unsigned int amplitude)
+	{
+	/* Forward the request to the VR device client: */
+	deviceClient.hapticTick(hapticFeatureIndex,duration,frequency,amplitude);
 	}
 
 int InputDeviceAdapterDeviceDaemon::findTrackerIndex(const InputDevice* device) const

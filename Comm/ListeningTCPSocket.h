@@ -1,7 +1,7 @@
 /***********************************************************************
 ListeningTCPSocket - Class for TCP half-sockets that can accept incoming
 connections.
-Copyright (c) 2011-2015 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the Portable Communications Library (Comm).
 
@@ -60,6 +60,8 @@ class ListeningTCPSocket
 		{
 		return fd;
 		}
+	bool isBlocking(void) const; // Returns true if the listening socket is in non-blocking mode
+	void setBlocking(bool newBlocking); // Sets the listening socket to blocking or non-blocking mode
 	int getPortId(void) const; // Returns port ID assigned to this half-socket
 	std::string getAddress(void) const; // Returns interface address assigned to this half-socket in dotted notation
 	std::string getInterfaceName(bool throwException =true) const; // Returns interface host name of this half-socket; throws exception if host name cannot be resolved and flag is true

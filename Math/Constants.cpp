@@ -1,7 +1,7 @@
 /***********************************************************************
 Constants - Classes providing generic access to type-specific math-
 relevant information.
-Copyright (c) 2003-2018 Oliver Kreylos
+Copyright (c) 2003-2020 Oliver Kreylos
 
 This file is part of the Templatized Math Library (Math).
 
@@ -152,6 +152,32 @@ const unsigned long Constants<unsigned long>::zero;
 const unsigned long Constants<unsigned long>::one;
 const unsigned long Constants<unsigned long>::min;
 const unsigned long Constants<unsigned long>::max;
+
+/********************************************
+Static members of class Constants<long long>:
+********************************************/
+
+const bool Constants<long long>::isIntegral;
+const bool Constants<long long>::isRing;
+const bool Constants<long long>::isField;
+const bool Constants<long long>::isReal;
+const long long Constants<long long>::zero;
+const long long Constants<long long>::one;
+const long long Constants<long long>::min;
+const long long Constants<long long>::max;
+
+/*****************************************************
+Static members of class Constants<unsigned long long>:
+*****************************************************/
+
+const bool Constants<unsigned long long>::isIntegral;
+const bool Constants<unsigned long long>::isRing;
+const bool Constants<unsigned long long>::isField;
+const bool Constants<unsigned long long>::isReal;
+const unsigned long long Constants<unsigned long long>::zero;
+const unsigned long long Constants<unsigned long long>::one;
+const unsigned long long Constants<unsigned long long>::min;
+const unsigned long long Constants<unsigned long long>::max;
 
 /****************************************
 Static members of class Constants<float>:

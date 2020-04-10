@@ -1,6 +1,6 @@
 /***********************************************************************
 GLMarshallers - Marshaller classes for OpenGL abstraction classes.
-Copyright (c) 2010 Oliver Kreylos
+Copyright (c) 2010-2020 Oliver Kreylos
 
 This file is part of the OpenGL Support Library (GLSupport).
 
@@ -60,6 +60,18 @@ Marshaller<GLColor<ScalarParam,numComponentsParam> >::write(
 template <class ScalarParam,int numComponentsParam>
 template <class DataSourceParam>
 inline
+GLColor<ScalarParam,numComponentsParam>&
+Marshaller<GLColor<ScalarParam,numComponentsParam> >::read(
+	DataSourceParam& source,
+	GLColor<ScalarParam,numComponentsParam>& value)
+	{
+	FixedArrayMarshaller<Scalar>::read(value.getRgba(),numComponents,source);
+	return value;
+	}
+
+template <class ScalarParam,int numComponentsParam>
+template <class DataSourceParam>
+inline
 GLColor<ScalarParam,numComponentsParam>
 Marshaller<GLColor<ScalarParam,numComponentsParam> >::read(
 	DataSourceParam& source)
@@ -91,6 +103,18 @@ Marshaller<GLVector<ScalarParam,numComponentsParam> >::write(
 	DataSinkParam& sink)
 	{
 	FixedArrayMarshaller<Scalar>::write(value.getXyzw(),numComponents,sink);
+	}
+
+template <class ScalarParam,int numComponentsParam>
+template <class DataSourceParam>
+inline
+GLVector<ScalarParam,numComponentsParam>&
+Marshaller<GLVector<ScalarParam,numComponentsParam> >::read(
+	DataSourceParam& source,
+	GLVector<ScalarParam,numComponentsParam>& value)
+	{
+	FixedArrayMarshaller<Scalar>::read(value.getXyzw(),numComponents,source);
+	return value;
 	}
 
 template <class ScalarParam,int numComponentsParam>
@@ -133,13 +157,26 @@ Marshaller<GLBox<ScalarParam,numComponentsParam> >::write(
 template <class ScalarParam,int numComponentsParam>
 template <class DataSourceParam>
 inline
+GLBox<ScalarParam,numComponentsParam>&
+Marshaller<GLBox<ScalarParam,numComponentsParam> >::read(
+	DataSourceParam& source,
+	GLBox<ScalarParam,numComponentsParam>& value)
+	{
+	Marshaller<Vector>::read(source,value.origin);
+	Marshaller<Vector>::read(source,value.size);
+	return value;
+	}
+
+template <class ScalarParam,int numComponentsParam>
+template <class DataSourceParam>
+inline
 GLBox<ScalarParam,numComponentsParam>
 Marshaller<GLBox<ScalarParam,numComponentsParam> >::read(
 	DataSourceParam& source)
 	{
 	Value result;
-	result.origin=Marshaller<Vector>::read(source);
-	result.size=Marshaller<Vector>::read(source);
+	Marshaller<Vector>::read(source,result.origin);
+	Marshaller<Vector>::read(source,result.size);
 	return result;
 	}
 
@@ -163,16 +200,31 @@ Marshaller<GLMaterial>::write(
 
 template <class DataSourceParam>
 inline
+GLMaterial&
+Marshaller<GLMaterial>::read(
+	DataSourceParam& source,
+	GLMaterial& value)
+	{
+	Marshaller<Color>::read(source,value.ambient);
+	Marshaller<Color>::read(source,value.diffuse);
+	Marshaller<Color>::read(source,value.specular);
+	Marshaller<Scalar>::read(source,value.shininess);
+	Marshaller<Color>::read(source,value.emission);
+	return value;
+	}
+
+template <class DataSourceParam>
+inline
 GLMaterial
 Marshaller<GLMaterial>::read(
 	DataSourceParam& source)
 	{
 	GLMaterial result;
-	result.ambient=Marshaller<Color>::read(source);
-	result.diffuse=Marshaller<Color>::read(source);
-	result.specular=Marshaller<Color>::read(source);
-	result.shininess=Marshaller<Scalar>::read(source);
-	result.emission=Marshaller<Color>::read(source);
+	Marshaller<Color>::read(source,result.ambient);
+	Marshaller<Color>::read(source,result.diffuse);
+	Marshaller<Color>::read(source,result.specular);
+	Marshaller<Scalar>::read(source,result.shininess);
+	Marshaller<Color>::read(source,result.emission);
 	return result;
 	}
 

@@ -1,6 +1,6 @@
 /***********************************************************************
 PointSetNode - Class for sets of points as renderable geometry.
-Copyright (c) 2009 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -28,6 +28,9 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <SceneGraph/GeometryNode.h>
 #include <SceneGraph/ColorNode.h>
 #include <SceneGraph/CoordinateNode.h>
+
+/* Forward declarations: */
+class GLSphereRenderer;
 
 namespace SceneGraph {
 
@@ -57,15 +60,18 @@ class PointSetNode:public GeometryNode,public GLObject
 	public:
 	SFColorNode color;
 	SFCoordinateNode coord;
+	SFBool drawSpheres;
 	SFFloat pointSize;
 	
 	/* Derived state: */
 	protected:
+	GLSphereRenderer* sphereRenderer; // A helper object to render points as spheres
 	unsigned int version; // Version number of point set
 	
 	/* Constructors and destructors: */
 	public:
 	PointSetNode(void); // Creates a default point set (no color or coord node, point size 1.0)
+	virtual ~PointSetNode(void);
 	
 	/* Methods from Node: */
 	static const char* getStaticClassName(void);

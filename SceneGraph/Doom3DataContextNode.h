@@ -2,7 +2,7 @@
 Doom3DataContextNode - Class for nodes representing a collection of pak
 files, textures, and materials to render Doom3 static and animated
 models.
-Copyright (c) 2010 Oliver Kreylos
+Copyright (c) 2010-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -25,13 +25,10 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #define SCENEGRAPH_DOOM3DATACONTEXTNODE_INCLUDED
 
 #include <Misc/Autopointer.h>
+#include <IO/Directory.h>
 #include <SceneGraph/FieldTypes.h>
 #include <SceneGraph/Node.h>
 
-/* Forward declarations: */
-namespace Cluster {
-class Multiplexer;
-}
 namespace SceneGraph {
 class Doom3FileManager;
 class Doom3TextureManager;
@@ -49,7 +46,7 @@ class Doom3DataContextNode:public Node
 	
 	/* Derived state: */
 	protected:
-	Cluster::Multiplexer* multiplexer; // Multiplexer to read resource files in a cluster environment
+	IO::DirectoryPtr baseDirectory; // Base directory for relative URLs
 	Doom3FileManager* fileManager; // Manager to load pak and other resource files
 	Doom3TextureManager* textureManager; // Manager to load and share textures
 	Doom3MaterialManager* materialManager; // Manager to load and share material properties

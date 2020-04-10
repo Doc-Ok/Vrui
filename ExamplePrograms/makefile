@@ -1,6 +1,6 @@
 ########################################################################
 # Makefile for the Vrui example programs.
-# Copyright (c) 2003-2016 Oliver Kreylos
+# Copyright (c) 2003-2019 Oliver Kreylos
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -36,7 +36,8 @@ endif
 # directory here; use $(HOME) instead.
 INSTALLDIR := $(shell pwd)
 
-# Set resource directory:
+# Set subdirectories:
+CONFIGDIR = etc/VruiExamplePrograms
 RESOURCEDIR = share/VruiExamplePrograms
 
 ########################################################################
@@ -52,6 +53,7 @@ include $(VRUI_MAKEDIR)/Packages.Vrui
 
 # Set installation directory structure:
 BININSTALLDIR = $(INSTALLDIR)/$(EXEDIR)
+CONFIGINSTALLDIR = $(INSTALLDIR)/$(CONFIGDIR)
 RESOURCEINSTALLDIR = $(INSTALLDIR)/$(RESOURCEDIR)
 
 ########################################################################
@@ -99,6 +101,7 @@ ALL = $(EXEDIR)/VruiDemo \
       $(EXEDIR)/ImageViewer \
       $(EXEDIR)/ImageSequenceViewer \
       $(EXEDIR)/VideoViewer \
+      $(EXEDIR)/SceneGraphViewer \
       $(EXEDIR)/Animation \
       $(EXEDIR)/ShowEarthModel \
       $(EXEDIR)/Jello \
@@ -168,6 +171,8 @@ $(EXEDIR)/ImageSequenceViewer: $(OBJDIR)/ImageSequenceViewer.o
 
 $(EXEDIR)/VideoViewer: $(OBJDIR)/VideoViewer.o
 
+$(EXEDIR)/SceneGraphViewer: $(OBJDIR)/SceneGraphViewer.o
+
 $(EXEDIR)/Animation: $(OBJDIR)/Animation.o
 
 #
@@ -183,7 +188,7 @@ SHOWEARTHMODEL_SOURCES = EarthFunctions.cpp \
                          EarthquakeQueryTool.cpp \
                          ShowEarthModel.cpp
 
-$(OBJDIR)/ShowEarthModel.o: CFLAGS += -DSHOWEARTHMODEL_IMAGEDIR='"$(RESOURCEINSTALLDIR)"'
+$(OBJDIR)/ShowEarthModel.o: CFLAGS += -DSHOWEARTHMODEL_CONFIGDIR='"$(CONFIGINSTALLDIR)"' -DSHOWEARTHMODEL_APPNAME='"ShowEarthModel"' -DSHOWEARTHMODEL_IMAGEDIR='"$(RESOURCEINSTALLDIR)"' -DUSE_COLLABORATION=0
 
 $(EXEDIR)/ShowEarthModel: $(SHOWEARTHMODEL_SOURCES:%.cpp=$(OBJDIR)/%.o)
 

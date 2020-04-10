@@ -1,7 +1,7 @@
 /***********************************************************************
 CurveSetNode - Class for sets of curves written by curve tracing
 application.
-Copyright (c) 2009-2018 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -24,7 +24,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <string.h>
 #include <IO/ValueSource.h>
-#include <Cluster/OpenFile.h>
 #include <Geometry/Box.h>
 #include <GL/gl.h>
 #include <GL/GLVertexTemplates.h>
@@ -74,8 +73,7 @@ Methods of class CurveSetNode:
 *****************************/
 
 CurveSetNode::CurveSetNode(void)
-	:multiplexer(0),
-	 numLineSegments(0),
+	:numLineSegments(0),
 	 version(0)
 	{
 	}
@@ -96,11 +94,8 @@ void CurveSetNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 		{
 		vrmlFile.parseField(url);
 		
-		/* Fully qualify all URLs: */
-		for(size_t i=0;i<url.getNumValues();++i)
-			url.setValue(i,vrmlFile.getFullUrl(url.getValue(i)));
-		
-		multiplexer=vrmlFile.getMultiplexer();
+		/* Remember the VRML file's base directory: */
+		baseDirectory=&vrmlFile.getBaseDirectory();
 		}
 	else if(strcmp(fieldName,"color")==0)
 		vrmlFile.parseField(color);
@@ -121,7 +116,7 @@ void CurveSetNode::update(void)
 	for(size_t fileIndex=0;fileIndex<url.getNumValues();++fileIndex)
 		{
 		/* Open the curve file: */
-		IO::ValueSource source(Cluster::openFile(multiplexer,url.getValue(fileIndex).c_str()));
+		IO::ValueSource source(baseDirectory->openFile(url.getValue(fileIndex).c_str()));
 		source.skipWs();
 		
 		/* Read the number of curves: */
@@ -179,7 +174,7 @@ void CurveSetNode::glRenderAction(GLRenderState& renderState) const
 	/* Get the context data item: */
 	DataItem* dataItem=renderState.contextData.retrieveDataItem<DataItem>(this);
 	
-	if(dataItem->vertexBufferObjectId!=0)
+	if(dataItem->vertexBufferObjectId!=0&&dataItem->indexBufferObjectId!=0)
 		{
 		/*******************************************************************
 		Render the curve set from the vertex buffer:
@@ -188,8 +183,8 @@ void CurveSetNode::glRenderAction(GLRenderState& renderState) const
 		typedef GLGeometry::Vertex<void,0,void,0,Scalar,Scalar,3> Vertex;
 		
 		/* Bind the curve set's vertex and index buffer objects: */
-		glBindBufferARB(GL_ARRAY_BUFFER_ARB,dataItem->vertexBufferObjectId);
-		glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,dataItem->indexBufferObjectId);
+		renderState.bindVertexBuffer(dataItem->vertexBufferObjectId);
+		renderState.bindIndexBuffer(dataItem->indexBufferObjectId);
 		
 		if(dataItem->version!=version)
 			{
@@ -256,17 +251,17 @@ void CurveSetNode::glRenderAction(GLRenderState& renderState) const
 			}
 		
 		/* Set up the vertex array: */
-		GLVertexArrayParts::enable(Vertex::getPartsMask());
+		renderState.enableVertexArrays(Vertex::getPartsMask());
 		glVertexPointer(static_cast<Vertex*>(0));
 		
 		/* Draw all curves: */
-		if(renderState.lightingEnabled)
+		if(renderState.currentState.lightingEnabled)
 			dataItem->lineLightingShader.activate();
 		else
 			glColor(color.getValue());
 		const GLuint* indexBase=0;
 		glDrawElements(GL_LINES,numLineSegments*2,GL_UNSIGNED_INT,indexBase);
-		if(renderState.lightingEnabled)
+		if(renderState.currentState.lightingEnabled)
 			dataItem->lineLightingShader.deactivate();
 		
 		if(pointSize.getValue()>Scalar(0))
@@ -280,12 +275,6 @@ void CurveSetNode::glRenderAction(GLRenderState& renderState) const
 			/* Draw the endpoints of all curves: */
 			glDrawElements(GL_POINTS,numVertices.size()*2,GL_UNSIGNED_INT,indexBase+numLineSegments*2);
 			}
-		
-		/* Disable the vertex array: */
-		GLVertexArrayParts::disable(Vertex::getPartsMask());
-		
-		/* Protect the buffer: */
-		glBindBufferARB(GL_ARRAY_BUFFER_ARB,0);
 		}
 	else
 		{

@@ -1,7 +1,7 @@
 /***********************************************************************
 LabelSetNode - Class for nodes to render sets of single-line labels at
 individual positions.
-Copyright (c) 2009-2013 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -248,7 +248,7 @@ void LabelSetNode::glRenderAction(GLRenderState& renderState) const
 			glRotate(transform);
 			
 			/* Draw the label: */
-			glBindTexture(GL_TEXTURE_2D,dataItem->textureObjectIds[i]);
+			renderState.bindTexture2D(dataItem->textureObjectIds[i]);
 			glBegin(GL_QUADS);
 			glNormal3f(0.0f,0.0f,1.0f);
 			glTexCoord(stringTexBox[i].getCorner(0));
@@ -263,9 +263,6 @@ void LabelSetNode::glRenderAction(GLRenderState& renderState) const
 			
 			glPopMatrix();
 			}
-		
-		/* Protect the texture objects: */
-		glBindTexture(GL_TEXTURE_2D,0);
 		
 		/* Reset OpenGL state: */
 		glPopAttrib();

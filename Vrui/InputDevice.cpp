@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDevice - Class to represent input devices (6-DOF tracker with
 associated buttons and valuators) in virtual reality environments.
-Copyright (c) 2000-2015 Oliver Kreylos
+Copyright (c) 2000-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -39,7 +39,7 @@ InputDevice::InputDevice(void)
 	 deviceRayDirection(0,1,0),deviceRayStart(0),
 	 transformation(TrackerState::identity),linearVelocity(Vector::zero),angularVelocity(Vector::zero),
 	 buttonStates(0),valuatorValues(0),
-	 callbacksEnabled(true),
+	 callbacksEnabled(true),deviceRayChanged(false),trackingChanged(false),
 	 savedButtonStates(0),savedValuatorValues(0)
 	{
 	deviceName[0]='\0';
@@ -54,7 +54,7 @@ InputDevice::InputDevice(const char* sDeviceName,int sTrackType,int sNumButtons,
 	 transformation(TrackerState::identity),linearVelocity(Vector::zero),angularVelocity(Vector::zero),
 	 buttonStates(numButtons>0?new bool[numButtons]:0),
 	 valuatorValues(numValuators>0?new double[numValuators]:0),
-	 callbacksEnabled(true),
+	 callbacksEnabled(true),deviceRayChanged(false),trackingChanged(false),
 	 savedButtonStates(numButtons>0?new bool[numButtons]:0),
 	 savedValuatorValues(numValuators>0?new double[numValuators]:0)
 	{
@@ -81,7 +81,7 @@ InputDevice::InputDevice(const InputDevice& source)
 	 deviceRayDirection(0,1,0),deviceRayStart(0),
 	 transformation(TrackerState::identity),linearVelocity(Vector::zero),angularVelocity(Vector::zero),
 	 buttonStates(0),valuatorValues(0),
-	 callbacksEnabled(true),
+	 callbacksEnabled(true),deviceRayChanged(false),trackingChanged(false),
 	 savedButtonStates(0),savedValuatorValues(0)
 	{
 	deviceName[0]='\0';
@@ -162,6 +162,16 @@ void InputDevice::setDeviceRay(const Vector& newDeviceRayDirection,Scalar newDev
 	/* Set ray direction and starting parameter: */
 	deviceRayDirection=newDeviceRayDirection;
 	deviceRayStart=newDeviceRayStart;
+	
+	/* Call callbacks: */
+	if(callbacksEnabled)
+		{
+		/* Call all device ray callbacks: */
+		CallbackData cbData(this);
+		deviceRayCallbacks.call(&cbData);
+		}
+	else
+		deviceRayChanged=true;
 	}
 
 void InputDevice::setTransformation(const TrackerState& newTransformation)
@@ -176,15 +186,84 @@ void InputDevice::setTransformation(const TrackerState& newTransformation)
 		CallbackData cbData(this);
 		trackingCallbacks.call(&cbData);
 		}
+	else
+		trackingChanged=true;
+	}
+
+void InputDevice::setLinearVelocity(const Vector& newLinearVelocity)
+	{
+	/* Set the linear velocity: */
+	linearVelocity=newLinearVelocity;
+	
+	/* Call callbacks: */
+	if(callbacksEnabled)
+		{
+		/* Call all tracking callbacks: */
+		CallbackData cbData(this);
+		trackingCallbacks.call(&cbData);
+		}
+	else
+		trackingChanged=true;
+	}
+
+void InputDevice::setAngularVelocity(const Vector& newAngularVelocity)
+	{
+	/* Set the angular velocity: */
+	angularVelocity=newAngularVelocity;
+	
+	/* Call callbacks: */
+	if(callbacksEnabled)
+		{
+		/* Call all tracking callbacks: */
+		CallbackData cbData(this);
+		trackingCallbacks.call(&cbData);
+		}
+	else
+		trackingChanged=true;
+	}
+
+void InputDevice::setTrackingState(const TrackerState& newTransformation,const Vector& newLinearVelocity,const Vector& newAngularVelocity)
+	{
+	/* Update tracking state: */
+	transformation=newTransformation;
+	linearVelocity=newLinearVelocity;
+	angularVelocity=newAngularVelocity;
+	
+	/* Call callbacks: */
+	if(callbacksEnabled)
+		{
+		/* Call all tracking callbacks: */
+		CallbackData cbData(this);
+		trackingCallbacks.call(&cbData);
+		}
+	else
+		trackingChanged=true;
 	}
 
 void InputDevice::copyTrackingState(const InputDevice* source)
 	{
+	/* Copy device ray state: */
 	deviceRayDirection=source->deviceRayDirection;
 	deviceRayStart=source->deviceRayStart;
+	
+	/* Copy tracking state: */
 	transformation=source->transformation;
 	linearVelocity=source->linearVelocity;
 	angularVelocity=source->angularVelocity;
+	
+	/* Call callbacks: */
+	if(callbacksEnabled)
+		{
+		/* Call all device ray and tracking callbacks: */
+		CallbackData cbData(this);
+		deviceRayCallbacks.call(&cbData);
+		trackingCallbacks.call(&cbData);
+		}
+	else
+		{
+		deviceRayChanged=true;
+		trackingChanged=true;
+		}
 	}
 
 void InputDevice::clearButtonStates(void)
@@ -255,6 +334,10 @@ void InputDevice::disableCallbacks(void)
 	{
 	callbacksEnabled=false;
 	
+	/* Reset the device ray and tracking change tracker: */
+	deviceRayChanged=false;
+	trackingChanged=false;
+	
 	/* Save all button states and valuator values to call the appropriate callbacks once callbacks are enabled again: */
 	for(int i=0;i<numButtons;++i)
 		savedButtonStates[i]=buttonStates[i];
@@ -300,8 +383,16 @@ void InputDevice::enableCallbacks(void)
 	callbacksEnabled=true;
 	
 	/* Call callbacks for everything that has changed, to update the user program's state: */
-	CallbackData trackingCbData(this);
-	trackingCallbacks.call(&trackingCbData);
+	if(deviceRayChanged)
+		{
+		CallbackData deviceRayCbData(this);
+		deviceRayCallbacks.call(&deviceRayCbData);
+		}
+	if(trackingChanged)
+		{
+		CallbackData trackingCbData(this);
+		trackingCallbacks.call(&trackingCbData);
+		}
 	for(int i=0;i<numButtons;++i)
 		if(savedButtonStates[i]!=buttonStates[i])
 			{

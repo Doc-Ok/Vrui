@@ -1,7 +1,7 @@
 /***********************************************************************
 FileSelectionHelper - Helper class to simplify managing file selection
 dialogs and their callbacks.
-Copyright (c) 2013-2015 Oliver Kreylos
+Copyright (c) 2013-2018 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -76,7 +76,7 @@ class FileSelectionHelper
 	
 	/* Constructors and destructors: */
 	public:
-	FileSelectionHelper(WidgetManager* sWidgetManager,const char* sDefaultFileName,const char* sExtensionFilter,IO::DirectoryPtr sCurrentDirectory);
+	FileSelectionHelper(WidgetManager* sWidgetManager,const char* sDefaultFileName,const char* sExtensionFilter,IO::DirectoryPtr sCurrentDirectory =0); // Creates a file selection helper starting from the given directory; if directory pointer is null, use IO library's current directory
 	~FileSelectionHelper(void);
 	
 	/* Methods: */

@@ -1,7 +1,7 @@
 /***********************************************************************
 SoundContext - Class for OpenAL contexts that are used to map a listener
 to an OpenAL sound device.
-Copyright (c) 2008-2014 Oliver Kreylos
+Copyright (c) 2008-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -143,16 +143,20 @@ SoundContext::SoundContext(const Misc::ConfigurationFileSection& configFileSecti
 	 listener(findListener(configFileSection.retrieveString("./listenerName").c_str())),
 	 speedOfSound(float(getMeterFactor())*343.0f),
 	 dopplerFactor(1.0f),
-	 distanceAttenuationModel(CONSTANT)
+	 distanceAttenuationModel(CONSTANT),referenceDistance(float(getDisplaySize()*Scalar(2))),rolloffFactor(1.0f),
+	 recordingDeviceName(configFileSection.retrieveString("./recordingDeviceName","Default"))
 	{
 	/* Set sound context parameters from configuration file: */
 	speedOfSound=configFileSection.retrieveValue<float>("./speedOfSound",speedOfSound);
 	dopplerFactor=configFileSection.retrieveValue<float>("./dopplerFactor",dopplerFactor);
 	distanceAttenuationModel=configFileSection.retrieveValue<DistanceAttenuationModel>("./distanceAttenuationModel",distanceAttenuationModel);
+	referenceDistance=configFileSection.retrieveValue<float>("./referenceDistance",referenceDistance);
+	rolloffFactor=configFileSection.retrieveValue<float>("./rolloffFactor",rolloffFactor);
 	
 	#if ALSUPPORT_CONFIG_HAVE_OPENAL
+	
 	/* Open the OpenAL device: */
-	std::string alDeviceName=configFileSection.retrieveValue<std::string>("./deviceName","Default");
+	std::string alDeviceName=configFileSection.retrieveString("./deviceName","Default");
 	alDevice=alcOpenDevice(alDeviceName!="Default"?alDeviceName.c_str():0);
 	if(alDevice==0)
 		Misc::throwStdErr("SoundContext::SoundContext: Could not open OpenAL sound device \"%s\"",alDeviceName.c_str());
@@ -189,15 +193,20 @@ SoundContext::SoundContext(const Misc::ConfigurationFileSection& configFileSecti
 		alcCloseDevice(alDevice);
 		Misc::throwStdErr("SoundContext::SoundContext: Could not create OpenAL context for sound device %s",alDeviceName.c_str());
 		}
+	
 	#endif
 	
 	/* Create an AL context data object: */
 	contextData=new ALContextData(101);
 	
+	/* Initialize per-source settings: */
+	contextData->setAttenuation(referenceDistance,rolloffFactor);
+	
 	/* Initialize the sound context's OpenAL context: */
 	makeCurrent();
 	
 	#if ALSUPPORT_CONFIG_HAVE_OPENAL
+	
 	/* Set global OpenAL parameters: */
 	alSpeedOfSound(speedOfSound);
 	alDopplerFactor(dopplerFactor);
@@ -231,6 +240,7 @@ SoundContext::SoundContext(const Misc::ConfigurationFileSection& configFileSecti
 			alDistanceModel(AL_EXPONENT_DISTANCE_CLAMPED);
 			break;
 		}
+	
 	#endif
 	}
 
@@ -240,18 +250,27 @@ SoundContext::~SoundContext(void)
 	delete contextData;
 	
 	#if ALSUPPORT_CONFIG_HAVE_OPENAL
+	
 	if(alcGetCurrentContext()==alContext)
 		alcMakeContextCurrent(0);
 	alcDestroyContext(alContext);
-	alcCloseDevice(alDevice);
+	if(!alcCloseDevice(alDevice))
+		{
+		fprintf(stderr,"SoundContext::~SoundContext: Failure in alcCloseDevice!\n");
+		fflush(stderr);
+		}
+	
 	#endif
 	}
 
 void SoundContext::makeCurrent(void)
 	{
 	#if ALSUPPORT_CONFIG_HAVE_OPENAL
+	
 	/* Activate the sound context's OpenAL context: */
-	alcMakeContextCurrent(alContext);
+	if(alcGetCurrentContext()!=alContext)
+		alcMakeContextCurrent(alContext);
+	
 	#endif
 	
 	/* Install the sound context's AL context data manager: */
@@ -266,6 +285,7 @@ void SoundContext::draw(void)
 	contextData->updateThings();
 	
 	#if ALSUPPORT_CONFIG_HAVE_OPENAL
+	
 	/* Set the listener in physical coordinates: */
 	contextData->resetMatrixStack();
 	alListenerPosition(listener->getHeadPosition());
@@ -322,6 +342,7 @@ void SoundContext::draw(void)
 			}
 		printf("\n");
 		}
+	
 	#endif
 	}
 

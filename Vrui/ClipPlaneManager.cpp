@@ -1,7 +1,7 @@
 /***********************************************************************
 ClipPlaneManager - Class to manage clipping planes in virtual
 environments. Maps created ClipPlane objects to OpenGL clipping planes.
-Copyright (c) 2009-2012 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -221,7 +221,7 @@ void ClipPlaneManager::clipRay(bool physical,Ray& ray,Scalar& lambdaMax) const
 		if(lambda1>Scalar(0))
 			{
 			/* Adjust the ray's origin: */
-			ray.setOrigin(ray(lambda1));
+			ray.offset(lambda1);
 			lambda2-=lambda1;
 			}
 		

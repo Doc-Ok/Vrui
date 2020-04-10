@@ -1,6 +1,6 @@
 /***********************************************************************
 MathValueCoders - Value coder classes for math objects.
-Copyright (c) 2009-2016 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Templatized Math Library (Math).
 
@@ -98,7 +98,7 @@ ValueCoder<Math::Complex<ScalarParam> >::decode(
 		/* Return the decoded value: */
 		return Math::Complex<ScalarParam>(real,imag);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Math::Complex due to ")+err.what());
 		}
@@ -136,7 +136,7 @@ ValueCoder<Math::Interval<ScalarParam> >::decode(
 		CFixedArrayValueCoder<ScalarParam,2>(components).decode(start,end,decodeEnd);
 		return Math::Interval<ScalarParam>(components[0],components[1]);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Math::Interval due to ")+err.what());
 		}
@@ -181,7 +181,7 @@ ValueCoder<Math::BrokenLine<ScalarParam> >::decode(
 		result.max=components[3];
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Math::BrokenLine due to ")+err.what());
 		}

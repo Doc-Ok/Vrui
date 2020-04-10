@@ -1,7 +1,7 @@
 /***********************************************************************
 ViewerConfiguration - Vislet class to configure the settings of a Vrui
 Viewer object from inside a running Vrui application.
-Copyright (c) 2013-2017 Oliver Kreylos
+Copyright (c) 2013-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -32,9 +32,9 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Geometry/Vector.h>
 #include <Geometry/OrthonormalTransformation.h>
 #include <GLMotif/StyleSheet.h>
-#include <GLMotif/PopupWindow.h>
 #include <GLMotif/Margin.h>
 #include <GLMotif/RowColumn.h>
+#include <GLMotif/Pager.h>
 #include <GLMotif/Blind.h>
 #include <GLMotif/Separator.h>
 #include <GLMotif/Label.h>
@@ -244,14 +244,14 @@ void ViewerConfiguration::buildViewerConfigurationControls(void)
 	{
 	/* Build the graphical user interface: */
 	const GLMotif::StyleSheet& ss=*getUiStyleSheet();
+	GLMotif::Pager* settingsPager=getSettingsPager();
 	
-	dialogWindow=new GLMotif::PopupWindow("ViewerConfigurationDialog",getWidgetManager(),"Viewer Configuration");
-	dialogWindow->setHideButton(true);
-	dialogWindow->setResizableFlags(true,false);
+	settingsPager->setNextPageName("Viewer");
 	
-	GLMotif::RowColumn* viewerConfiguration=new GLMotif::RowColumn("ViewerConfiguration",dialogWindow,false);
+	viewerConfiguration=new GLMotif::RowColumn("ViewerConfiguration",settingsPager,false);
 	viewerConfiguration->setOrientation(GLMotif::RowColumn::VERTICAL);
 	viewerConfiguration->setPacking(GLMotif::RowColumn::PACK_TIGHT);
+	viewerConfiguration->setAlignment(GLMotif::Alignment(GLMotif::Alignment::HFILL,GLMotif::Alignment::TOP));
 	viewerConfiguration->setNumMinorWidgets(2);
 	
 	/* Create a drop-down menu to select a viewer: */
@@ -346,15 +346,19 @@ void ViewerConfiguration::buildViewerConfigurationControls(void)
 
 ViewerConfiguration::ViewerConfiguration(int numArguments,const char* const arguments[])
 	:unitScale(factory->configUnit.getInchFactor()/getInchFactor()),
-	 firstEnable(true),
 	 viewer(0),
-	 dialogWindow(0)
+	 viewerConfiguration(0)
 	{
 	}
 
 ViewerConfiguration::~ViewerConfiguration(void)
 	{
-	delete dialogWindow;
+	if(viewerConfiguration!=0)
+		{
+		/* Remove the configuration page from the Vrui settings dialog: */
+		getSettingsPager()->removeChild(viewerConfiguration);
+		delete viewerConfiguration;
+		}
 	}
 
 VisletFactory* ViewerConfiguration::getFactory(void) const
@@ -362,36 +366,18 @@ VisletFactory* ViewerConfiguration::getFactory(void) const
 	return factory;
 	}
 
-void ViewerConfiguration::disable(void)
+void ViewerConfiguration::enable(bool startup)
 	{
-	if(dialogWindow!=0)
+	if(startup)
 		{
-		/* Hide the viewer configuration dialog: */
-		popdownPrimaryWidget(dialogWindow);
-		}
-	
-	/* Disable the vislet: */
-	Vislet::disable();
-	}
-
-void ViewerConfiguration::enable(void)
-	{
-	/* Ignore the first time the vislet is enabled: */
-	if(firstEnable)
-		{
-		firstEnable=false;
-		return;
-		}
-	
-	/* Check if the filming control GUI needs to be created: */
-	if(dialogWindow==0)
+		/* Create the viewer configuration controls as a new page in the Vrui system settings dialog: */
 		buildViewerConfigurationControls();
-	
-	/* Show the viewer configuration dialog: */
-	popupPrimaryWidget(dialogWindow);
-	
-	/* Enable the vislet: */
-	Vislet::enable();
+		}
+	else
+		{
+		/* Enable the vislet: */
+		Vislet::enable(startup);
+		}
 	}
 
 }

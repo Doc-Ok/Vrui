@@ -1,6 +1,6 @@
 /***********************************************************************
 MathMarshallers - Marshaller classes for math objects.
-Copyright (c) 2010-2016 Oliver Kreylos
+Copyright (c) 2010-2020 Oliver Kreylos
 
 This file is part of the Templatized Math Library (Math).
 
@@ -49,6 +49,14 @@ class Marshaller<Math::Complex<ScalarParam> >
 		Marshaller<Scalar>::write(value.getImag(),sink);
 		}
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value)
+		{
+		Scalar real=Marshaller<Scalar>::read(source);
+		Scalar imag=Marshaller<Scalar>::read(source);
+		value=Value(real,imag);
+		return value;
+		}
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source)
 		{
 		Scalar real=Marshaller<Scalar>::read(source);
@@ -80,13 +88,22 @@ class Marshaller<Math::BrokenLine<ScalarParam> >
 		Marshaller<Scalar>::write(value.max,sink);
 		}
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value)
+		{
+		Marshaller<Scalar>::read(source,value.min);
+		Marshaller<Scalar>::read(source,value.deadMin);
+		Marshaller<Scalar>::read(source,value.deadMax);
+		Marshaller<Scalar>::read(source,value.max);
+		return value;
+		}
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source)
 		{
 		Value result;
-		result.min=Marshaller<Scalar>::read(source);
-		result.deadMin=Marshaller<Scalar>::read(source);
-		result.deadMax=Marshaller<Scalar>::read(source);
-		result.max=Marshaller<Scalar>::read(source);
+		Marshaller<Scalar>::read(source,result.min);
+		Marshaller<Scalar>::read(source,result.deadMin);
+		Marshaller<Scalar>::read(source,result.deadMax);
+		Marshaller<Scalar>::read(source,result.max);
 		return result;
 		}
 	};

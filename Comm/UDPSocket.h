@@ -1,6 +1,6 @@
 /***********************************************************************
 UDPSocket - Wrapper class for UDP sockets ensuring exception safety.
-Copyright (c) 2004-2017 Oliver Kreylos
+Copyright (c) 2004-2018 Oliver Kreylos
 
 This file is part of the Portable Communications Library (Comm).
 
@@ -68,9 +68,10 @@ class UDPSocket
 		}
 	public:
 	UDPSocket(int localPortId,int backlog); // Creates an unconnected socket on the local host; if portId is negative, random free port is assigned
-	UDPSocket(int localPortId,std::string hostname,int hostPortId); // Creates a socket connected to a remote host; if localPortId is negative, random free port is assigned
+	UDPSocket(int localPortId,const std::string& hostname,int hostPortId); // Creates a socket connected to a remote host; if localPortId is negative, random free port is assigned
 	UDPSocket(int localPortId,const IPv4SocketAddress& hostAddress); // Ditto, using an IP v4 socket address
 	UDPSocket(const UDPSocket& source); // Copy constructor
+	UDPSocket& operator=(const UDPSocket& source); // Assignment operator
 	~UDPSocket(void); // Closes a socket
 	
 	/* Methods: */
@@ -78,14 +79,14 @@ class UDPSocket
 		{
 		return socketFd;
 		}
-	UDPSocket& operator=(const UDPSocket& source); // Assignment operator
-	int getPortId(void) const; // Returns port ID assigned to a socket
+	IPv4SocketAddress getAddress(void) const; // Returns the IPv4 socket address to which the socket is bound
+	int getPortId(void) const; // Returns port ID assigned to a socket (deprecated; use getPort() on the socket address returnes by getAddress() instead)
 	void setMulticastLoopback(bool multicastLoopback); // Sets whether outgoing multicast packets are echoed back to the sender
 	void setMulticastTTL(unsigned int multicastTTL); // Sets time-to-live for outgoing multicast packets
 	void setMulticastInterface(const IPv4Address& interfaceAddress); // Sets the interface to use for outgoing multicast packets
 	void joinMulticastGroup(const IPv4Address& groupAddress,const IPv4Address& interfaceAddress); // Joins a multicast group on the given interface
 	void leaveMulticastGroup(const IPv4Address& groupAddress,const IPv4Address& interfaceAddress); // Leaves a multicast group on the given interface
-	void connect(std::string hostname,int hostPortId); // Connects the socket to a remote host; throws exception (but does not close socket) on failure
+	void connect(const std::string& hostname,int hostPortId); // Connects the socket to a remote host; throws exception (but does not close socket) on failure
 	void connect(const IPv4SocketAddress& hostAddress); // Ditto, using an IP v4 socket address
 	void accept(void); // Waits for a (short) incoming message on an unconnected socket and connects to the sender of the message; discards message
 	

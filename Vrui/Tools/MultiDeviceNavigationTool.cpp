@@ -1,7 +1,7 @@
 /***********************************************************************
 MultiDeviceNavigationTool - Class to use multiple 3-DOF devices for full
 navigation (translation, rotation, scaling).
-Copyright (c) 2007-2015 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -39,9 +39,10 @@ Methods of class MultiDeviceNavigationToolFactory::Configuration:
 
 MultiDeviceNavigationToolFactory::Configuration::Configuration(void)
 	:translationFactor(1),
-	 minRotationScalingDistance(getPointPickDistance()),
+	 minRotationScalingDistance(getPointPickDistance()*getNavigationTransformation().getScaling()),
 	 rotationFactor(1),
-	 scalingFactor(1)
+	 scalingFactor(1),
+	 mutualExclusion(false)
 	{
 	}
 
@@ -51,6 +52,7 @@ void MultiDeviceNavigationToolFactory::Configuration::read(const Misc::Configura
 	minRotationScalingDistance=cfs.retrieveValue<Scalar>("./minRotationScalingDistance",minRotationScalingDistance);
 	rotationFactor=cfs.retrieveValue<Scalar>("./rotationFactor",rotationFactor);
 	scalingFactor=cfs.retrieveValue<Scalar>("./scalingFactor",scalingFactor);
+	mutualExclusion=cfs.retrieveValue<bool>("./mutualExclusion",mutualExclusion);
 	}
 
 void MultiDeviceNavigationToolFactory::Configuration::write(Misc::ConfigurationFileSection& cfs) const
@@ -59,6 +61,7 @@ void MultiDeviceNavigationToolFactory::Configuration::write(Misc::ConfigurationF
 	cfs.storeValue<Scalar>("./minRotationScalingDistance",minRotationScalingDistance);
 	cfs.storeValue<Scalar>("./rotationFactor",rotationFactor);
 	cfs.storeValue<Scalar>("./scalingFactor",scalingFactor);
+	cfs.storeValue<bool>("./mutualExclusion",mutualExclusion);
 	}
 
 /*************************************************
@@ -146,13 +149,23 @@ Methods of class MultiDeviceNavigationTool:
 MultiDeviceNavigationTool::MultiDeviceNavigationTool(const ToolFactory* sFactory,const ToolInputAssignment& inputAssignment)
 	:NavigationTool(factory,inputAssignment),
 	 configuration(MultiDeviceNavigationTool::factory->configuration),
-	 numPressedButtons(0),
+	 numPressedButtons(0),selectNavMode(false),
+	 firstDevicePositions(new Point[input.getNumButtonSlots()]),
 	 lastDeviceButtonStates(new bool[input.getNumButtonSlots()]),
-	 lastDevicePositions(new Point[input.getNumButtonSlots()])
+	 lastDevicePositions(new Point[input.getNumButtonSlots()]),
+	 devicePositions(new Point[input.getNumButtonSlots()])
 	{
 	/* Initialize old button states: */
 	for(int i=0;i<input.getNumButtonSlots();++i)
 		lastDeviceButtonStates[i]=false;
+	}
+
+MultiDeviceNavigationTool::~MultiDeviceNavigationTool(void)
+	{
+	delete[] firstDevicePositions;
+	delete[] lastDeviceButtonStates;
+	delete[] lastDevicePositions;
+	delete[] devicePositions;
 	}
 
 void MultiDeviceNavigationTool::configure(const Misc::ConfigurationFileSection& configFileSection)
@@ -179,13 +192,40 @@ void MultiDeviceNavigationTool::buttonCallback(int buttonSlotIndex,InputDevice::
 		{
 		/* Activate navigation when the first button is pressed: */
 		if(numPressedButtons==0)
+			{
 			activate();
+			
+			/* Retrieve the current navigation transformation: */
+			nav=getNavigationTransformation();
+			}
+		else if(numPressedButtons==1)
+			{
+			/* Store the current positions of all active devices: */
+			for(int i=0;i<input.getNumButtonSlots();++i)
+				if(getButtonState(i))
+					firstDevicePositions[i]=getButtonDevicePosition(i);
+			
+			/* Start the navigation mode selection process: */
+			initialNav=getNavigationTransformation();
+			selectNavMode=configuration.mutualExclusion;
+			allowRotation=true;
+			allowScaling=true;
+			}
+		else
+			{
+			/* Store the current position of the newly-activated device: */
+			firstDevicePositions[buttonSlotIndex]=getButtonDevicePosition(buttonSlotIndex);
+			}
+		
 		++numPressedButtons;
 		}
 	else
 		{
 		if(numPressedButtons>0)
 			--numPressedButtons;
+		
+		if(numPressedButtons<=1)
+			selectNavMode=false;
 		
 		/* Deactivate navigation and reset all button states when the last button is released: */
 		if(numPressedButtons==0)
@@ -202,43 +242,134 @@ void MultiDeviceNavigationTool::frame(void)
 	/* Do nothing if the tool is inactive: */
 	if(isActive())
 		{
-		/* Calculate the centroid of all devices whose buttons were pressed in the last frame: */
-		int numLastDevices=0;
+		/* Calculate the previous and current centroids of all active devices, i.e., those whose buttons were pressed in both the previous and current frames: */
+		int numActiveDevices=0;
+		Point::AffineCombiner lastCentroidC;
 		Point::AffineCombiner centroidC;
 		for(int i=0;i<input.getNumButtonSlots();++i)
-			if(lastDeviceButtonStates[i])
-				{
-				++numLastDevices;
-				centroidC.addPoint(getButtonDevicePosition(i));
-				}
-		
-		if(numLastDevices>0)
 			{
-			Point currentCentroid=centroidC.getPoint();
+			/* Store the device's current position: */
+			devicePositions[i]=getButtonDevicePosition(i);
 			
-			/* Calculate the average rotation vector and scaling factor of all devices whose buttons were pressed in the last frame: */
+			/* Check if the device is active: */
+			if(lastDeviceButtonStates[i]&&getButtonState(i))
+				{
+				++numActiveDevices;
+				lastCentroidC.addPoint(lastDevicePositions[i]);
+				centroidC.addPoint(devicePositions[i]);
+				}
+			}
+		
+		/* Check if there are any active devices: */
+		if(numActiveDevices>0)
+			{
+			/* Get the current and previous centroids of all active devices: */
+			Point lastCentroid=lastCentroidC.getPoint();
+			Point centroid=centroidC.getPoint();
+			
+			/* Check if the tool is currently selecting a navigation mode: */
+			if(selectNavMode)
+				{
+				/* Calculate the initial and current centroids of all currently active devices: */
+				Point::AffineCombiner firstCentroidC;
+				Point::AffineCombiner activeCentroidC;
+				for(int i=0;i<input.getNumButtonSlots();++i)
+					if(getButtonState(i))
+						{
+						firstCentroidC.addPoint(firstDevicePositions[i]);
+						activeCentroidC.addPoint(devicePositions[i]);
+						}
+				Point firstCentroid=firstCentroidC.getPoint();
+				Point activeCentroid=activeCentroidC.getPoint();
+				
+				/* Check if any of the active devices moved far enough from their initial positions to determine which mode is wanted: */
+				Scalar dist2=Math::sqr(Math::div2(configuration.minRotationScalingDistance));
+				Scalar dSum(0);
+				Scalar dpSum(0);
+				Scalar doSum(0);
+				for(int i=0;i<input.getNumButtonSlots();++i)
+					if(getButtonState(i)&&Geometry::sqrDist(devicePositions[i],firstDevicePositions[i])>dist2)
+						{
+						/* Calculate the device's displacement vector parallel and orthogonal to the centroid direction: */
+						Vector dc=devicePositions[i]-activeCentroid;
+						Scalar dcLen=dc.mag();
+						if(dcLen>configuration.minRotationScalingDistance)
+							{
+							Vector delta=dc-(firstDevicePositions[i]-firstCentroid);
+							Scalar d2=delta.sqr();
+							Scalar deltaP=Math::abs((delta*dc))/dcLen;
+							Scalar deltaO2=d2-Math::sqr(deltaP);
+							Scalar deltaO=deltaO2>Scalar(0)?Math::sqrt(deltaO2):Scalar(0);
+							dSum+=Math::sqrt(d2);
+							dpSum+=deltaP;
+							doSum+=deltaO;
+							
+							/* We can now select a navigation mode: */
+							selectNavMode=false;
+							}
+						}
+				
+				/* Select the navigation mode based on the relative amounts of parallel and orthogonal movements: */
+				if(!selectNavMode)
+					{
+					if(Math::sqr(Math::mul2(dSum))<dist2)
+						{
+						/* Translation only: */
+						allowRotation=false;
+						allowScaling=false;
+						}
+					else if(doSum>=dpSum)
+						{
+						/* Translation and rotation only: */
+						allowScaling=false;
+						}
+					else
+						{
+						/* Translation and scaling only: */
+						allowRotation=false;
+						}
+					
+					/* Reset the disabled parts of the navigation transformation to their initial values: */
+					Point navCentroid=nav.inverseTransform(centroid);
+					nav*=NavTransform::translateFromOriginTo(navCentroid);
+					if(!allowRotation)
+						{
+						nav*=NavTransform::rotate(Geometry::invert(nav.getRotation()));
+						nav*=NavTransform::rotate(initialNav.getRotation());
+						}
+					if(!allowScaling)
+						{
+						nav*=NavTransform::scale(Scalar(1)/nav.getScaling());
+						nav*=NavTransform::scale(initialNav.getScaling());
+						}
+					nav*=NavTransform::translateToOriginFrom(navCentroid);
+					nav.renormalize();
+					}
+				}
+			
+			/* Calculate the average rotation vector and scaling factor of all active devices: */
 			Vector rotation=Vector::zero;
 			Scalar scaling(1);
-			int numActiveDevices=0;
+			Scalar rotScaleWeight(0);
 			for(int i=0;i<input.getNumButtonSlots();++i)
-				if(lastDeviceButtonStates[i])
+				if(lastDeviceButtonStates[i]&&getButtonState(i))
 					{
 					/* Calculate the previous vector to centroid: */
 					Vector lastDist=lastDevicePositions[i]-lastCentroid;
 					Scalar lastLen=Geometry::mag(lastDist);
 					
 					/* Calculate the new vector to centroid: */
-					Vector currentDist=getButtonDevicePosition(i)-currentCentroid;
-					Scalar currentLen=Geometry::mag(currentDist);
+					Vector dist=getButtonDevicePosition(i)-centroid;
+					Scalar len=Geometry::mag(dist);
 					
-					if(lastLen>configuration.minRotationScalingDistance&&currentLen>configuration.minRotationScalingDistance)
+					if(lastLen>configuration.minRotationScalingDistance&&len>configuration.minRotationScalingDistance)
 						{
 						/* Calculate the rotation axis and angle: */
-						Vector rot=lastDist^currentDist;
+						Vector rot=lastDist^dist;
 						Scalar rotLen=Geometry::mag(rot);
 						if(rotLen>Scalar(0))
 							{
-							Scalar angle=Math::asin(rotLen/(lastLen*currentLen));
+							Scalar angle=Math::asin(rotLen/(lastLen*len));
 							rot*=angle/rotLen;
 							
 							/* Accumulate the rotation vector: */
@@ -246,42 +377,42 @@ void MultiDeviceNavigationTool::frame(void)
 							}
 						
 						/* Calculate the scaling factor: */
-						Scalar scal=currentLen/lastLen;
+						Scalar scal=len/lastLen;
 						
 						/* Accumulate the scaling factor: */
 						scaling*=scal;
 						
-						++numActiveDevices;
+						rotScaleWeight+=Scalar(1);
 						}
 					}
 			
-			/* Navigate: */
-			NavTransform t=NavTransform::translate((currentCentroid-lastCentroid)*configuration.translationFactor);
-			if(numActiveDevices>0)
+			/* Update the navigation transformation: */
+			NavTransform t=NavTransform::translate((centroid-lastCentroid)*configuration.translationFactor);
+			if(rotScaleWeight>Scalar(0)&&(allowRotation||allowScaling))
 				{
-				/* Average and scale rotation and scaling: */
-				rotation*=configuration.rotationFactor/Scalar(numActiveDevices);
-				scaling=Math::pow(scaling,configuration.scalingFactor/Scalar(numActiveDevices));
+				/* Average and scale translation, rotation, and scaling: */
+				rotation*=configuration.rotationFactor/rotScaleWeight;
+				scaling=Math::pow(scaling*configuration.scalingFactor,Scalar(1)/rotScaleWeight);
 				
 				/* Apply rotation and scaling: */
-				t*=NavTransform::translateFromOriginTo(currentCentroid);
-				t*=NavTransform::rotate(Rotation::rotateScaledAxis(rotation));
-				t*=NavTransform::scale(scaling);
-				t*=NavTransform::translateToOriginFrom(currentCentroid);
+				t*=NavTransform::translateFromOriginTo(centroid);
+				if(allowRotation)
+					t*=NavTransform::rotate(Rotation::rotateScaledAxis(rotation));
+				if(allowScaling)
+					t*=NavTransform::scale(scaling);
+				t*=NavTransform::translateToOriginFrom(centroid);
 				}
-			concatenateNavigationTransformationLeft(t);
+			nav.leftMultiply(t);
+			nav.renormalize();
+			setNavigationTransformation(nav);
 			}
 		
 		/* Update button states and device positions for next frame: */
-		Point::AffineCombiner newLastCentroidC;
 		for(int i=0;i<input.getNumButtonSlots();++i)
 			{
 			lastDeviceButtonStates[i]=getButtonState(i);
-			lastDevicePositions[i]=getButtonDevicePosition(i);
-			if(lastDeviceButtonStates[i])
-				newLastCentroidC.addPoint(lastDevicePositions[i]);
+			lastDevicePositions[i]=devicePositions[i];
 			}
-		lastCentroid=newLastCentroidC.getPoint();
 		}
 	}
 

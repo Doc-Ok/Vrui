@@ -1,7 +1,7 @@
 /***********************************************************************
 EarthquakeSet - Class to represent and render sets of earthquakes with
 3D locations, magnitude and event time.
-Copyright (c) 2006-2015 Oliver Kreylos
+Copyright (c) 2006-2019 Oliver Kreylos
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -94,13 +94,12 @@ class EarthquakeSet:public GLObject
 	EventTree events; // Kd-tree containing earthquake events
 	bool layeredRendering; // Flag whether layered rendering is requested
 	Point earthCenter; // Position of earth's center point for layered rendering
-	float pointRadius; // Point radius in model space
 	double highlightTime; // Time span (in real time) for which earthquake events are highlighted during animation
 	double currentTime; // Current event time during animation
 	
 	/* Private methods: */
-	void loadANSSFile(IO::FilePtr earthquakeFile,const Geometry::Geoid<double>& referenceEllipsoid,const Geometry::Vector<double,3>& offset,double scaleFactor,std::vector<Event>& eventList); // Loads an earthquake event file in ANSS readable database snapshot format into the given event list
-	void loadCSVFile(IO::FilePtr earthquakeFile,const Geometry::Geoid<double>& referenceEllipsoid,const Geometry::Vector<double,3>& offset,double scaleFactor,std::vector<Event>& eventList); // Loads an earthquake event file in space- or comma-separated format into the given event list
+	void loadANSSFile(IO::FilePtr earthquakeFile,const Geometry::Geoid<double>& referenceEllipsoid,const Geometry::Vector<double,3>& offset,std::vector<Event>& eventList); // Loads an earthquake event file in ANSS readable database snapshot format into the given event list
+	void loadCSVFile(IO::FilePtr earthquakeFile,const Geometry::Geoid<double>& referenceEllipsoid,const Geometry::Vector<double,3>& offset,std::vector<Event>& eventList); // Loads an earthquake event file in space- or comma-separated format into the given event list
 	#if EARTHQUAKESET_EXPLICIT_RECURSION
 	void drawBackToFront(const Point& eyePos,GLuint* indexBuffer) const; // Creates an index buffer for the earthquake set in back-to-front order for the given eye position
 	#else
@@ -110,7 +109,7 @@ class EarthquakeSet:public GLObject
 	
 	/* Constructors and destructors: */
 	public:
-	EarthquakeSet(IO::DirectoryPtr directory,const char* earthquakeFileName,const Geometry::Geoid<double>& referenceEllipsoid,const Geometry::Vector<double,3>& offset,double scaleFactor,const GLColorMap& sColorMap); // Creates an earthquake set by reading a file; transforms lon/lat/ellipsoid height to Cartesian coordinates using given reference ellipsoid, adds offset vector and scales afterwards
+	EarthquakeSet(IO::DirectoryPtr directory,const char* earthquakeFileName,const Geometry::Geoid<double>& referenceEllipsoid,const Geometry::Vector<double,3>& offset,const GLColorMap& sColorMap); // Creates an earthquake set by reading a file; transforms lon/lat/ellipsoid height to Cartesian coordinates using given reference ellipsoid, adds offset vector and scales afterwards
 	~EarthquakeSet(void);
 	
 	/* Methods from GLObject: */
@@ -120,19 +119,18 @@ class EarthquakeSet:public GLObject
 	TimeRange getTimeRange(void) const; // Returns the range of event times
 	void enableLayeredRendering(const Point& newEarthCenter); // Enables layered rendering where earthquakes properly blend with the Earth's inner and outer core and surface
 	void disableLayeredRendering(void); // Disables layered rendering
-	void setPointRadius(float newPointRadius); // Sets the point radius in model space
 	void setHighlightTime(double newHighlightTime); // Sets the time span for which events are highlighted during animation
 	void setCurrentTime(double newCurrentTime); // Sets the current event time during animation
-	void glRenderAction(GLContextData& contextData) const; // Renders the earthquake set
-	void glRenderAction(const Point& eyePos,bool front,GLContextData& contextData) const; // Renders the earthquake set in blending order from the given eye point
-	void glRenderAction(const Point& eyePos,GLContextData& contextData) const // Shortcut method to render the front and back halves of the earthquake set whether or not layered rendering is enabled
+	void glRenderAction(float pointRadius,GLContextData& contextData) const; // Renders the earthquake set
+	void glRenderAction(const Point& eyePos,bool front,float pointRadius,GLContextData& contextData) const; // Renders the earthquake set in blending order from the given eye point
+	void glRenderAction(const Point& eyePos,float pointRadius,GLContextData& contextData) const // Shortcut method to render the front and back halves of the earthquake set whether or not layered rendering is enabled
 		{
 		/* Render the back half (or both halves if layered rendering is disabled): */
-		glRenderAction(eyePos,false,contextData);
+		glRenderAction(eyePos,false,pointRadius,contextData);
 		if(layeredRendering)
 			{
 			/* Render the front half: */
-			glRenderAction(eyePos,true,contextData);
+			glRenderAction(eyePos,true,pointRadius,contextData);
 			}
 		}
 	const Event* selectEvent(const Point& pos,float maxDist) const; // Returns the event closest to the given query point (or null pointer)

@@ -1,7 +1,7 @@
 /***********************************************************************
 OpenFile - Convenience functions to open files of several types using
 the File abstraction.
-Copyright (c) 2011 Oliver Kreylos
+Copyright (c) 2011-2018 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -23,15 +23,29 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #ifndef IO_OPENFILE_INCLUDED
 #define IO_OPENFILE_INCLUDED
 
-#include <IO/File.h>
-#include <IO/SeekableFile.h>
-#include <IO/Directory.h>
+#include <IO/Opener.h>
 
 namespace IO {
 
-FilePtr openFile(const char* fileName,File::AccessMode accessMode =File::ReadOnly); // Opens a file of the given name
-SeekableFilePtr openSeekableFile(const char* fileName,File::AccessMode accessMode =File::ReadOnly); // Opens a seekable file of the given name
-DirectoryPtr openDirectory(const char* directoryName); // Opens a directory of the given name
+inline FilePtr openFile(const char* fileName,File::AccessMode accessMode =File::ReadOnly) // Opens a file of the given name
+	{
+	return Opener::getOpener()->openFile(fileName,accessMode);
+	}
+
+inline SeekableFilePtr openSeekableFile(const char* fileName,File::AccessMode accessMode =File::ReadOnly) // Opens a seekable file of the given name
+	{
+	return Opener::getOpener()->openSeekableFile(fileName,accessMode);
+	}
+
+inline DirectoryPtr openDirectory(const char* directoryName) // Opens a directory of the given name
+	{
+	return Opener::getOpener()->openDirectory(directoryName);
+	}
+
+inline DirectoryPtr openFileDirectory(const char* fileName) // Opens the directory containing the given file or directory
+	{
+	return Opener::getOpener()->openFileDirectory(fileName);
+	}
 
 }
 

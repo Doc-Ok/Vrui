@@ -2,7 +2,7 @@
 AlignTrackingMarkers - Utility to define a reasonable coordinate system
 based on tracking marker positions detected by an optical tracking
 system.
-Copyright (c) 2008-2015 Oliver Kreylos
+Copyright (c) 2008-2018 Oliver Kreylos
 
 This file is part of the Vrui calibration utility package.
 
@@ -213,7 +213,7 @@ class AlignTrackingMarkers:public Vrui::Application
 	
 	/* Constructors and destructors: */
 	public:
-	AlignTrackingMarkers(int& argc,char**& argv,char**& appDefaults);
+	AlignTrackingMarkers(int& argc,char**& argv);
 	virtual ~AlignTrackingMarkers(void);
 	
 	/* Methods from class Vrui::Application: */
@@ -454,8 +454,8 @@ GLMotif::PopupMenu* AlignTrackingMarkers::createMainMenu(void)
 	return mainMenu;
 	}
 
-AlignTrackingMarkers::AlignTrackingMarkers(int& argc,char**& argv,char**& appDefaults)
-	:Vrui::Application(argc,argv,appDefaults),
+AlignTrackingMarkers::AlignTrackingMarkers(int& argc,char**& argv)
+	:Vrui::Application(argc,argv),
 	 transform(ONTransform::identity),
 	 markerSize(Scalar(Vrui::getInchFactor())*Scalar(0.25)),
 	 lineSize(markerSize/Scalar(3)),
@@ -967,19 +967,4 @@ void AlignTrackingMarkers::moveOriginCallback(GLMotif::ToggleButton::ValueChange
 Main function:
 *************/
 
-int main(int argc,char* argv[])
-	{
-	try
-		{
-		char** appDefaults=0;
-		AlignTrackingMarkers app(argc,argv,appDefaults);
-		app.run();
-		}
-	catch(std::runtime_error err)
-		{
-		std::cerr<<"Caught exception "<<err.what()<<std::endl;
-		return 1;
-		}
-	
-	return 0;
-	}
+VRUI_APPLICATION_RUN(AlignTrackingMarkers)

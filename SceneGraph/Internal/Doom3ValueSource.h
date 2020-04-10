@@ -1,7 +1,7 @@
 /***********************************************************************
 Doom3ValueSource - Derived Misc::ValueSource class to count lines and
 skip comments in Doom3 files.
-Copyright (c) 2010-2011 Oliver Kreylos
+Copyright (c) 2010-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -186,7 +186,7 @@ class Doom3ValueSource:public IO::ValueSource
 			result=Base::readInteger();
 			skipComments();
 			}
-		catch(Base::NumberError err)
+		catch(const Base::NumberError& err)
 			{
 			Misc::throwStdErr("Doom3ValueSource: Number format error at %s:%s",fileName.c_str(),lineNumber);
 			}
@@ -200,7 +200,7 @@ class Doom3ValueSource:public IO::ValueSource
 			result=Base::readUnsignedInteger();
 			skipComments();
 			}
-		catch(Base::NumberError err)
+		catch(const Base::NumberError& err)
 			{
 			Misc::throwStdErr("Doom3ValueSource: Number format error at %s:%u",fileName.c_str(),lineNumber);
 			}
@@ -216,7 +216,7 @@ class Doom3ValueSource:public IO::ValueSource
 				Base::readChar(); // Eat it
 			skipComments();
 			}
-		catch(Base::NumberError err)
+		catch(const Base::NumberError& err)
 			{
 			Misc::throwStdErr("Doom3ValueSource: Number format error at %s:%u",fileName.c_str(),lineNumber);
 			}

@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDeviceAdapterPlayback - Class to read input device states from a
 pre-recorded file for playback and/or movie generation.
-Copyright (c) 2004-2014 Oliver Kreylos
+Copyright (c) 2004-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -26,7 +26,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 #include <string>
 #include <vector>
-#include <IO/SeekableFile.h>
+#include <IO/File.h>
 #include <Geometry/Vector.h>
 #include <Geometry/OrthogonalTransformation.h>
 #include <Vrui/Geometry.h>
@@ -55,7 +55,7 @@ class InputDeviceAdapterPlayback:public InputDeviceAdapter
 	{
 	/* Elements: */
 	private:
-	IO::SeekableFilePtr inputDeviceDataFile; // File containing the input device data
+	IO::FilePtr inputDeviceDataFile; // File containing the input device data
 	unsigned int fileVersion; // Version of the input device data file
 	bool applyPreTransform; // Flag whether to transform input device data read from the file
 	OGTransform preTransform; // Upright transformation to apply to input device data read from the file
@@ -75,13 +75,16 @@ class InputDeviceAdapterPlayback:public InputDeviceAdapter
 	double movieFrameTimeInterval; // Time between adjacent frames in the saved movie; == 1.0/movieFrameRate
 	int movieFrameStart; // Number of movie frames to skip at the beginning of playback. First frame will always be written with index 0
 	int movieFrameOffset; // Index to assign to the first saved movie frame (after initial frames have been skipped)
-	unsigned int firstFrameCountdown; // Counter to indicate the first frame of the Vrui application
 	double timeStamp; // Current time stamp of input device data
 	double timeStampOffset; // Offset from system's wall clock time to input data's time stamp sequence
 	double nextTimeStamp; // Time stamp of next frame of input device data
+	bool* validFlags; // Array of valid flags for all loaded input devices
 	double nextMovieFrameTime; // Time at which to save the next movie frame
 	int nextMovieFrameCounter; // Frame index for the next movie frame
 	bool done; // Flag if input file is at end
+	
+	/* Private methods: */
+	void readDeviceStates(void); // Reads a set of input device states from the input device data file
 	
 	/* Constructors and destructors: */
 	public:
@@ -91,6 +94,7 @@ class InputDeviceAdapterPlayback:public InputDeviceAdapter
 	/* Methods from InputDeviceAdapter: */
 	virtual std::string getFeatureName(const InputDeviceFeature& feature) const;
 	virtual int getFeatureIndex(InputDevice* device,const char* featureName) const;
+	virtual void prepareMainLoop(void);
 	virtual void updateInputDevices(void);
 	#ifdef VRUI_INPUTDEVICEADAPTERPLAYBACK_USE_KINECT
 	virtual void glRenderAction(GLContextData& contextData) const;

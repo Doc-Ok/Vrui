@@ -1,6 +1,6 @@
 /***********************************************************************
 ColorNode - Class for nodes defining colors.
-Copyright (c) 2009-2010 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -63,16 +63,28 @@ EventIn* ColorNode::getEventIn(const char* fieldName)
 
 void ColorNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 	{
-	if(strcmp(fieldName,"color")==0)
-		{
+	if(strcmp(fieldName,"colorMap")==0)
+		vrmlFile.parseSFNode(colorMap);
+	else if(strcmp(fieldName,"color")==0)
 		vrmlFile.parseField(color);
-		}
+	else if(strcmp(fieldName,"colorScalar")==0)
+		vrmlFile.parseField(colorScalar);
 	else
 		Node::parseField(fieldName,vrmlFile);
 	}
 
 void ColorNode::update(void)
 	{
+	/* Check if there is a color map: */
+	if(colorMap.getValue()!=0)
+		{
+		/* Replace the color field by color-mapping the colorScalar field: */
+		MFColor::ValueList& colors=color.getValues();
+		colors.clear();
+		colors.reserve(colorScalar.getNumValues());
+		for(MFFloat::ValueList::iterator csIt=colorScalar.getValues().begin();csIt!=colorScalar.getValues().end();++csIt)
+			colors.push_back(colorMap.getValue()->mapColor(*csIt));
+		}
 	}
 
 }

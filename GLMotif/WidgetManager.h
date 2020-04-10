@@ -1,7 +1,7 @@
 /***********************************************************************
 WidgetManager - Class to manage top-level GLMotif UI components and user
 events.
-Copyright (c) 2001-2017 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -43,6 +43,7 @@ class TextEvent;
 class TextControlEvent;
 struct StyleSheet;
 class WidgetArranger;
+class TextEntryMethod;
 class Widget;
 }
 
@@ -118,7 +119,7 @@ class WidgetManager
 		const PopupBinding* getSucc(void) const; // Get the successor in a DFS-traversal of bindings
 		PopupBinding* getSucc(void); // Ditto
 		PopupBinding* findTopLevelWidget(const Point& point);
-		PopupBinding* findTopLevelWidget(const Ray& ray);
+		PopupBinding* findTopLevelWidget(const Ray& ray,Scalar& lambda);
 		void draw(bool overlayWidgets,GLContextData& contextData) const;
 		};
 	
@@ -224,7 +225,8 @@ class WidgetManager
 	/* Elements: */
 	private:
 	const StyleSheet* styleSheet; // The widget manager's style sheet
-	WidgetArranger* arranger; // Helper class to arrange top-level widgets in 3D display space
+	WidgetArranger* arranger; // Helper object to arrange top-level widgets in 3D display space
+	TextEntryMethod* textEntryMethod; // Helper object representing methods to generate text events or text control events
 	Misc::TimerEventScheduler* timerEventScheduler; // Pointer to a scheduler for timer events managed by the OS/window system binding layer
 	bool drawOverlayWidgets; // Flag whether widgets are drawn in an overlay layer on top of all other 3D imagery
 	WidgetAttributeMap widgetAttributeMap; // Map from widgets to widget attributes
@@ -244,9 +246,10 @@ class WidgetManager
 	
 	/* Private methods: */
 	const PopupBinding* getRootBinding(const Widget* widget) const; // Returns the binding for a widget's root, or null if the widget's root is not bound
-	PopupBinding* getRootBinding(Widget* widget); // Ditto
+	PopupBinding* getRootBinding(const Widget* widget); // Ditto
 	void popupPrimaryWidgetAt(Widget* topLevelWidget,const Transformation& widgetToWorld); // Pops up a primary top level widget using the given widget transformation
 	void moveSecondaryWidgets(PopupBinding* parent,const Transformation& parentTransform); // Calls move callbacks for all secondary widgets belonging to the given parent
+	void removeFocusFromChild(Widget* widget); // Removes the text focus from the given widget or any of its children
 	void deleteWidgetImmediately(Widget* widget); // Immediately deletes the given widget and removes and locks or holds
 	void deleteQueuedWidgets(void); // Deletes all widgets in the deletion list
 	
@@ -265,6 +268,11 @@ class WidgetManager
 	WidgetArranger* getArranger(void) const // Returns the widget manager's widget arranger
 		{
 		return arranger;
+		}
+	void setTextEntryMethod(TextEntryMethod* newTextEntryMethod); // Sets the widget manager's text entry method; manager inherits object
+	TextEntryMethod* getTextEntryMethod(void) const // Returns the widget manager's text entry method
+		{
+		return textEntryMethod;
 		}
 	void setTimerEventScheduler(Misc::TimerEventScheduler* newTimerEventScheduler); // Sets the widget manager's timer event scheduler
 	const Misc::TimerEventScheduler* getTimerEventScheduler(void) const // Returns a pointer to the timer event scheduler
@@ -322,7 +330,7 @@ class WidgetManager
 	void popupPrimaryWidget(Widget* topLevelWidget); // Pops up a primary top level widget at a default position/orientation
 	void popupPrimaryWidget(Widget* topLevelWidget,const Point& hotspot); // Pops up a primary top level widget so that the widget's hot spot coincides with the given position
 	void popupPrimaryWidget(Widget* topLevelWidget,const Transformation& widgetToWorld); // Pops up a primary top level widget close to the given transformation
-	void popupSecondaryWidget(Widget* owner,Widget* topLevelWidget,const Vector& offset); // Pops up a secondary top level widget
+	void popupSecondaryWidget(const Widget* owner,Widget* topLevelWidget,const Vector& offset); // Pops up a secondary top level widget
 	void popdownWidget(Widget* widget); // Pops down the top level widget containing the given widget
 	PoppedWidgetIterator beginPrimaryWidgets(void) // Returns iterator to first primary widget
 		{
@@ -337,7 +345,7 @@ class WidgetManager
 	bool isManaged(const Widget* widget) const; // Returns true if the top level widget containing the given widget is popped up
 	bool isVisible(const Widget* widget) const; // Returns true if the top level widget containing the given widget is popped up and visible
 	Widget* findPrimaryWidget(const Point& point); // Finds the primary top level widget whose descendants contain the given point
-	Widget* findPrimaryWidget(const Ray& ray); // Finds the primary top level widget whose descendants are intersected by the given ray
+	Widget* findPrimaryWidget(const Ray& ray,Scalar& lambda); // Finds the primary top level widget whose descendants are intersected by the given ray; sets lambda parameter to intersection or invalid value
 	Transformation calcWidgetTransformation(const Widget* widget) const; // Returns the transformation associated with a widget's root
 	void setPrimaryWidgetTransformation(Widget* widget,const Transformation& newWidgetToWorld); // Sets the transformation of a primary top level widget
 	void deleteWidget(Widget* widget); // Method to delete a widget that is safe to call from within a callback belonging to the widget
@@ -364,6 +372,9 @@ class WidgetManager
 		}
 	void focusPreviousWidget(void); // Moves the text entry focus to the previous widget in the list
 	void focusNextWidget(void); // Moves the text entry focus to the next widget in the list
+	void requestNumericEntry(Widget* widget); // Requests numeric text entry for the given widget, assumed to be currently popped up
+	void requestAlphaNumericEntry(Widget* widget); // Requests alphanumeric text entry for the given widget, assumed to be currently popped up
+	void textEntryFinished(void); // Notifies the widget manager that the current text entry sequence is finished
 	bool text(const TextEvent& textEvent); // Handles a text event; returns true if event was received by a widget
 	bool textControl(Event& event,const TextControlEvent& textControlEvent); // Handles a text control event; returns true if event was received by a widget
 	bool textControl(const TextControlEvent& textControlEvent); // Ditto; sends text control event to current focus widget

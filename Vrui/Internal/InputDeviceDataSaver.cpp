@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDeviceDataSaver - Class to save input device data to a file for
 later playback.
-Copyright (c) 2004-2017 Oliver Kreylos
+Copyright (c) 2004-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -53,20 +53,35 @@ namespace Vrui {
 Methods of class InputDeviceDataSaver:
 *************************************/
 
-InputDeviceDataSaver::InputDeviceDataSaver(const Misc::ConfigurationFileSection& configFileSection,InputDeviceManager& inputDeviceManager,TextEventDispatcher* sTextEventDispatcher,unsigned int randomSeed)
-	:inputDeviceDataFile(IO::openFile(Misc::createNumberedFileName(configFileSection.retrieveString("./inputDeviceDataFileName"),4).c_str(),IO::File::WriteOnly)),
-	 numInputDevices(inputDeviceManager.getNumInputDevices()),
-	 inputDevices(new InputDevice*[numInputDevices]),
-	 textEventDispatcher(sTextEventDispatcher),
-	 soundRecorder(0),
-	 #ifdef VRUI_INPUTDEVICEDATASAVER_USE_KINECT
-	 kinectRecorder(0),
-	 #endif
-	 firstFrameCountdown(2)
+void InputDeviceDataSaver::inputDeviceStateChangeCallback(InputGraphManager::InputDeviceStateChangeCallbackData* cbData)
 	{
+	/* Update the valid flag of the given device: */
+	for(int i=0;i<numInputDevices;++i)
+		if(inputDevices[i]==cbData->inputDevice)
+			{
+			validFlags[i]=cbData->newEnabled;
+			break;
+			}
+	}
+
+InputDeviceDataSaver::InputDeviceDataSaver(const Misc::ConfigurationFileSection& configFileSection,InputDeviceManager& inputDeviceManager,TextEventDispatcher* sTextEventDispatcher,unsigned int randomSeed)
+	:numInputDevices(inputDeviceManager.getNumInputDevices()),
+	 inputDevices(new InputDevice*[numInputDevices]),validFlags(new bool[numInputDevices]),
+	 textEventDispatcher(sTextEventDispatcher),
+	 soundRecorder(0)
+	 #ifdef VRUI_INPUTDEVICEDATASAVER_USE_KINECT
+	 kinectRecorder(0)
+	 #endif
+	{
+	/* Open the common base directory: */
+	IO::DirectoryPtr baseDirectory=IO::openDirectory(configFileSection.retrieveString("./baseDirectory",".").c_str());
+	
+	/* Open the input device data file relative to the base directory: */
+	inputDeviceDataFile=baseDirectory->openFile(baseDirectory->createNumberedFileName(configFileSection.retrieveString("./inputDeviceDataFileName").c_str(),4).c_str(),IO::File::WriteOnly);
+	
 	/* Write a file identification header: */
 	inputDeviceDataFile->setEndianness(Misc::LittleEndian);
-	static const char* fileHeader="Vrui Input Device Data File v4.0\n";
+	static const char* fileHeader="Vrui Input Device Data File v5.0\n";
 	inputDeviceDataFile->write<char>(fileHeader,34);
 	
 	/* Save the random number seed: */
@@ -93,7 +108,13 @@ InputDeviceDataSaver::InputDeviceDataSaver(const Misc::ConfigurationFileSection&
 			std::string featureName=inputDeviceManager.getFeatureName(InputDeviceFeature(inputDevices[i],j));
 			Misc::writeCppString(featureName,*inputDeviceDataFile);
 			}
+		
+		/* Initialize device as valid: */
+		validFlags[i]=true;
 		}
+	
+	/* Register a callback with the input graph manager: */
+	getInputGraphManager()->getInputDeviceStateChangeCallbacks().add(this,&InputDeviceDataSaver::inputDeviceStateChangeCallback);
 	
 	/* Check if the user wants to record a commentary track: */
 	std::string soundFileName=configFileSection.retrieveString("./soundFileName","");
@@ -109,12 +130,13 @@ InputDeviceDataSaver::InputDeviceDataSaver(const Misc::ConfigurationFileSection&
 			
 			/* Create a sound recorder for the given sound file name: */
 			std::string soundDeviceName=configFileSection.retrieveValue<std::string>("./soundDeviceName","default");
-			soundRecorder=new Sound::SoundRecorder(soundDeviceName.c_str(),soundFormat,Misc::createNumberedFileName(soundFileName,4).c_str());
+			soundFileName=baseDirectory->getPath(baseDirectory->createNumberedFileName(soundFileName.c_str(),4).c_str());
+			soundRecorder=new Sound::SoundRecorder(soundDeviceName.c_str(),soundFormat,soundFileName.c_str());
 			}
-		catch(std::runtime_error error)
+		catch(const std::runtime_error& err)
 			{
 			/* Print a message, but carry on: */
-			std::cerr<<"InputDeviceDataSaver: Disabling sound recording due to exception "<<error.what()<<std::endl;
+			Misc::formattedConsoleWarning("InputDeviceDataSaver: Disabling sound recording due to exception %s",err.what());
 			}
 		}
 	
@@ -137,74 +159,92 @@ InputDeviceDataSaver::~InputDeviceDataSaver(void)
 	
 	/* Shut down recording: */
 	delete[] inputDevices;
+	delete[] validFlags;
 	delete soundRecorder;
 	#ifdef VRUI_INPUTDEVICEDATASAVER_USE_KINECT
 	delete kinectRecorder;
 	#endif
+	
+	/* Unregister the callback with the input graph manager: */
+	getInputGraphManager()->getInputDeviceStateChangeCallbacks().remove(this,&InputDeviceDataSaver::inputDeviceStateChangeCallback);
+	}
+
+void InputDeviceDataSaver::prepareMainLoop(void)
+	{
+	try
+		{
+		/* Start recording sound now, if requested: */
+		if(soundRecorder!=0)
+			soundRecorder->start();
+		}
+	catch(const std::runtime_error& err)
+		{
+		Misc::formattedConsoleWarning("InputDeviceDataSaver: Disabling sound recording due to exception %s",err.what());
+		delete soundRecorder;
+		soundRecorder=0;
+		}
 	}
 
 void InputDeviceDataSaver::saveCurrentState(double currentTimeStamp)
 	{
-	/* Check if this is the first real Vrui frame: */
-	if(firstFrameCountdown>0U)
-		{
-		--firstFrameCountdown;
-		if(firstFrameCountdown==0U)
-			{
-			if(soundRecorder!=0)
-				soundRecorder->start();
-			#ifdef VRUI_INPUTDEVICEDATASAVER_USE_KINECT
-			if(kinectRecorder!=0)
-				kinectRecorder->start(currentTimeStamp);
-			#endif
-			}
-		}
-	
 	/* Write current time stamp: */
 	inputDeviceDataFile->write(currentTimeStamp);
 	
 	/* Write state of all input devices: */
 	for(int i=0;i<numInputDevices;++i)
 		{
-		/* Write input device's tracker state: */
-		if(inputDevices[i]->getTrackType()!=InputDevice::TRACK_NONE)
+		/* Check if the input device is valid: */
+		if(validFlags[i])
 			{
-			inputDeviceDataFile->write(inputDevices[i]->getDeviceRayDirection().getComponents(),3);
-			inputDeviceDataFile->write(inputDevices[i]->getDeviceRayStart());
-			const TrackerState& t=inputDevices[i]->getTransformation();
-			inputDeviceDataFile->write(t.getTranslation().getComponents(),3);
-			inputDeviceDataFile->write(t.getRotation().getQuaternion(),4);
-			inputDeviceDataFile->write(inputDevices[i]->getLinearVelocity().getComponents(),3);
-			inputDeviceDataFile->write(inputDevices[i]->getAngularVelocity().getComponents(),3);
-			}
-		
-		/* Write input device's button states: */
-		unsigned char buttonBits=0x00U;
-		int numBits=0;
-		for(int j=0;j<inputDevices[i]->getNumButtons();++j)
-			{
-			buttonBits<<=1;
-			if(inputDevices[i]->getButtonState(j))
-				buttonBits|=0x01U;
-			if(++numBits==8)
+			/* Write valid flag: */
+			inputDeviceDataFile->write<unsigned char>(1);
+			
+			/* Write input device's tracker state: */
+			if(inputDevices[i]->getTrackType()!=InputDevice::TRACK_NONE)
 				{
+				inputDeviceDataFile->write(inputDevices[i]->getDeviceRayDirection().getComponents(),3);
+				inputDeviceDataFile->write(inputDevices[i]->getDeviceRayStart());
+				const TrackerState& t=inputDevices[i]->getTransformation();
+				inputDeviceDataFile->write(t.getTranslation().getComponents(),3);
+				inputDeviceDataFile->write(t.getRotation().getQuaternion(),4);
+				inputDeviceDataFile->write(inputDevices[i]->getLinearVelocity().getComponents(),3);
+				inputDeviceDataFile->write(inputDevices[i]->getAngularVelocity().getComponents(),3);
+				}
+			
+			/* Write input device's button states: */
+			unsigned char buttonBits=0x00U;
+			int numBits=0;
+			for(int j=0;j<inputDevices[i]->getNumButtons();++j)
+				{
+				buttonBits<<=1;
+				if(inputDevices[i]->getButtonState(j))
+					buttonBits|=0x01U;
+				if(++numBits==8)
+					{
+					inputDeviceDataFile->write(buttonBits);
+					buttonBits=0x00U;
+					numBits=0;
+					}
+				}
+			if(numBits!=0)
+				{
+				buttonBits<<=8-numBits;
 				inputDeviceDataFile->write(buttonBits);
-				buttonBits=0x00U;
-				numBits=0;
+				}
+			
+			/* Write input device's valuator states: */
+			for(int j=0;j<inputDevices[i]->getNumValuators();++j)
+				{
+				double valuatorState=inputDevices[i]->getValuator(j);
+				inputDeviceDataFile->write(valuatorState);
 				}
 			}
-		if(numBits!=0)
+		else
 			{
-			buttonBits<<=8-numBits;
-			inputDeviceDataFile->write(buttonBits);
+			/* Write valid flag: */
+			inputDeviceDataFile->write<unsigned char>(0);
 			}
 		
-		/* Write input device's valuator states: */
-		for(int j=0;j<inputDevices[i]->getNumValuators();++j)
-			{
-			double valuatorState=inputDevices[i]->getValuator(j);
-			inputDeviceDataFile->write(valuatorState);
-			}
 		}
 	
 	/* Write all enqueued text and text control events: */

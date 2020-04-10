@@ -1,7 +1,7 @@
 /***********************************************************************
 VariableMemoryFile - Class to write to variable-sized in-memory files as
 temporary file storage.
-Copyright (c) 2011-2016 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -108,6 +108,7 @@ class VariableMemoryFile:public File
 		sink.writeRaw(current+1,getWritePtr());
 		}
 	void clear(void); // Deletes all data in the file
+	void rewind(void); // Rewinds the file for reading
 	};
 
 }

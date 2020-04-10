@@ -1,7 +1,7 @@
 /***********************************************************************
 File - Base class for high-performance buffered binary read/write access
 to file-like objects.
-Copyright (c) 2010-2016 Oliver Kreylos
+Copyright (c) 2010-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -365,7 +365,7 @@ File::~File(void)
 int File::getFd(void) const
 	{
 	/* Default behavior is not supported: */
-	Misc::throwStdErr("IO::File::getFd: File does not have file descriptor");
+	throw std::runtime_error("IO::File::getFd: File does not have file descriptor");
 	
 	/* Just to make compiler happy: */
 	return -1;

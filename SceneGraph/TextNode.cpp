@@ -1,6 +1,6 @@
 /***********************************************************************
 TextNode - Class for nodes to render 3D text.
-Copyright (c) 2009-2013 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -236,7 +236,7 @@ void TextNode::glRenderAction(GLRenderState& renderState) const
 		/* Draw the strings as texture-mapped quads: */
 		for(size_t i=0;i<string.getNumValues();++i)
 			{
-			glBindTexture(GL_TEXTURE_2D,dataItem->textureObjectIds[i]);
+			renderState.bindTexture2D(dataItem->textureObjectIds[i]);
 			glBegin(GL_QUADS);
 			glNormal3f(0.0f,0.0f,1.0f);
 			glTexCoord(stringTexBox[i].getCorner(0));
@@ -249,9 +249,6 @@ void TextNode::glRenderAction(GLRenderState& renderState) const
 			glVertex(stringBox[i].getCorner(2));
 			glEnd();
 			}
-		
-		/* Protect the texture objects: */
-		glBindTexture(GL_TEXTURE_2D,0);
 		
 		/* Reset OpenGL state: */
 		glPopAttrib();

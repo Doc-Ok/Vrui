@@ -105,7 +105,7 @@ GaussNewtonMinimizer<KernelParam>::minimize(
 				nextProgressCallIteration+=progressFrequency;
 				}
 			}
-		catch(Matrix::Error)
+		catch(const Matrix::Error&)
 			{
 			/* Bail out: */
 			break;

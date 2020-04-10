@@ -3,7 +3,7 @@ TripleBuffer - Class to allow one-way asynchronous non-blocking
 communication between a producer and a consumer, in which the producer
 writes a stream of data into a buffer, and the consumer can retrieve the
 most recently written value at any time.
-Copyright (c) 2005-2014 Oliver Kreylos
+Copyright (c) 2005-2019 Oliver Kreylos
 
 This file is part of the Portable Threading Library (Threads).
 
@@ -119,13 +119,11 @@ class TripleBuffer
 			bs=newBs;
 			}
 		}
-	#if 0
 	const Value& getMostRecentValue(void) const // Returns the last posted value; must not be called in cases where consumer might change locked value
 		{
 		/* Read the most recent buffer index from shared memory: */
 		return buffer[(bufferState.get()&mostRecentMask)>>mostRecentShift];
 		}
-	#endif
 	
 	/* Consumer-side methods: */
 	bool hasNewValue(void) const // Returns true if a new data value is available for the consumer

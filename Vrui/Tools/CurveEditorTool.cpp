@@ -1,7 +1,7 @@
 /***********************************************************************
 CurveEditorTool - Tool to create and edit 3D curves (represented as
 splines in hermite form).
-Copyright (c) 2007-2015 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -38,9 +38,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Geometry/OrthogonalTransformation.h>
 #include <GL/gl.h>
 #include <GL/GLGeometryWrappers.h>
-#include <GL/GLTransformationWrappers.h>
 #include <GLMotif/StyleSheet.h>
-#include <GLMotif/WidgetManager.h>
 #include <GLMotif/Blind.h>
 #include <GLMotif/Button.h>
 #include <GLMotif/PopupWindow.h>
@@ -49,8 +47,6 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <GLMotif/FileSelectionHelper.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/ToolManager.h>
-#include <Vrui/DisplayState.h>
-#include <Vrui/OpenFile.h>
 
 namespace Vrui {
 
@@ -117,7 +113,7 @@ GLMotif::FileSelectionHelper* CurveEditorToolFactory::getCurveSelectionHelper(vo
 	{
 	/* Create a new file selection helper if there isn't one yet: */
 	if(curveSelectionHelper==0)
-		curveSelectionHelper=new GLMotif::FileSelectionHelper(getWidgetManager(),curveFileName.c_str(),".curve",openDirectory("."));
+		curveSelectionHelper=new GLMotif::FileSelectionHelper(getWidgetManager(),curveFileName.c_str(),".curve");
 	
 	return curveSelectionHelper;
 	}
@@ -659,7 +655,7 @@ void CurveEditorTool::loadCurveCallback(GLMotif::FileSelectionDialog::OKCallback
 		/* Update the curve editor dialog: */
 		updateDialog();
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Show an error message: */
 		Misc::formattedUserError("Load Curve...: Could not load curve from file %s due to exception %s",cbData->selectedFileName,err.what());
@@ -708,7 +704,7 @@ void CurveEditorTool::saveCurveCallback(GLMotif::FileSelectionDialog::OKCallback
 			curveFile<<" ("<<v0->up[0]<<", "<<v0->up[1]<<", "<<v0->up[2]<<")"<<std::endl;
 			}
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Show an error message: */
 		Misc::formattedUserError("Save Curve...: Could not save curve to file %s due to exception %s",cbData->selectedFileName,err.what());
@@ -1142,7 +1138,7 @@ CurveEditorTool::CurveEditorTool(const ToolFactory* sFactory,const ToolInputAssi
 	 snapVertexToView(false)
 	{
 	/* Create the curve editor dialog window: */
-	const GLMotif::StyleSheet& ss=*getWidgetManager()->getStyleSheet();
+	const GLMotif::StyleSheet& ss=*getUiStyleSheet();
 	curveEditorDialogPopup=new GLMotif::PopupWindow("CurveEditorDialogPopup",getWidgetManager(),"Curve Editor Dialog");
 	
 	GLMotif::RowColumn* curveEditorDialog=new GLMotif::RowColumn("CurveEditorDialog",curveEditorDialogPopup,false);
@@ -1512,10 +1508,7 @@ void CurveEditorTool::display(GLContextData& contextData) const
 	glEnd();
 	
 	/* Go to navigational coordinates: */
-	glMatrixMode(GL_MODELVIEW);
-	glPushMatrix();
-	glLoadIdentity();
-	glMultMatrix(getDisplayState(contextData).modelviewNavigational);
+	goToNavigationalSpace(contextData);
 	
 	/* Render all curve segments: */
 	glLineWidth(3.0);
@@ -1650,8 +1643,10 @@ void CurveEditorTool::display(GLContextData& contextData) const
 		glEnd();
 		}
 	
-	/* Restore OpenGL state: */
+	/* Return to physical space: */
 	glPopMatrix();
+	
+	/* Restore OpenGL state: */
 	glPopAttrib();
 	}
 

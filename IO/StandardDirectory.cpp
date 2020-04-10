@@ -54,6 +54,29 @@ StandardDirectory::StandardDirectory(const char* sPathName)
 		throw OpenError(pathName.c_str());
 	}
 
+StandardDirectory::StandardDirectory(const char* sPathNameBegin,const char* sPathNameEnd)
+	:directory(0),
+	 entry(0)
+	{
+	/* Prepend the current directory path to the path name if the given path name is relative: */
+	if(sPathNameBegin==sPathNameEnd||*sPathNameBegin!='/')
+		{
+		pathName=Misc::getCurrentDirectory();
+		pathName.push_back('/');
+		pathName.append(sPathNameBegin,sPathNameEnd);
+		}
+	else
+		pathName=std::string(sPathNameBegin,sPathNameEnd);
+	
+	/* Normalize the path name and open the directory: */
+	normalizePath(pathName,1);
+	directory=opendir(pathName.c_str());
+	
+	/* Check for failure: */
+	if(directory==0)
+		throw OpenError(pathName.c_str());
+	}
+
 StandardDirectory::StandardDirectory(const char* sPathName,int)
 	:pathName(sPathName),
 	 directory(opendir(pathName.c_str())),

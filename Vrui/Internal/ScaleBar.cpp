@@ -1,7 +1,7 @@
 /***********************************************************************
 ScaleBar - Class to draw a scale bar in Vrui applications. Scale bar is
 implemented as a special top-level GLMotif widget for simplicity.
-Copyright (c) 2010-2016 Oliver Kreylos
+Copyright (c) 2010-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -108,12 +108,10 @@ double getBiggerQuasiBinary(double value)
 Methods of class ScaleBar:
 *************************/
 
-void ScaleBar::calcSize(const NavTransform& newNavigationTransformation)
+void ScaleBar::calcSize(const NavTransform& newNavigationTransformation,const Geometry::LinearUnit& newUnit,bool updateLengthLabel)
 	{
-	const Geometry::LinearUnit& unit=getCoordinateManager()->getUnit();
-	
 	/* Get the application's unit conversion factor: */
-	Scalar appUnitFactor=unit.factor;
+	Scalar appUnitFactor=newUnit.factor;
 	
 	/* Get the navigation transformation's scale factor: */
 	Scalar navScale=newNavigationTransformation.getScaling();
@@ -168,7 +166,7 @@ void ScaleBar::calcSize(const NavTransform& newNavigationTransformation)
 		currentPhysLength=currentNavLength*navScale/appUnitFactor;
 		}
 	
-	if(navLengthChanged)
+	if(updateLengthLabel||navLengthChanged)
 		{
 		/* Update the length label: */
 		char labelText[40];
@@ -193,28 +191,28 @@ void ScaleBar::calcSize(const NavTransform& newNavigationTransformation)
 				}
 			}
 		*ltPtr='\0';
-		if(unit.unit!=Geometry::LinearUnit::UNKNOWN)
-			snprintf(ltPtr,ltEnd-ltPtr," %s",unit.getAbbreviation());
+		if(newUnit.unit!=Geometry::LinearUnit::UNKNOWN)
+			snprintf(ltPtr,ltEnd-ltPtr," %s",newUnit.getAbbreviation());
 		lengthLabel->setString(labelText);
 		GLLabel::Box::Vector labelSize=lengthLabel->getLabelSize();
 		lengthLabel->setOrigin(GLLabel::Box::Vector(-labelSize[0]*0.5f,-labelSize[1]*1.5f,0.0f));
 		}
 	
 	/* Calculate the scaling factor from navigational space to physical space: */
-	if(unit.unit==Geometry::LinearUnit::UNKNOWN)
+	if(newUnit.unit==Geometry::LinearUnit::UNKNOWN)
 		{
 		/* Use raw scale factor: */
 		currentScale=navScale;
 		}
-	else if(unit.isImperial())
+	else if(newUnit.isImperial())
 		{
 		/* Calculate scale factor through imperial units: */
-		currentScale=unit.getInchFactor()*navScale/getInchFactor();
+		currentScale=newUnit.getInchFactor()*navScale/getInchFactor();
 		}
 	else
 		{
 		/* Calculate scale factor through metric units: */
-		currentScale=unit.getMeterFactor()*navScale/getMeterFactor();
+		currentScale=newUnit.getMeterFactor()*navScale/getMeterFactor();
 		}
 	
 	/* Update the scale label: */
@@ -234,7 +232,7 @@ void ScaleBar::navigationChangedCallback(NavigationTransformationChangedCallback
 	if(cbData->oldTransform.getScaling()!=cbData->newTransform.getScaling())
 		{
 		/* Update the scale bar: */
-		calcSize(cbData->newTransform);
+		calcSize(cbData->newTransform,getCoordinateManager()->getUnit());
 		
 		/* Resize the widget: */
 		GLMotif::Vector newSize=calcNaturalSize();
@@ -242,6 +240,21 @@ void ScaleBar::navigationChangedCallback(NavigationTransformationChangedCallback
 		newOrigin[0]=-newSize[0]*0.5f;
 		resize(GLMotif::Box(newOrigin,newSize));
 		}
+	}
+
+void ScaleBar::unitChangedCallback(CoordinateManager::UnitChangedCallbackData* cbData)
+	{
+	/* Re-calculate the current navigation-space length of the scale bar: */
+	currentMantissa=1;
+	currentExponent=0;
+	currentNavLength=Scalar(1);
+	calcSize(Vrui::getNavigationTransformation(),cbData->newUnit,true);
+	
+	/* Resize the widget: */
+	GLMotif::Vector newSize=calcNaturalSize();
+	GLMotif::Vector newOrigin=GLMotif::Vector(0.0f,0.0f,0.0f);
+	newOrigin[0]=-newSize[0]*0.5f;
+	resize(GLMotif::Box(newOrigin,newSize));
 	}
 
 ScaleBar::ScaleBar(const char* sName,GLMotif::WidgetManager* sManager)
@@ -278,7 +291,7 @@ ScaleBar::ScaleBar(const char* sName,GLMotif::WidgetManager* sManager)
 	scaleLabel->setForeground(Vrui::getForegroundColor());
 	
 	/* Calculate the initial navigation-space scale bar length: */
-	calcSize(getNavigationTransformation());
+	calcSize(getNavigationTransformation(),getCoordinateManager()->getUnit(),true);
 	
 	/* Resize the widget: */
 	GLMotif::Vector newSize=calcNaturalSize();
@@ -288,6 +301,9 @@ ScaleBar::ScaleBar(const char* sName,GLMotif::WidgetManager* sManager)
 	
 	/* Register a navigation change callback with the Vrui kernel: */
 	getNavigationTransformationChangedCallbacks().add(this,&ScaleBar::navigationChangedCallback);
+	
+	/* Register a unit change callback with the coordinate manager: */
+	Vrui::getCoordinateManager()->getUnitChangedCallbacks().add(this,&ScaleBar::unitChangedCallback);
 	}
 
 ScaleBar::~ScaleBar(void)
@@ -297,6 +313,9 @@ ScaleBar::~ScaleBar(void)
 	
 	/* Unregister the navigation change callback with the Vrui kernel: */
 	getNavigationTransformationChangedCallbacks().remove(this,&ScaleBar::navigationChangedCallback);
+	
+	/* Unregister the unit change callback with the coordinate manager: */
+	Vrui::getCoordinateManager()->getUnitChangedCallbacks().remove(this,&ScaleBar::unitChangedCallback);
 	
 	/* Delete the length and scale labels: */
 	delete lengthLabel;
@@ -467,7 +486,7 @@ void ScaleBar::pointerButtonDown(GLMotif::Event& event)
 		currentScale=newScale;
 		
 		/* Update the scale bar: */
-		calcSize(newNav);
+		calcSize(newNav,unit);
 		
 		/* Resize the widget so that the clicked point stays in the same place: */
 		GLMotif::Vector newSize=calcNaturalSize();

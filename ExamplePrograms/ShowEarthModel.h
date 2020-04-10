@@ -2,7 +2,7 @@
 ShowEarthModel - Simple Vrui application to render a model of Earth,
 with the ability to additionally display earthquake location data and
 other geology-related stuff.
-Copyright (c) 2005-2018 Oliver Kreylos
+Copyright (c) 2005-2020 Oliver Kreylos
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -23,16 +23,20 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #define SHOWEARTHMODEL_INCLUDED
 
 #include <vector>
+#include <Geometry/Geoid.h>
 #include <GL/gl.h>
 #include <GL/GLMaterial.h>
 #include <GL/GLObject.h>
 #include <Images/BaseImage.h>
-#include <GLMotif/Slider.h>
 #include <GLMotif/ToggleButton.h>
+#include <GLMotif/Slider.h>
 #include <Vrui/GeodeticCoordinateTransform.h>
 #include <Vrui/ToolManager.h>
 #include <Vrui/SurfaceNavigationTool.h>
 #include <Vrui/Application.h>
+#if USE_COLLABORATION
+#include <Collaboration2/Plugins/KoinoniaClient.h>
+#endif
 
 #include "EarthquakeSet.h"
 
@@ -56,6 +60,8 @@ class ShowEarthModel:public Vrui::Application,public GLObject
 	{
 	/* Embedded classes: */
 	private:
+	typedef Geometry::Geoid<Vrui::Scalar> Geoid; // Class to reference ellipsoids
+	
 	class RotatedGeodeticCoordinateTransform:public Vrui::GeodeticCoordinateTransform
 		{
 		/* Elements: */
@@ -77,6 +83,32 @@ class ShowEarthModel:public Vrui::Application,public GLObject
 		void setRotationAngle(Vrui::Scalar newRotationAngle);
 		};
 	
+	struct Settings // Structure holding rendering settings
+		{
+		/* Elements: */
+		public:
+		static const int maxNumObjectFlags=32; // Maximum number of object enable flags
+		float rotationAngle; // Current Earth rotation angle
+		bool showSurface; // Flag if the Earth surface is rendered
+		bool surfaceTransparent; // Flag if the Earth surface is rendered transparently
+		float surfaceAlpha; // Opacity of Earth surface
+		bool showGrid; // Flag if the long/lat grid is rendered
+		float gridAlpha; // Opacity of long/lat grid
+		bool showEarthquakeSets[maxNumObjectFlags]; // Flags to render individual earthquake sets
+		bool showPointSets[maxNumObjectFlags]; // Flags to render individual additional point sets
+		bool showSceneGraphs[maxNumObjectFlags]; // Flags to render individual scene graphs
+		bool showSeismicPaths; // Flag if the seismic paths are rendered
+		bool showOuterCore; // Flag if the outer core is rendered
+		bool outerCoreTransparent; // Flag if the outer core is rendered transparently
+		float outerCoreAlpha; // Opacity of outer core
+		bool showInnerCore; // Flag if the inner core is rendered
+		bool innerCoreTransparent; // Flag if the inner core is rendered transparently
+		float innerCoreAlpha; // Opacity of inner core
+		float earthquakePointSize; // Point size to render earthquake hypocenters
+		double playSpeed; // Animation playback speed in real-world seconds per visualization second
+		double currentTime; // Current animation time in seconds since the epoch in UTC
+		};
+	
 	struct DataItem:public GLObject::DataItem
 		{
 		/* Elements: */
@@ -93,46 +125,35 @@ class ShowEarthModel:public Vrui::Application,public GLObject
 		};
 	
 	/* Elements: */
+	Geoid geoid; // The reference ellipsoid used to convert map coordinates to Cartesian coordinates
 	std::vector<EarthquakeSet*> earthquakeSets; // Vector of earthquake sets to render
 	EarthquakeSet::TimeRange earthquakeTimeRange; // Range to earthquake event times
 	std::vector<PointSet*> pointSets; // Vector of additional point sets to render
 	std::vector<SeismicPath*> seismicPaths; // Vector of seismic paths to render
 	std::vector<GLPolylineTube*> sensorPaths; // Vector of sensor paths to render
 	std::vector<SceneGraph::GroupNode*> sceneGraphs; // Vector of scene graphs to render
+	Settings settings; // Rendering settings
+	#if USE_COLLABORATION
+	KoinoniaClient* koinonia; // Koinonia plug-in protocol
+	KoinoniaProtocol::ObjectID settingsId; // Koinonia ID to share render settings
+	#endif
 	bool scaleToEnvironment; // Flag if the Earth model should be scaled to fit the environment
 	bool rotateEarth; // Flag if the Earth model should be rotated
 	double lastFrameTime; // Application time when last frame was rendered (to determine Earth angle updates)
-	float rotationAngle; // Current Earth rotation angle
 	float rotationSpeed; // Earth rotation speed in degree/second
 	RotatedGeodeticCoordinateTransform* userTransform; // Coordinate transformation from user space to navigation space
 	Images::BaseImage surfaceImage; // Texture image for the Earth surface
-	bool showSurface; // Flag if the Earth surface is rendered
-	bool surfaceTransparent; // Flag if the Earth surface is rendered transparently
 	GLMaterial surfaceMaterial; // OpenGL material properties for the Earth surface
-	bool showGrid; // Flag if the long/lat grid is rendered
-	std::vector<bool> showEarthquakeSets; // Vector of flags if each of the earthquake sets is rendered
-	std::vector<bool> showPointSets; // Vector of flags if each of the additional point sets is rendered
-	std::vector<bool> showSceneGraphs; // Vector of flags if each of the scene graphs is rendered
-	bool showSeismicPaths; // Flag if the seismic paths are rendered
-	bool showOuterCore; // Flag if the outer core is rendered
-	bool outerCoreTransparent; // Flag if the outer core is rendered transparently
 	GLMaterial outerCoreMaterial; // OpenGL material properties for the outer core
-	bool showInnerCore; // Flag if the inner core is rendered
-	bool innerCoreTransparent; // Flag if the inner core is rendered transparently
 	GLMaterial innerCoreMaterial; // OpenGL material properties for the inner core
-	float earthquakePointSize; // Point size to render earthquake hypocenters
 	GLMaterial sensorPathMaterial; // OpenGL material properties for sensor paths
 	bool fog; // Flag whether depth cueing via fog is enabled
 	float bpDist; // Current backplane distance for clipping and fog attenuation
-	double currentTime; // Current animation time in seconds since the epoch in UTC
-	double playSpeed; // Animation playback speed in real-world seconds per visualization second
 	bool play; // Flag if automatic playback is enabled
 	bool lockToSphere; // Flag whether the navigation transformation is locked to a fixed-radius sphere
 	Vrui::Scalar sphereRadius; // Radius of the fixed sphere to which to lock the navigation transformation
 	Vrui::NavTransform sphereTransform; // Transformation pre-applied to navigation transformation to lock it to a sphere
 	GLMotif::PopupMenu* mainMenu; // The program's main menu
-	GLMotif::ToggleButton* showRenderDialogToggle;
-	GLMotif::ToggleButton* showAnimationDialogToggle;
 	GLMotif::PopupWindow* renderDialog; // The rendering settings dialog
 	GLMotif::PopupWindow* animationDialog; // The animation dialog
 	GLMotif::TextField* currentTimeValue; // Text field showing the current animation time
@@ -142,10 +163,23 @@ class ShowEarthModel:public Vrui::Application,public GLObject
 	GLMotif::ToggleButton* playToggle; // Toggle button for automatic playback
 	
 	/* Private methods: */
+	void settingsChangedCallback(Misc::CallbackData* cbData);
+	#if USE_COLLABORATION
+	static void settingsUpdatedCallback(KoinoniaClient* client,KoinoniaProtocol::ObjectID id,void* object,void* userData);
+	#endif
 	GLMotif::PopupMenu* createRenderTogglesMenu(void); // Creates the "Rendering Modes" submenu
+	void rotateEarthValueChangedCallback(GLMotif::ToggleButton::ValueChangedCallbackData* cbData);
+	void resetRotationCallback(Misc::CallbackData* cbData);
+	void lockToSphereCallback(GLMotif::ToggleButton::ValueChangedCallbackData* cbData);
+	void showRenderDialogCallback(Misc::CallbackData* cbData);
+	void showAnimationDialogCallback(Misc::CallbackData* cbData);
 	GLMotif::PopupMenu* createMainMenu(void); // Creates the program's main menu
+	void useFogCallback(GLMotif::ToggleButton::ValueChangedCallbackData* cbData);
+	void backplaneDistCallback(GLMotif::Slider::ValueChangedCallbackData* cbData);
 	GLMotif::PopupWindow* createRenderDialog(void); // Creates the rendering settings dialog
 	void updateCurrentTime(void); // Updates the current time text field
+	void currentTimeCallback(GLMotif::Slider::ValueChangedCallbackData* cbData);
+	void playSpeedCallback(GLMotif::Slider::ValueChangedCallbackData* cbData);
 	GLMotif::PopupWindow* createAnimationDialog(void); // Create the animation dialog
 	GLPolylineTube* readSensorPathFile(const char* sensorPathFileName,double scaleFactor);
 	
@@ -161,10 +195,6 @@ class ShowEarthModel:public Vrui::Application,public GLObject
 	virtual void display(GLContextData& contextData) const;
 	virtual void resetNavigation(void);
 	void alignSurfaceFrame(Vrui::SurfaceNavigationTool::AlignmentData& alignmentData);
-	void menuToggleSelectCallback(GLMotif::ToggleButton::ValueChangedCallbackData* cbData);
-	void renderDialogCloseCallback(Misc::CallbackData* cbData);
-	void animationDialogCloseCallback(Misc::CallbackData* cbData);
-	void sliderCallback(GLMotif::Slider::ValueChangedCallbackData* cbData);
 	void setEventTime(double newEventTime);
 	};
 

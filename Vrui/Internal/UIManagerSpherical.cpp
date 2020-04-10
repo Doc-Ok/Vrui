@@ -1,7 +1,7 @@
 /***********************************************************************
 UIManagerSpherical - UI manager class that aligns user interface
 components on a fixed sphere surrounding the viewer.
-Copyright (c) 2015-2018 Oliver Kreylos
+Copyright (c) 2015-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -140,15 +140,16 @@ Point UIManagerSpherical::projectRay(const Ray& ray) const
 		}
 	}
 
-void UIManagerSpherical::projectDevice(InputDevice* device) const
+void UIManagerSpherical::projectDevice(InputDevice* device,const TrackerState& proposedTransform) const
 	{
-	/* Get the device's ray: */
-	Ray ray=device->getRay();
+	/* Get the device's ray according to the proposed transformation: */
+	Vector deviceRayDir=proposedTransform.transform(device->getDeviceRayDirection());
+	Point deviceRayOrigin=proposedTransform.getOrigin()+deviceRayDir*device->getDeviceRayStart();
 	
 	/* Check if the line defined by the device's ray intersects the sphere: */
-	Scalar d2=Geometry::sqr(ray.getDirection());
-	Vector oc=ray.getOrigin()-sphere.getCenter();
-	Scalar ph=(oc*ray.getDirection());
+	Scalar d2=Geometry::sqr(deviceRayDir);
+	Vector oc=deviceRayOrigin-sphere.getCenter();
+	Scalar ph=(oc*deviceRayDir);
 	Scalar det=Math::sqr(ph)-(Geometry::sqr(oc)-Math::sqr(sphere.getRadius()))*d2;
 	Scalar lambda(0);
 	Point devicePos;
@@ -158,13 +159,13 @@ void UIManagerSpherical::projectDevice(InputDevice* device) const
 		/* Calculate the point where the line exits the sphere: */
 		det=Math::sqrt(det);
 		lambda=(-ph+det)/d2; // Second intersection
-		devicePos=ray(lambda);
+		devicePos=deviceRayOrigin+deviceRayDir*lambda;
 		y=devicePos-sphere.getCenter();
 		}
 	else
 		{
 		/* Project the device's position onto the sphere: */
-		y=device->getPosition()-sphere.getCenter();
+		y=proposedTransform.getOrigin()-sphere.getCenter();
 		Scalar yLen=y.mag();
 		if(yLen==Scalar(0))
 			{
@@ -183,7 +184,7 @@ void UIManagerSpherical::projectDevice(InputDevice* device) const
 	device->setTransformation(TrackerState(devicePos-Point::origin,Rotation::fromBaseVectors(x,y)));
 	
 	/* Update the device's ray: */
-	device->setDeviceRay(device->getTransformation().inverseTransform(ray.getDirection()),-lambda);
+	device->setDeviceRay(device->getTransformation().inverseTransform(deviceRayDir),-lambda);
 	}
 
 ONTransform UIManagerSpherical::calcUITransform(const Point& point) const

@@ -1,6 +1,6 @@
 /***********************************************************************
 XMLSource - Class implementing a low-level XML file processor.
-Copyright (c) 2018 Oliver Kreylos
+Copyright (c) 2018-2020 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -24,6 +24,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <string.h>
 #include <stdio.h>
 #include <stdexcept>
+#include <Misc/SizedTypes.h>
+#include <Misc/UTF8.h>
 #include <IO/UTF8.h>
 
 namespace IO {
@@ -165,12 +167,6 @@ int readCharEBCDIC(File& source)
 Helper functions to classify Unicode characters according to XML syntax:
 ***********************************************************************/
 
-inline bool isSpace(int c)
-	{
-	/* XML whitespace is space, horizontal tab, and line feed (carriage return is removed on input): */
-	return c==0x20||c==0x09||c==0x0a;
-	}
-
 inline bool isDigit(int c)
 	{
 	return c>='0'&&c<='9';
@@ -308,6 +304,121 @@ inline std::string constructErrorMessage(const XMLSource& source,const char* err
 	snprintf(buffer,sizeof(buffer),"IO::XMLSource: %s: %s at line %u, column %u",errorType,what,(unsigned int)(filePos.first),(unsigned int)(filePos.second));
 	
 	return buffer;
+	}
+
+/******************************************************************
+Helper class to read base64-encoded binary data from an XML source:
+******************************************************************/
+
+class XMLBase64Filter:public IO::File
+	{
+	/* Elements: */
+	private:
+	XMLSource& xml; // XML source from which to read characters
+	Misc::UInt32 decodeBuffer; // Bit buffer for decoding data from the XML file
+	int decodeBufferBits; // Number of bits currently in the decode buffer
+	bool readEof; // Flag if the base64-encoded data has been completely read, i.e., EOF or a non-base64 character was encountered
+	
+	/* Methods from File: */
+	protected:
+	virtual size_t readData(Byte* buffer,size_t bufferSize);
+	
+	/* Private methods: */
+	Misc::UInt32 decode(int c)
+		{
+		Misc::UInt32 result(255U);
+		
+		if(c>='A')
+			{
+			if(c>='a')
+				{
+				if(c<='z')
+					result=Misc::UInt32(c-'a'+26);
+				}
+			else // c<'a'
+				{
+				if(c<='Z')
+					result=Misc::UInt32(c-'A');
+				}
+			}
+		else // c<'A'
+			{
+			if(c>='0')
+				{
+				if(c<='9')
+					result=Misc::UInt32(c-'0'+52);
+				}
+			else // c<'0'
+				{
+				if(c=='+')
+					result=Misc::UInt32(62);
+				else if(c=='/')
+					result=Misc::UInt32(63);
+				}
+			}
+		
+		return result;
+		}
+	
+	/* Constructors and destructors: */
+	public:
+	XMLBase64Filter(XMLSource& sXml); // Creates a base64 filter for the current character data element of the given XML file
+	};
+
+/********************************
+Methods of class XMLBase64Filter:
+********************************/
+
+size_t XMLBase64Filter::readData(File::Byte* buffer,size_t bufferSize)
+	{
+	/* Check for end-of-file: */
+	if(readEof)
+		return 0;
+	
+	/* Decode up to a full buffer's worth of data from the XML file: */
+	Byte* bufPtr=buffer;
+	Byte* bufferEnd=buffer+bufferSize;
+	while(bufPtr!=bufferEnd)
+		{
+		/* Read the next character, which might be EOF, and attempt to decode it: */
+		int c=xml.readCharacterData();
+		Misc::UInt32 bits=decode(c);
+		
+		/* If the character was EOF or not a valid base64 encoding, it's over: */
+		if(bits>=64U)
+			{
+			/* If the invalid character wasn't EOF, stuff it back into the XML file: */
+			if(c>=0)
+				xml.putback(c);
+			
+			/* Remember that decoding is over: */
+			readEof=true;
+			break;
+			}
+		
+		/* Stuff the decoded character into the bit buffer: */
+		decodeBuffer=(decodeBuffer<<6)|bits;
+		decodeBufferBits+=6;
+		
+		/* Check if there's another byte ready: */
+		if(decodeBufferBits>=8)
+			{
+			/* Extract one byte from the bit buffer: */
+			*bufPtr=Byte(decodeBuffer>>(decodeBufferBits-8));
+			++bufPtr;
+			decodeBufferBits-=8;
+			}
+		}
+	
+	/* Return the amount of read data: */
+	return bufPtr-buffer;
+	}
+
+XMLBase64Filter::XMLBase64Filter(XMLSource& sXml)
+	:File(ReadOnly),
+	 xml(sXml),
+	 decodeBuffer(0x0U),decodeBufferBits(0),readEof(false)
+	{
 	}
 
 }
@@ -639,6 +750,9 @@ void XMLSource::closeAttributeValue(void)
 			throw SyntaxError(*this,"Illegal '/' in tag");
 		else
 			{
+			/* This was a self-closing tag: */
+			selfCloseTag=true;
+			
 			/* Detect the next syntax type: */
 			detectNextSyntaxType();
 			}
@@ -747,7 +861,7 @@ void XMLSource::processHeader(void)
 					attributeIndex=0;
 				else if(attributeIndex<1&&readAhead(8)&&matchString("encoding"))
 					attributeIndex=1;
-				else if(attributeIndex<2&&readAhead(8)&&matchString("standalone"))
+				else if(attributeIndex<2&&readAhead(10)&&matchString("standalone"))
 					attributeIndex=2;
 				else
 					throw WellFormedError(*this,"Unrecognized attribute in XML declaration");
@@ -841,6 +955,9 @@ void XMLSource::processHeader(void)
 				throw SyntaxError(*this,"Malformed XML declaration");
 			}
 		}
+	
+	/* Detect the first syntax type: */
+	detectNextSyntaxType();
 	}
 
 XMLSource::XMLSource(FilePtr sSource)
@@ -1204,8 +1321,39 @@ int XMLSource::readCharacterData(void)
 			return c;
 			}
 		}
-	else
+	else if(syntaxType==CData)
 		throw SyntaxError(*this,"Unterminated character data at end of file");
+	else
+		{
+		/* That's it, folks! */
+		syntaxType=EndOfFile;
+		return -1;
+		}
+	}
+
+void XMLSource::putback(int character)
+	{
+	/* Put the character back if it wasn't EOF: */
+	if(character>=0)
+		ungetChar(character);
+	}
+
+bool XMLSource::skipWhitespace(void)
+	{
+	/* Bail out if the current syntax element is not character data: */
+	if(syntaxType!=Content&&syntaxType!=CData)
+		return false;
+	
+	/* Skip whitespace characters: */
+	int c;
+	while((c=getChar())>=0&&isSpace(c))
+		;
+	
+	/* Put the last read character back if it wasn't EOF: */
+	if(c>=0)
+		ungetChar(c);
+	
+	return c>=0;
 	}
 
 std::string& XMLSource::readUTF8(std::string& string)
@@ -1216,30 +1364,30 @@ std::string& XMLSource::readUTF8(std::string& string)
 		{
 		case Comment:
 			while((c=readComment())>=0)
-				UTF8::encode(c,string);
+				Misc::UTF8::encode(c,string);
 			break;
 		
 		case ProcessingInstructionTarget:
 		case TagName:
 		case AttributeName:
 			while((c=readName())>=0)
-				UTF8::encode(c,string);
+				Misc::UTF8::encode(c,string);
 			break;
 		
 		case ProcessingInstructionContent:
 			while((c=readProcessingInstruction())>=0)
-				UTF8::encode(c,string);
+				Misc::UTF8::encode(c,string);
 			break;
 		
 		case AttributeValue:
 			while((c=readAttributeValue())>=0)
-				UTF8::encode(c,string);
+				Misc::UTF8::encode(c,string);
 			break;
 		
 		case Content:
 		case CData:
 			while((c=readCharacterData())>=0)
-				UTF8::encode(c,string);
+				Misc::UTF8::encode(c,string);
 			break;
 		
 		default:
@@ -1248,6 +1396,188 @@ std::string& XMLSource::readUTF8(std::string& string)
 		}
 	
 	return string;
+	}
+
+FilePtr XMLSource::readBase64(void)
+	{
+	/* Check if the current syntax type supports base64-encoded binary data: */
+	if(syntaxType!=Content&&syntaxType!=CData)
+		throw std::runtime_error("IO::XMLSource::readBase64: Binary reading not supported by current syntax type");
+	
+	/* Return a new base64 decoder: */
+	return new XMLBase64Filter(*this);
+	}
+
+void XMLSource::skip(void)
+	{
+	/* Proceed based on the current syntax type: */
+	switch(syntaxType)
+		{
+		case TagName:
+			if(openTag)
+				{
+				/* Skip an entire XML element: */
+				std::string tagName;
+				readUTF8(tagName);
+				skipElement(tagName);
+				}
+			else
+				{
+				/* Skip the name of a closing tag: */
+				while(readName()>=0)
+					;
+				}
+			break;
+		
+		case Comment:
+			while(readComment()>=0)
+				;
+			break;
+		
+		case ProcessingInstructionTarget:
+		case AttributeName:
+			while(readName()>=0)
+				;
+			break;
+		
+		case ProcessingInstructionContent:
+			while(readProcessingInstruction()>=0)
+				;
+			break;
+		
+		case AttributeValue:
+			while(readAttributeValue()>=0)
+				;
+			break;
+		
+		case Content:
+		case CData:
+			while(readCharacterData()>=0)
+				;
+			break;
+		
+		default:
+			/* Do nothing, just to make compiler happy */
+			;
+		}
+	}
+
+void XMLSource::skipElement(const std::string& elementName)
+	{
+	/* Skip the opening tag's attributes: */
+	while(syntaxType==AttributeName)
+		{
+		/* Skip the attribute name: */
+		while(readName()>=0)
+			;
+		
+		/* Skip the attribute value: */
+		while(readAttributeValue()>=0)
+			;
+		}
+	
+	/* Check if the tag was not a self-closing tag: */
+	if(!selfCloseTag)
+		{
+		/* Skip everything until the element's closing tag: */
+		while(true)
+			{
+			/* Proceed based on the type of the current syntactic element: */
+			if(syntaxType==Comment)
+				{
+				/* Skip the comment: */
+				while(readComment()>=0)
+					;
+				}
+			else if(syntaxType==ProcessingInstructionTarget)
+				{
+				/* Skip the processing instruction target: */
+				while(readName()>=0)
+					;
+				
+				/* Skip the processing instruction content: */
+				while(readProcessingInstruction()>=0)
+					;
+				}
+			else if(syntaxType==Content||syntaxType==CData)
+				{
+				/* Skip the character data: */
+				while(readCharacterData()>=0)
+					;
+				}
+			else if(syntaxType==TagName)
+				{
+				/* Read the tag name: */
+				std::string tagName;
+				readUTF8(tagName);
+				
+				/* Check if the current tag is an opening tag: */
+				if(openTag)
+					{
+					/* Skip the element started by the current opening tag: */
+					skipElement(tagName);
+					}
+				else
+					{
+					/* Check if the closing tag's name matches the element name: */
+					if(tagName!=elementName)
+						throw WellFormedError(*this,"Mismatching closing tag name");
+					
+					/* Stop skipping: */
+					break;
+					}
+				}
+			else if(syntaxType==EndOfFile)
+				throw WellFormedError(*this,"Unterminated element");
+			}
+		}
+	}
+
+bool XMLSource::skipToTag(void)
+	{
+	while(syntaxType!=EndOfFile)
+		{
+		/* Check if the current syntax element is an opening tag name: */
+		if(syntaxType==TagName)
+			return true;
+		else
+			{
+			/* Skip the current element: */
+			skip();
+			}
+		}
+	
+	return false;
+	}
+
+bool XMLSource::skipToElement(const char* elementName)
+	{
+	while(syntaxType!=EndOfFile)
+		{
+		/* Check if the current syntax element is an opening tag name: */
+		if(syntaxType==TagName&&openTag)
+			{
+			/* Read the tag name: */
+			std::string tagName;
+			readUTF8(tagName);
+			
+			/* Check if it's the requested element: */
+			if(tagName==elementName)
+				return true;
+			else
+				{
+				/* Skip the element: */
+				skipElement(tagName);
+				}
+			}
+		else
+			{
+			/* Skip the current element: */
+			skip();
+			}
+		}
+	
+	return false;
 	}
 
 }

@@ -1,7 +1,7 @@
 /***********************************************************************
 DeviceTest - Program to test the connection to a Vrui VR Device Daemon
 and to dump device positions/orientations and button states.
-Copyright (c) 2002-2018 Oliver Kreylos
+Copyright (c) 2002-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -22,9 +22,9 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 ***********************************************************************/
 
 #include <stdlib.h>
-#include <stdio.h>
 #include <string>
 #include <iostream>
+#include <fstream>
 #include <iomanip>
 #include <stdexcept>
 #include <Misc/SizedTypes.h>
@@ -153,6 +153,26 @@ void printTrackerPos(const Vrui::VRDeviceState& state,int trackerIndex)
 	else
 		{
 		std::cout<<"(-----.--- -----.--- -----.---)";
+		}
+	}
+
+void printTrackerPosQuat(const Vrui::VRDeviceState& state,int trackerIndex)
+	{
+	if(state.getTrackerValid(trackerIndex))
+		{
+		const TrackerState& ts=state.getTrackerState(trackerIndex);
+		Point pos=ts.positionOrientation.getOrigin();
+		Rotation rot=ts.positionOrientation.getRotation();
+		const Scalar* quat=rot.getQuaternion();
+		std::cout.setf(std::ios::fixed);
+		std::cout.precision(3);
+		std::cout<<"("<<std::setw(8)<<pos[0]<<" "<<std::setw(8)<<pos[1]<<" "<<std::setw(8)<<pos[2]<<") ";
+		std::cout.precision(4);
+		std::cout<<"("<<std::setw(7)<<quat[0]<<" "<<std::setw(7)<<quat[1]<<" "<<std::setw(7)<<quat[2]<<" "<<std::setw(7)<<quat[3]<<")";
+		}
+	else
+		{
+		std::cout<<"(----.--- ----.--- ----.---) (--.---- --.---- --.---- --.----)";
 		}
 	}
 
@@ -538,6 +558,8 @@ int main(int argc,char* argv[])
 	int powerFeatureIndex=-1;
 	int hapticFeatureIndex=-1;
 	unsigned int hapticDuration=0;
+	unsigned int hapticFrequency=100;
+	unsigned int hapticAmplitude=255;
 	for(int i=1;i<argc;++i)
 		{
 		if(argv[i][0]=='-')
@@ -561,6 +583,8 @@ int main(int argc,char* argv[])
 				printMode=2;
 			else if(strcasecmp(argv[i],"-v")==0)
 				printMode=3;
+			else if(strcasecmp(argv[i],"-q")==0)
+				printMode=4;
 			else if(strcasecmp(argv[i],"-b")==0)
 				printButtonStates=true;
 			else if(strcasecmp(argv[i],"-n")==0)
@@ -604,6 +628,10 @@ int main(int argc,char* argv[])
 				hapticFeatureIndex=atoi(argv[i]);
 				++i;
 				hapticDuration=atoi(argv[i]);
+				++i;
+				hapticFrequency=atoi(argv[i]);
+				++i;
+				hapticAmplitude=atoi(argv[i]);
 				}
 			}
 		else
@@ -612,7 +640,7 @@ int main(int argc,char* argv[])
 	
 	if(serverNamePort==0)
 		{
-		std::cerr<<"Usage: "<<argv[0]<<" [-ld | -listDevices] [-lh | -listHMDs] [(-t | --trackerIndex) <trackerIndex>] [-alltrackers] [-p | -o | -f | -v] [-b] [-n] [-save <save file name>] [-trigger <trigger index>] [-latency <trackerIndex> <bin size> <max latency> <num samples>] <serverName:serverPort>"<<std::endl;
+		std::cerr<<"Usage: "<<argv[0]<<" [-ld | -listDevices] [-lh | -listHMDs] [(-t | --trackerIndex) <trackerIndex>] [-alltrackers] [-p | -q | -o | -f | -v] [-b] [-n] [-save <save file name>] [-trigger <trigger index>] [-latency <trackerIndex> <bin size> <max latency> <num samples>] [-powerOff <power feature index>] [-haptic <haptic feature index> <duration> <frequency> <amplitude>] <serverName:serverPort>"<<std::endl;
 		return 1;
 		}
 	
@@ -637,9 +665,9 @@ int main(int argc,char* argv[])
 		{
 		deviceClient=new Vrui::VRDeviceClient(serverName.c_str(),portNumber);
 		}
-	catch(std::runtime_error error)
+	catch(const std::runtime_error& err)
 		{
-		std::cerr<<"Caught exception "<<error.what()<<" while initializing VR device client"<<std::endl;
+		std::cerr<<"Caught exception "<<err.what()<<" while initializing VR device client"<<std::endl;
 		return 1;
 		}
 	if(deviceClient->isLocal())
@@ -725,12 +753,12 @@ int main(int argc,char* argv[])
 			{
 			deviceClient->activate();
 			if(hapticFeatureIndex>=0)
-				deviceClient->hapticTick(hapticFeatureIndex,hapticDuration);
+				deviceClient->hapticTick(hapticFeatureIndex,hapticDuration,hapticFrequency,hapticAmplitude);
 			if(powerFeatureIndex>=0)
 				deviceClient->powerOff(powerFeatureIndex);
 			deviceClient->deactivate();
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			std::cerr<<"Caught exception "<<err.what()<<" while powering off device / triggering haptic pulse"<<std::endl;
 			}
@@ -776,11 +804,14 @@ int main(int argc,char* argv[])
 		}
 	
 	/* Open the save file: */
-	FILE* saveFile=0;
+	std::ofstream* saveFile=0;
 	IO::FilePtr saveTsFile=0;
 	Vrui::VRDeviceState::TimeStamp lastTsTs=0;
 	if(savePositions)
-		saveFile=fopen(saveFileName,"wt");
+		{
+		saveFile=new std::ofstream(saveFileName);
+		saveFile->precision(8);
+		}
 	else if(saveTrackerStates)
 		saveTsFile=IO::openFile(saveFileName,IO::File::WriteOnly);
 	
@@ -797,6 +828,10 @@ int main(int argc,char* argv[])
 		
 		case 2:
 			std::cout<<"    Pos X    Pos Y    Pos Z     XA X   XA Y   XA Z     YA X   YA Y   YA Z     ZA X   ZA Y   ZA Z";
+			break;
+		
+		case 4:
+			std::cout<<"    Pos X    Pos Y    Pos Z    Quat X  Quat Y  Quat Z  Quat W";
 			break;
 		}
 	if(vdHasBattery)
@@ -863,7 +898,7 @@ int main(int argc,char* argv[])
 
 					/* Save the accumulated position: */
 					Point p=pc.getPoint();
-					fprintf(saveFile,"%14.8f %14.8f %14.8f\n",p[0],p[1],p[2]);
+					(*saveFile)<<std::setw(14)<<p[0]<<' '<<std::setw(14)<<p[1]<<' '<<std::setw(14)<<p[2]<<std::endl;
 					}
 				oldTriggerState=state.getButtonState(triggerIndex);
 				}
@@ -876,9 +911,9 @@ int main(int argc,char* argv[])
 					lastTsTs=state.getTrackerTimeStamp(trackerIndex);
 					saveTsFile->write<Misc::SInt32>(lastTsTs);
 					const TrackerState& ts=state.getTrackerState(trackerIndex);
-					Misc::Marshaller<TrackerState::PositionOrientation>::write(ts.positionOrientation,*saveTsFile);
-					Misc::Marshaller<TrackerState::LinearVelocity>::write(ts.linearVelocity,*saveTsFile);
-					Misc::Marshaller<TrackerState::AngularVelocity>::write(ts.angularVelocity,*saveTsFile);
+					Misc::write(ts.positionOrientation,*saveTsFile);
+					Misc::write(ts.linearVelocity,*saveTsFile);
+					Misc::write(ts.angularVelocity,*saveTsFile);
 					}
 				}
 			
@@ -908,6 +943,10 @@ int main(int argc,char* argv[])
 
 				case 3:
 					printValuators(state);
+					break;
+
+				case 4:
+					printTrackerPosQuat(state,trackerIndex);
 					break;
 
 				default:
@@ -947,7 +986,7 @@ int main(int argc,char* argv[])
 			}
 		std::cout<<std::endl;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		if(!printNewlines)
 			std::cout<<std::endl;
@@ -965,7 +1004,7 @@ int main(int argc,char* argv[])
 	delete[] distortionMeshVersions;
 	delete latencyHistogram;
 	if(savePositions!=0)
-		fclose(saveFile);
+		delete saveFile;
 	else if(saveTrackerStates)
 		saveTsFile=0;
 	delete deviceClient;

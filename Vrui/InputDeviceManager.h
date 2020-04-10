@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDeviceManager - Class to manage physical and virtual input devices,
 tools associated to input devices, and the input device update graph.
-Copyright (c) 2004-2017 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -27,6 +27,8 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <string>
 #include <list>
 #include <vector>
+#include <Misc/StandardHashFunction.h>
+#include <Misc/HashTable.h>
 #include <Misc/CallbackData.h>
 #include <Misc/CallbackList.h>
 #include <Realtime/Time.h>
@@ -104,6 +106,16 @@ class InputDeviceManager
 	private:
 	typedef std::list<InputDevice> InputDevices;
 	
+	struct HapticFeature // Structure relating an input device to a device adapter's haptic features
+		{
+		/* Elements: */
+		public:
+		InputDeviceAdapter* adapter; // Input device adapter managing the haptic feature
+		unsigned int hapticFeatureIndex; // Index of the haptic feature in device adapter's namespace
+		};
+	
+	typedef Misc::HashTable<InputDevice*,HapticFeature> HapticFeatureMap; // Hash table mapping input devices to haptic features
+	
 	/* Elements: */
 	private:
 	InputGraphManager* inputGraphManager; // Pointer to the input graph manager
@@ -114,6 +126,7 @@ class InputDeviceManager
 	Misc::CallbackList inputDeviceCreationCallbacks; // List of callbacks to be called after a new input device has been created
 	Misc::CallbackList inputDeviceDestructionCallbacks; // List of callbacks to be called before an input device will be destroyed
 	Misc::CallbackList inputDeviceUpdateCallbacks; // List of callbacks to be called immediately after the input device manager updated all physical input devices
+	HapticFeatureMap hapticFeatureMap; // Map from input devices to haptic features
 	bool predictDeviceStates; // Flag to enable device state prediction for latency mitigation
 	Realtime::TimePointMonotonic predictionTime; // Time point to which to predict the state of all input devices during update
 	
@@ -156,11 +169,17 @@ class InputDeviceManager
 	void destroyInputDevice(InputDevice* device);
 	std::string getFeatureName(const InputDeviceFeature& feature) const; // Returns the name of the given input device feature
 	int getFeatureIndex(InputDevice* device,const char* featureName) const; // Returns the index of the feature of the given name on the given input device, or -1 if feature does not exist
+	void addHapticFeature(InputDevice* device,InputDeviceAdapter* adapter,unsigned int hapticFeatureIndex); // Registers a haptic feature with the given input device
+	bool hasHapticFeature(InputDevice* device) const // Returns true if the given input device has a haptic feature
+		{
+		return hapticFeatureMap.isEntry(device);
+		}
 	bool isPredictionEnabled(void) const // Returns true if device state prediction is currently enabled
 		{
 		return predictDeviceStates;
 		}
 	void disablePrediction(void); // Disables device state prediction
+	void prepareMainLoop(void); // Notifies all input device adapters that Vrui main loop is about to start
 	void setPredictionTime(const Realtime::TimePointMonotonic& newPredictionTime); // Enables device state prediction and sets the prediction time point for the current frame
 	const Realtime::TimePointMonotonic& getPredictionTime(void) const // Returns the current device state prediction time point
 		{
@@ -180,6 +199,7 @@ class InputDeviceManager
 		return inputDeviceUpdateCallbacks;
 		}
 	void glRenderAction(GLContextData& contextData) const; // Renders the input device manager's state
+	void hapticTick(InputDevice* device,unsigned int duration,unsigned int frequency,unsigned int amplitude); // Requests a haptic tick of the given duration in milliseconds, frequency in Hertz, and relative amplitude in [0, 256) for the given input device; does nothing if device does not have a haptic feature
 	};
 
 }

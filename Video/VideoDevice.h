@@ -1,6 +1,6 @@
 /***********************************************************************
 VideoDevice - Base class for video capture devices.
-Copyright (c) 2009-2016 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the Basic Video Library (Video).
 
@@ -57,7 +57,7 @@ class VideoDevice
 		
 		/* Constructors and destructors: */
 		public:
-		DeviceId(std::string sName)
+		DeviceId(const std::string& sName)
 			:name(sName)
 			{
 			}
@@ -66,7 +66,7 @@ class VideoDevice
 			}
 		
 		/* Methods: */
-		std::string getName(void) const // Returns the human-readable device name
+		const std::string& getName(void) const // Returns the human-readable device name
 			{
 			return name;
 			}

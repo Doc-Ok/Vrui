@@ -1,7 +1,7 @@
 /***********************************************************************
 Doom3ModelNode - Class for nodes to render static models using Doom3's
 lighting model.
-Copyright (c) 2010 Oliver Kreylos
+Copyright (c) 2010-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -91,7 +91,7 @@ void Doom3ModelNode::update(void)
 		/* Tell the material manager to load all requested materials: */
 		dataContext.getValue()->getMaterialManager()->loadMaterials(*dataContext.getValue()->getFileManager());
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error&)
 		{
 		/* Just delete the model again: */
 		delete mesh;

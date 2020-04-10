@@ -1,7 +1,7 @@
 /***********************************************************************
 RadioBox - Subclass of RowColumn that contains only mutually exclusive
 ToggleButton objects.
-Copyright (c) 2001-2015 Oliver Kreylos
+Copyright (c) 2001-2020 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -57,9 +57,74 @@ void RadioBox::childrenValueChangedCallbackWrapper(Misc::CallbackData* callbackD
 			thisPtr->selectedToggle=0;
 		}
 	
+	/* Check if variable tracking is active: */
+	if(thisPtr->isTracking())
+		{
+		/* Set the tracked variable to the index of the new selected toggle, or -1: */
+		thisPtr->setTrackedSInt(thisPtr->getToggleIndex(thisPtr->selectedToggle));
+		}
+	
 	/* Call the value changed callbacks: */
 	RadioBox::ValueChangedCallbackData cbData(thisPtr,oldSelectedToggle,thisPtr->selectedToggle);
 	thisPtr->valueChangedCallbacks.call(&cbData);
+	}
+
+bool RadioBox::findAndSelectToggle(int toggleIndex)
+	{
+	bool result=false;
+	
+	if(toggleIndex<0)
+		{
+		/* Unset the previously selected toggle if there was one and the selection mode allows it: */
+		if(selectionMode==ATMOST_ONE&&selectedToggle!=0)
+			{
+			/* Unset the previously selected toggle: */
+			selectedToggle->setToggle(false);
+			
+			/* Reset the selected toggle: */
+			selectedToggle=0;
+			
+			result=true;
+			}
+		}
+	else
+		{
+		/* Find the child toggle button of the given index: */
+		for(WidgetList::iterator chIt=children.begin();chIt!=children.end();++chIt)
+			{
+			/* Check if the child is a toggle button: */
+			ToggleButton* toggle=dynamic_cast<ToggleButton*>(*chIt);
+			if(toggle!=0)
+				{
+				/* Check if this is the requested toggle: */
+				if(toggleIndex==0)
+					{
+					/* Check if the selection actually changed: */
+					if(selectedToggle!=toggle)
+						{
+						/* Unset the previously selected toggle: */
+						if(selectedToggle!=0)
+							selectedToggle->setToggle(false);
+						
+						/* Set the found toggle: */
+						toggle->setToggle(true);
+						
+						/* Select the toggle: */
+						selectedToggle=toggle;
+						
+						result=true;
+						}
+					
+					/* Stop searching: */
+					break;
+					}
+				
+				--toggleIndex;
+				}
+			}
+		}
+	
+	return result;
 	}
 
 RadioBox::RadioBox(const char* sName,Container* sParent,bool sManageChild)
@@ -70,12 +135,20 @@ RadioBox::RadioBox(const char* sName,Container* sParent,bool sManageChild)
 		manageChild();
 	}
 
+void RadioBox::updateVariables(void)
+	{
+	/* Check if tracking is active: */
+	if(isTracking())
+		{
+		/* Select the toggle whose index matches the tracked variable's current value: */
+		findAndSelectToggle(int(getTrackedSInt()));
+		}
+	}
+
 void RadioBox::addChild(Widget* newChild)
 	{
-	/* Only add children that are derived from ToggleButton: */
-	ToggleButton* newToggle=dynamic_cast<ToggleButton*>(newChild);
-	
 	/* If the new child is a toggle, initialize it: */
+	ToggleButton* newToggle=dynamic_cast<ToggleButton*>(newChild);
 	if(newToggle!=0)
 		{
 		/* Set the new toggle's defaults and callbacks: */
@@ -85,16 +158,16 @@ void RadioBox::addChild(Widget* newChild)
 		newToggle->getValueChangedCallbacks().add(childrenValueChangedCallbackWrapper,this);
 		
 		/* Set/unset the new toggle to satisfy our selection mode: */
-		if(selectionMode==ATMOST_ONE||selectedToggle!=0)
-			newToggle->setToggle(false);
-		else
+		newToggle->setToggle(selectionMode==ALWAYS_ONE&&selectedToggle==0);
+		if(newToggle->getToggle())
 			{
+			/* Select the new toggle and update a potentially tracked variable: */
 			selectedToggle=newToggle;
-			newToggle->setToggle(true);
+			setTrackedSInt(0);
 			}
 		}
 	
-	/* Call the parent class widget's addChild routine: */
+	/* Call the parent class method: */
 	RowColumn::addChild(newChild);
 	}
 
@@ -138,9 +211,12 @@ void RadioBox::setSelectionMode(RadioBox::SelectionMode newSelectionMode)
 			ToggleButton* toggle=dynamic_cast<ToggleButton*>(*chIt);
 			if(toggle!=0)
 				{
-				/* Select it: */
+				/* Select the toggle and update a potentially tracked variable: */
 				selectedToggle=toggle;
 				selectedToggle->setToggle(true);
+				setTrackedSInt(0);
+				
+				/* Stop searching: */
 				break;
 				}
 			}
@@ -149,41 +225,47 @@ void RadioBox::setSelectionMode(RadioBox::SelectionMode newSelectionMode)
 
 void RadioBox::setSelectedToggle(ToggleButton* newSelectedToggle)
 	{
-	/* Don't update if the new selection is null, and selection mode is ALWAYS_ONE: */
-	if(newSelectedToggle!=0||selectionMode==ATMOST_ONE)
+	/* Bail out if the selection did not change: */
+	if(selectedToggle==newSelectedToggle)
+		return;
+	
+	if(newSelectedToggle!=0)
 		{
-		/* De-select the previous selection: */
-		if(selectedToggle!=0)
-			selectedToggle->setToggle(false);
-		
-		/* Select the new selection: */
-		selectedToggle=newSelectedToggle;
-		if(selectedToggle!=0)
-			selectedToggle->setToggle(true);
-		}
-	}
-
-void RadioBox::setSelectedToggle(int newSelectedToggleIndex)
-	{
-	/* Find the child toggle button of the given index: */
-	ToggleButton* newSelectedToggle=0;
-	for(WidgetList::iterator chIt=children.begin();chIt!=children.end()&&newSelectedToggleIndex>=0;++chIt)
-		{
-		/* Check if the child is a toggle button: */
-		ToggleButton* toggle=dynamic_cast<ToggleButton*>(*chIt);
-		if(toggle!=0)
+		/* Ensure that the new selected toggle is part of the radio box, and find its toggle index: */
+		int toggleIndex=0;
+		for(WidgetList::iterator chIt=children.begin();chIt!=children.end();++chIt)
 			{
-			/* Check if this is the one: */
-			if(newSelectedToggleIndex==0)
-				newSelectedToggle=toggle;
+			if(*chIt==newSelectedToggle)
+				{
+				/* Unset the previously selected toggle: */
+				if(selectedToggle!=0)
+					selectedToggle->setToggle(false);
+				
+				/* Set the new selected toggle: */
+				newSelectedToggle->setToggle(true);
+				
+				/* Select the new toggle and update a potential tracked variable: */
+				selectedToggle=newSelectedToggle;
+				setTrackedSInt(toggleIndex);
+				
+				/* Stop searching: */
+				break;
+				}
 			
-			/* Keep looking: */
-			--newSelectedToggleIndex;
+			/* Increment the toggle index if the child is a toggle button: */
+			if(dynamic_cast<ToggleButton*>(*chIt)!=0)
+				++toggleIndex;
 			}
 		}
-	
-	/* Select the new toggle: */
-	setSelectedToggle(newSelectedToggle);
+	else if(selectionMode==ATMOST_ONE)
+		{
+		/* Unset the previously selected toggle: */
+		selectedToggle->setToggle(false);
+		
+		/* Reset the selected toggle and update a potential tracked variable: */
+		selectedToggle=0;
+		setTrackedSInt(-1);
+		}
 	}
 
 }

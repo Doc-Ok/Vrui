@@ -1,0 +1,47 @@
+/***********************************************************************
+RGB - Class to represent colors in the RGB color space.
+Copyright (c) 2020 Oliver Kreylos
+
+This file is part of the Miscellaneous Support Library (Misc).
+
+The Miscellaneous Support Library is free software; you can
+redistribute it and/or modify it under the terms of the GNU General
+Public License as published by the Free Software Foundation; either
+version 2 of the License, or (at your option) any later version.
+
+The Miscellaneous Support Library is distributed in the hope that it
+will be useful, but WITHOUT ANY WARRANTY; without even the implied
+warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See
+the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with the Miscellaneous Support Library; if not, write to the Free
+Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+02111-1307 USA
+***********************************************************************/
+
+#ifndef MISC_RGB_IMPLEMENTATION
+#define MISC_RGB_IMPLEMENTATION
+
+#include <Misc/RGB.h>
+
+#include <Misc/ConvertColorComponent.h>
+
+namespace Misc {
+
+/********************
+Methods of class RGB:
+********************/
+
+template <class ScalarParam>
+template <class SourceScalarParam>
+inline void RGB<ScalarParam>::convertAndCopy(const SourceScalarParam* sComponents)
+	{
+	/* Convert and copy color components from the source array: */
+	for(int i=0;i<3;++i)
+		components[i]=convertColorComponent<ScalarParam,SourceScalarParam>(sComponents[i]);
+	}
+
+}
+
+#endif

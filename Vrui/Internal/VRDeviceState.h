@@ -1,7 +1,7 @@
 /***********************************************************************
 VRDeviceState - Class to represent the current state of a single or
 multiple VR devices.
-Copyright (c) 2002-2017 Oliver Kreylos
+Copyright (c) 2002-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -294,12 +294,20 @@ class Marshaller<Vrui::VRDeviceState::TrackerState>
 		Marshaller<Value::AngularVelocity>::write(value.angularVelocity,sink);
 		}
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value)
+		{
+		Marshaller<Value::PositionOrientation>::read(source,value.positionOrientation);
+		Marshaller<Value::LinearVelocity>::read(source,value.linearVelocity);
+		Marshaller<Value::AngularVelocity>::read(source,value.angularVelocity);
+		return value;
+		}
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source)
 		{
 		Value result;
-		result.positionOrientation=Marshaller<Value::PositionOrientation>::read(source);
-		result.linearVelocity=Marshaller<Value::LinearVelocity>::read(source);
-		result.angularVelocity=Marshaller<Value::AngularVelocity>::read(source);
+		Marshaller<Value::PositionOrientation>::read(source,result.positionOrientation);
+		Marshaller<Value::LinearVelocity>::read(source,result.linearVelocity);
+		Marshaller<Value::AngularVelocity>::read(source,result.angularVelocity);
 		return result;
 		}
 	};

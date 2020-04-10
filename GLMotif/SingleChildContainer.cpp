@@ -1,7 +1,7 @@
 /***********************************************************************
 SingleChildContainer - Base class for containers that contain at most
 one child.
-Copyright (c) 2008-2010 Oliver Kreylos
+Copyright (c) 2008-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -90,6 +90,13 @@ void SingleChildContainer::resize(const Box& newExterior)
 		/* Resize and reposition the child widget based on the new interior size: */
 		child->resize(calcChildBox(getInterior()));
 		}
+	}
+
+void SingleChildContainer::updateVariables(void)
+	{
+	/* Update the child widget: */
+	if(child!=0)
+		child->updateVariables();
 	}
 
 void SingleChildContainer::draw(GLContextData& contextData) const

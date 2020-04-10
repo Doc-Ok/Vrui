@@ -1,7 +1,7 @@
 /***********************************************************************
 FileSelection - Example application for Vrui's file selection dialog and
 cluster-transparent file handling via the IO abstraction library.
-Copyright (c) 2014-2015 Oliver Kreylos
+Copyright (c) 2014-2018 Oliver Kreylos
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -31,7 +31,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <GLMotif/FileSelectionHelper.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/Application.h>
-#include <Vrui/OpenFile.h>
 
 class FileSelection:public Vrui::Application
 	{
@@ -130,8 +129,8 @@ void FileSelection::saveFileCallback(GLMotif::FileSelectionDialog::OKCallbackDat
 
 FileSelection::FileSelection(int& argc,char**& argv)
 	:Vrui::Application(argc,argv),
-	 fooHelper(Vrui::getWidgetManager(),"FooFile.foo",".foo",Vrui::openDirectory(".")),
-	 barHelper(Vrui::getWidgetManager(),"BarFile.bar",".bar;.baz",Vrui::openDirectory(".")),
+	 fooHelper(Vrui::getWidgetManager(),"FooFile.foo",".foo"),
+	 barHelper(Vrui::getWidgetManager(),"BarFile.bar",".bar;.baz"),
 	 mainMenu(0)
 	{
 	/* Create the main menu shell: */

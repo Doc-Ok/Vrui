@@ -1,7 +1,7 @@
 /***********************************************************************
 ViewpointFileNavigationTool - Class for tools to play back previously
 saved viewpoint data files.
-Copyright (c) 2007-2015 Oliver Kreylos
+Copyright (c) 2007-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -33,6 +33,9 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 /* Forward declarations: */
 namespace Misc {
 class ConfigurationFileSection;
+}
+namespace IO {
+class ValueSource;
 }
 namespace Math {
 class Matrix;
@@ -132,6 +135,7 @@ class ViewpointFileNavigationTool:public NavigationTool
 	void positionSliderCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
 	void speedSliderCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
 	void createGui(void); // Creates the playback control GUI
+	static ControlPoint readControlPoint(IO::ValueSource& file); // Reads a control point from an ASCII file
 	void readViewpointFile(const char* fileName); // Reads the viewpoint file of the given name
 	void loadViewpointFileCallback(GLMotif::FileSelectionDialog::OKCallbackData* cbData);
 	void writeControlPoint(const ControlPoint& cp,Math::Matrix& b,unsigned int rowIndex); // Writes a control point to the spline calculation matrix

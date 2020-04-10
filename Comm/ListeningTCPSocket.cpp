@@ -1,7 +1,7 @@
 /***********************************************************************
 ListeningTCPSocket - Class for TCP half-sockets that can accept incoming
 connections.
-Copyright (c) 2011-2015 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the Portable Communications Library (Comm).
 
@@ -24,6 +24,10 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Comm/ListeningTCPSocket.h>
 
 #include <string.h>
+#include <errno.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -33,10 +37,6 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Misc/PrintInteger.h>
 #include <Misc/ThrowStdErr.h>
 #include <Misc/FdSet.h>
-
-#include <errno.h>
-#include <unistd.h>
-#include <sys/time.h>
 
 namespace Comm {
 
@@ -105,8 +105,9 @@ ListeningTCPSocket::ListeningTCPSocket(int portId,int backlog,ListeningTCPSocket
 	/* Start listening on the socket: */
 	if(listen(fd,backlog)<0)
 		{
+		int error=errno;
 		close(fd);
-		Misc::throwStdErr("Comm::ListeningTCPSocket: Unable to start listening on port %d",portId);
+		Misc::throwStdErr("Comm::ListeningTCPSocket: Unable to start listening on port %d due to error %s",portId,strerror(error));
 		}
 	}
 
@@ -114,6 +115,33 @@ ListeningTCPSocket::~ListeningTCPSocket(void)
 	{
 	if(fd>=0)
 		close(fd);
+	}
+
+bool ListeningTCPSocket::isBlocking(void) const
+	{
+	/* Query the file descriptor flags: */
+	int flags=fcntl(fd,F_GETFL,0);
+	if(flags<0)
+		Misc::throwStdErr("Comm::ListeningTCPSocket::isBlocking: Unable to retrieve blocking flag due to error %s",strerror(errno));
+	
+	return (flags&O_NONBLOCK)!=0x0;
+	}
+
+void ListeningTCPSocket::setBlocking(bool newBlocking)
+	{
+	/* Query the current file descriptor flags: */
+	int flags=fcntl(fd,F_GETFL,0);
+	if(flags<0)
+		Misc::throwStdErr("Comm::ListeningTCPSocket::setBlocking: Unable to retrieve blocking flag due to error %s",strerror(errno));
+	
+	/* Set or reset the blocking flag: */
+	int newFlags=flags;
+	if(newBlocking)
+		newFlags&=~O_NONBLOCK;
+	else
+		newFlags|=O_NONBLOCK;
+	if(newFlags!=flags&&fcntl(fd,F_SETFL,newFlags)<0)
+		Misc::throwStdErr("Comm::ListeningTCPSocket::setBlocking: Unable to set blocking flag due to error %s",strerror(errno));
 	}
 
 int ListeningTCPSocket::getPortId(void) const

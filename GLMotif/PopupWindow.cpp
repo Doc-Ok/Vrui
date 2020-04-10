@@ -1,7 +1,7 @@
 /***********************************************************************
 PopupWindow - Class for main windows with a draggable title bar and an
 optional close button.
-Copyright (c) 2001-2014 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -59,11 +59,10 @@ void PopupWindow::closeButtonCallback(Misc::CallbackData* cbData)
 	}
 
 PopupWindow::PopupWindow(const char* sName,WidgetManager* sManager,const char* sTitleString,const GLFont* font)
-	:Container(sName,0,false),manager(sManager),
+	:SingleChildContainer(sName,0,false),manager(sManager),
 	 titleBar(0),hideButton(0),closeButton(0),
 	 resizableMask(0x3),
 	 childBorderWidth(0.0f),
-	 child(0),
 	 isResizing(false)
 	 #if GLMOTIF_POPUPWINDOW_USE_RENDERCACHE
 	 ,version(1)
@@ -90,11 +89,10 @@ PopupWindow::PopupWindow(const char* sName,WidgetManager* sManager,const char* s
 	}
 
 PopupWindow::PopupWindow(const char* sName,WidgetManager* sManager,const char* sTitleString)
-	:Container(sName,0,false),manager(sManager),
+	:SingleChildContainer(sName,0,false),manager(sManager),
 	 titleBar(0),hideButton(0),closeButton(0),
 	 resizableMask(0x3),
 	 childBorderWidth(0.0f),
-	 child(0),
 	 isResizing(false)
 	 #if GLMOTIF_POPUPWINDOW_USE_RENDERCACHE
 	 ,version(1)
@@ -130,8 +128,9 @@ PopupWindow::~PopupWindow(void)
 	deleteChild(hideButton);
 	deleteChild(closeButton);
 	
-	/* Unmanage and delete the child: */
+	/* Unmanage and delete the child widget (has to be done here before the widget manager pointer disappears): */
 	deleteChild(child);
+	child=0;
 	}
 
 Vector PopupWindow::calcNaturalSize(void) const
@@ -191,8 +190,13 @@ ZRange PopupWindow::calcZRange(void) const
 	if(child!=0)
 		myZRange+=child->calcZRange();
 	
-	/* Adjust the minimum z value to accomodate the popup window's back side: */
-	myZRange.first-=childBorderWidth;
+	/* Make a little bit of room between the deepest child widget and the backside: */
+	GLfloat minThickness=manager->getStyleSheet()->popupThickness;
+	myZRange.first-=minThickness*0.1f;
+	
+	/* Ensure that the popup window has some minimum thickness: */
+	if(myZRange.first>getExterior().origin[2]-minThickness)
+		myZRange.first=getExterior().origin[2]-minThickness;
 	
 	return myZRange;
 	}
@@ -616,18 +620,6 @@ void PopupWindow::requestResize(Widget* requestChild,const Vector& newExteriorSi
 		/* Resize the widget: */
 		resize(Box(Vector(0.0f,0.0f,0.0f),calcExteriorSize(newSize)));
 		}
-	}
-
-Widget* PopupWindow::getFirstChild(void)
-	{
-	/* Return the only child: */
-	return child;
-	}
-
-Widget* PopupWindow::getNextChild(Widget*)
-	{
-	/* Since there is only one child, always return null: */
-	return 0;
 	}
 
 #if GLMOTIF_POPUPWINDOW_USE_RENDERCACHE

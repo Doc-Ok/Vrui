@@ -1,7 +1,7 @@
 /***********************************************************************
 VRMLFile - Class to represent a VRML 2.0 file and state required to
 parse its contents.
-Copyright (c) 2009-2013 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -23,8 +23,10 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <SceneGraph/VRMLFile.h>
 
 #include <stdlib.h>
+#include <Misc/FileNameExtensions.h>
 #include <Misc/StringPrintf.h>
 #include <Misc/ThrowStdErr.h>
+#include <IO/OpenFile.h>
 #include <Geometry/ComponentArray.h>
 #include <Geometry/Point.h>
 #include <Geometry/Vector.h>
@@ -65,7 +67,7 @@ void parseRoute(VRMLFile& vrmlFile)
 		std::string sourceNode(source,periodPtr);
 		eventOut=vrmlFile.useNode(sourceNode.c_str())->getEventOut(periodPtr+1);
 		}
-	catch(Node::FieldError err)
+	catch(const Node::FieldError& err)
 		{
 		throw VRMLFile::ParseError(vrmlFile,Misc::stringPrintf("unknown field \"%s\" in event source",periodPtr+1));
 		}
@@ -97,7 +99,7 @@ void parseRoute(VRMLFile& vrmlFile)
 		std::string sinkNode(sink,periodPtr);
 		eventIn=vrmlFile.useNode(sinkNode.c_str())->getEventIn(periodPtr+1);
 		}
-	catch(Node::FieldError err)
+	catch(const Node::FieldError& err)
 		{
 		throw VRMLFile::ParseError(vrmlFile,Misc::stringPrintf("unknown field \"%s\" in event sink",periodPtr+1));
 		}
@@ -108,7 +110,7 @@ void parseRoute(VRMLFile& vrmlFile)
 		{
 		route=eventOut->connectTo(eventIn);
 		}
-	catch(Route::TypeMismatchError err)
+	catch(const Route::TypeMismatchError& err)
 		{
 		throw VRMLFile::ParseError(vrmlFile,"mismatching field types in route definition");
 		}
@@ -249,40 +251,40 @@ class ValueParser<double>
 		}
 	};
 
-template <>
-class ValueParser<Size>
+template <class ScalarParam,int dimensionParam>
+class ValueParser<Geometry::ComponentArray<ScalarParam,dimensionParam> >
 	{
 	/* Methods: */
 	public:
-	static Size parseValue(VRMLFile& vrmlFile)
+	static Geometry::ComponentArray<ScalarParam,dimensionParam> parseValue(VRMLFile& vrmlFile)
 		{
-		Size result;
+		Geometry::ComponentArray<ScalarParam,dimensionParam> result;
 		parseComponentArray(result,vrmlFile);
 		return result;
 		}
 	};
 
-template <class ScalarParam>
-class ValueParser<Geometry::Point<ScalarParam,3> >
+template <class ScalarParam,int dimensionParam>
+class ValueParser<Geometry::Point<ScalarParam,dimensionParam> >
 	{
 	/* Methods: */
 	public:
-	static Geometry::Point<ScalarParam,3> parseValue(VRMLFile& vrmlFile)
+	static Geometry::Point<ScalarParam,dimensionParam> parseValue(VRMLFile& vrmlFile)
 		{
-		Geometry::Point<ScalarParam,3> result;
+		Geometry::Point<ScalarParam,dimensionParam> result;
 		parseComponentArray(result,vrmlFile);
 		return result;
 		}
 	};
 
-template <class ScalarParam>
-class ValueParser<Geometry::Vector<ScalarParam,3> >
+template <class ScalarParam,int dimensionParam>
+class ValueParser<Geometry::Vector<ScalarParam,dimensionParam> >
 	{
 	/* Methods: */
 	public:
-	static Geometry::Vector<ScalarParam,3> parseValue(VRMLFile& vrmlFile)
+	static Geometry::Vector<ScalarParam,dimensionParam> parseValue(VRMLFile& vrmlFile)
 		{
-		Geometry::Vector<ScalarParam,3> result;
+		Geometry::Vector<ScalarParam,dimensionParam> result;
 		parseComponentArray(result,vrmlFile);
 		return result;
 		}
@@ -373,37 +375,65 @@ class ValueParser<NodePointer>
 			if(!vrmlFile.isToken("NULL"))
 				{
 				/* Create the result node: */
-				if((result=vrmlFile.createNode(vrmlFile.getToken()))==0)
-					throw VRMLFile::ParseError(vrmlFile,Misc::stringPrintf("Unknown node type %s",vrmlFile.getToken()));
-				
-				/* Check for and skip the opening brace: */
-				vrmlFile.readNextToken();
-				if(!vrmlFile.isToken("{"))
-					throw VRMLFile::ParseError(vrmlFile,"Missing opening brace in node definition");
-				
-				while(!vrmlFile.eof()&&vrmlFile.peekc()!='}')
+				if((result=vrmlFile.createNode(vrmlFile.getToken()))!=0)
 					{
+					/* Check for and skip the opening brace: */
+					vrmlFile.readNextToken();
+					if(!vrmlFile.isToken("{"))
+						throw VRMLFile::ParseError(vrmlFile,"Missing opening brace in node definition");
+					
+					/* Parse fields until the matching closing brace or end of file: */
+					while(!vrmlFile.eof()&&vrmlFile.peekc()!='}')
+						{
+						vrmlFile.readNextToken();
+						
+						if(vrmlFile.isToken("ROUTE"))
+							{
+							/* Parse a route statement: */
+							parseRoute(vrmlFile);
+							}
+						else
+							{
+							/* Parse a field value: */
+							result->parseField(vrmlFile.getToken(),vrmlFile);
+							}
+						}
+					
+					/* Check for and skip the closing brace: */
+					if(vrmlFile.eof())
+						throw VRMLFile::ParseError(vrmlFile,"Missing closing brace in node definition");
 					vrmlFile.readNextToken();
 					
-					if(vrmlFile.isToken("ROUTE"))
-						{
-						/* Parse a route statement: */
-						parseRoute(vrmlFile);
-						}
-					else
-						{
-						/* Parse a field value: */
-						result->parseField(vrmlFile.getToken(),vrmlFile);
-						}
+					/* Finalize the node: */
+					result->update();
 					}
-				
-				/* Check for and skip the closing brace: */
-				if(vrmlFile.eof())
-					throw VRMLFile::ParseError(vrmlFile,"Missing closing brace in node definition");
-				vrmlFile.readNextToken();
-				
-				/* Finalize the node: */
-				result->update();
+				else
+					{
+					/* Don't throw an exception; instead, try to cleanly skip the unknown node: */
+					// throw VRMLFile::ParseError(vrmlFile,Misc::stringPrintf("Unknown node type %s",vrmlFile.getToken()));
+					
+					/* Check for and skip the opening brace: */
+					vrmlFile.readNextToken();
+					if(!vrmlFile.isToken("{"))
+						throw VRMLFile::ParseError(vrmlFile,"Missing opening brace in node definition");
+					
+					/* Skip from the file until the matching closing brace is found or end of file occurs: */
+					unsigned int braceDepth=1;
+					while(!vrmlFile.eof()&&(braceDepth>1||vrmlFile.peekc()!='}'))
+						{
+						/* Process the next token: */
+						vrmlFile.readNextToken();
+						if(vrmlFile.isToken("{")||vrmlFile.isToken("["))
+							++braceDepth;
+						else if(vrmlFile.isToken("}")||vrmlFile.isToken("]"))
+							--braceDepth;
+						}
+					
+					/* Check for and skip the closing brace: */
+					if(vrmlFile.eof())
+						throw VRMLFile::ParseError(vrmlFile,"Missing closing brace in node definition");
+					vrmlFile.readNextToken();
+					}
 				}
 			
 			if(!defName.empty())
@@ -488,7 +518,7 @@ class FieldParser<MF<ValueParam> >
 Methods of class VRMLFile::ParseError:
 *************************************/
 
-VRMLFile::ParseError::ParseError(const VRMLFile& vrmlFile,std::string error)
+VRMLFile::ParseError::ParseError(const VRMLFile& vrmlFile,const std::string& error)
 	:std::runtime_error(Misc::stringPrintf("%s, line %u: %s",vrmlFile.sourceUrl.c_str(),(unsigned int)vrmlFile.currentLine,error.c_str()))
 	{
 	}
@@ -497,18 +527,12 @@ VRMLFile::ParseError::ParseError(const VRMLFile& vrmlFile,std::string error)
 Methods of class VRMLFile:
 *************************/
 
-VRMLFile::VRMLFile(std::string sSourceUrl,IO::FilePtr sSource,NodeCreator& sNodeCreator,Cluster::Multiplexer* sMultiplexer)
-	:IO::TokenSource(sSource),
-	 sourceUrl(sSourceUrl),
-	 nodeCreator(sNodeCreator),
-	 multiplexer(sMultiplexer),
-	 nodeMap(101),
-	 currentLine(1)
+void VRMLFile::init(void)
 	{
 	/* Initialize the token source: */
 	setWhitespace(',',true); // Comma is treated as whitespace
 	setPunctuation("#[]{}\n"); // Newline is treated as punctuation to count lines
-	setQuotes("\"\'");
+	setQuotes("\""); // VRML specification only allows double quotes
 	
 	/* Check the VRML file header: */
 	IO::TokenSource::readNextToken();
@@ -524,11 +548,27 @@ VRMLFile::VRMLFile(std::string sSourceUrl,IO::FilePtr sSource,NodeCreator& sNode
 	if(!isToken("utf8"))
 		Misc::throwStdErr("VRMLFile: %s is not a valid VRML 2.0 file",sourceUrl.c_str());
 	
-	/* Extract the URL prefix: */
-	urlPrefix=sourceUrl.begin();
-	for(std::string::const_iterator suIt=sourceUrl.begin();suIt!=sourceUrl.end();++suIt)
-		if(*suIt=='/')
-			urlPrefix=suIt+1;
+	/* Skip the rest of the header line, which is a comment after all: */
+	skipLine();
+	skipWs();
+	}
+
+VRMLFile::VRMLFile(IO::Directory& sBaseDirectory,const std::string& sSourceUrl,NodeCreator& sNodeCreator)
+	:IO::TokenSource(sBaseDirectory.openFile(sSourceUrl.c_str())),
+	 baseDirectory(sBaseDirectory.openFileDirectory(sSourceUrl.c_str())),sourceUrl(Misc::getFileName(sSourceUrl.c_str())),
+	 nodeCreator(sNodeCreator),nodeMap(17),
+	 currentLine(1)
+	{
+	init();
+	}
+
+VRMLFile::VRMLFile(const std::string& sSourceUrl,NodeCreator& sNodeCreator)
+	:IO::TokenSource(IO::openFile(sSourceUrl.c_str())),
+	 baseDirectory(IO::openFileDirectory(sSourceUrl.c_str())),sourceUrl(Misc::getFileName(sSourceUrl.c_str())),
+	 nodeCreator(sNodeCreator),nodeMap(17),
+	 currentLine(1)
+	{
+	init();
 	}
 
 void VRMLFile::parse(GroupNodePointer root)
@@ -541,6 +581,16 @@ void VRMLFile::parse(GroupNodePointer root)
 		if(node.getValue()!=0)
 			root->children.appendValue(node.getValue());
 		}
+	}
+
+NodePointer VRMLFile::getNode(const std::string& nodeName)
+	{
+	/* Find the named node in the node map: */
+	NodeMap::Iterator nIt=nodeMap.findEntry(nodeName);
+	if(!nIt.isFinished())
+		return nIt->getDest();
+	else
+		return 0;
 	}
 
 template <class ValueParam>
@@ -580,18 +630,36 @@ NodePointer VRMLFile::useNode(const char* nodeName)
 	return nIt->getDest();
 	}
 
-std::string VRMLFile::getFullUrl(std::string localUrl) const
+GroupNodePointer readVRMLFile(IO::Directory& baseDirectory,const std::string& sourceUrl)
 	{
-	/* Check if the local URL is already fully qualified: */
-	if(localUrl[0]!='/')
-		{
-		/* Prepend the base URL prefix: */
-		std::string result(sourceUrl.begin(),urlPrefix);
-		result+=localUrl;
-		return result;
-		}
-	else
-		return localUrl;
+	/* Create a new node creator: */
+	NodeCreator nodeCreator;
+	
+	/* Open the given VRML file: */
+	VRMLFile file(baseDirectory,sourceUrl,nodeCreator);
+	
+	/* Create a new root node: */
+	GroupNodePointer root=new GroupNode;
+	
+	/* Read the contents of the VRML file into the root node and return it: */
+	file.parse(root);
+	return root;
+	}
+
+GroupNodePointer readVRMLFile(const std::string& sourceUrl)
+	{
+	/* Create a new node creator: */
+	NodeCreator nodeCreator;
+	
+	/* Open the given VRML file: */
+	VRMLFile file(sourceUrl,nodeCreator);
+	
+	/* Create a new root node: */
+	GroupNodePointer root=new GroupNode;
+	
+	/* Read the contents of the VRML file into the root node and return it: */
+	file.parse(root);
+	return root;
 	}
 
 /********************************************************************
@@ -633,5 +701,8 @@ template void VRMLFile::parseField(SF<Geometry::Point<double,3> >&);
 template void VRMLFile::parseField(MF<Geometry::Point<double,3> >&);
 template void VRMLFile::parseField(SF<Geometry::Vector<double,3> >&);
 template void VRMLFile::parseField(MF<Geometry::Vector<double,3> >&);
+
+template void VRMLFile::parseField(SF<Geometry::ComponentArray<Scalar,2> >&);
+template void VRMLFile::parseField(SF<Geometry::Vector<Scalar,2> >&);
 
 }

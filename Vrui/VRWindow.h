@@ -1,7 +1,7 @@
 /***********************************************************************
 VRWindow - Class for OpenGL windows that are used to map one or two eyes
 of a viewer onto a VR screen.
-Copyright (c) 2004-2018 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 ZMap stereo mode additions copyright (c) 2011 Matthias Deller.
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
@@ -33,6 +33,8 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <GL/gl.h>
 #include <GL/GLWindow.h>
 #include <Vrui/Geometry.h>
+#include <Vrui/InputDevice.h>
+#include <Vrui/VRScreen.h>
 #include <Vrui/KeyMapper.h>
 #include <Vrui/GetOutputConfiguration.h>
 
@@ -45,9 +47,7 @@ class GLShader;
 class GLContextData;
 class GLFont;
 namespace Vrui {
-class InputDevice;
 class Viewer;
-class VRScreen;
 struct WindowProperties;
 class ViewSpecification;
 class DisplayState;
@@ -72,6 +72,13 @@ class VRWindow:public GLWindow
 		MONO,LEFT,RIGHT,QUADBUFFER_STEREO,ANAGLYPHIC_STEREO,SPLITVIEWPORT_STEREO,INTERLEAVEDVIEWPORT_STEREO,AUTOSTEREOSCOPIC_STEREO
 		};
 	typedef Realtime::TimePointMonotonic Time; // Type to measure frame times
+	enum WindowVisualFlags // Enumerated type for flags determining the visual type required for a window
+		{
+		MULTISAMPLEMASK=0xff, // Number of multisampling samples
+		DIRECT=0x100, // Window is rendered directly without an intermediate frame buffer
+		BACKBUFFER=0x200, // Intermediate frame buffer is rendered into back buffer
+		STEREO=0x400 // Window uses quadbuffer stereo
+		};
 	
 	/* Elements: */
 	private:
@@ -80,6 +87,9 @@ class VRWindow:public GLWindow
 	VruiWindowGroup* windowGroup; // Pointer to the window group to which this window belongs
 	InputDeviceAdapterMouse* mouseAdapter; // Pointer to the mouse input device adapter (if one exists; 0 otherwise)
 	InputDeviceAdapterMultitouch* multitouchAdapter; // Pointer to the multitouch input device adapter (if one exists; 0 otherwise)
+	InputDevice* enableButtonDevice; // Pointer to an input device containing a button to enable rendering to this window
+	int enableButtonIndex; // Index of the enable button on the input device
+	bool invertEnableButton; // Flag if the enable button's state needs to be inverted
 	GLbitfield clearBufferMask; // Bit mask of OpenGL buffers that need to be cleared before rendering to this window
 	bool vsync; // Flag if the window uses vertical retrace synchronization
 	bool lowLatency; // Flag whether the window calls glFinish() after glXSwapBuffers() to reduce display latency at some CPU busy-waiting cost
@@ -107,6 +117,7 @@ class VRWindow:public GLWindow
 	KeyMapper::QualifiedKey screenshotKey; // Key to save the window contents as an image
 	KeyMapper::QualifiedKey fullscreenToggleKey; // Key to toggle between windowed and fullscreen modes
 	KeyMapper::QualifiedKey burnModeToggleKey; // Key to toggle "burn mode"
+	KeyMapper::QualifiedKey pauseMovieSaverKey; // Key to pause/unpause a movie saver
 	
 	/* State for interleaved-viewport stereoscopic rendering: */
 	int ivTextureSize[2]; // Size of off-screen buffer and textures used for interleaved-viewport rendering
@@ -146,18 +157,23 @@ class VRWindow:public GLWindow
 	Scalar toolKillZonePos[2]; // Position of tool kill zone in relative window coordinates (0.0-1.0 in both directions)
 	bool dirty; // Flag if the window needs to be redrawn
 	bool resizeViewport; // Flag if the window's OpenGL viewport needs to be resized on the next draw() call
+	bool enabled; // Flag if rendering to the window is enabled
 	bool saveScreenshot; // Flag if the window is to save its contents after the next draw() call
 	std::string screenshotImageFileName; // Name of the image file into which to save the next screen shot
 	MovieSaver* movieSaver; // Pointer to a movie saver object if the window is supposed to write contents to a movie
+	bool movieSaverRecording; // Flag whether the movie saver is currently recording
 	Time lastFrame; // Time at which the last frame was exposed in front-buffer rendering mode
 	
 	/* Private methods: */
+	void screenSizeChangedCallback(VRScreen::SizeChangedCallbackData* cbData); // Callback called when a VR screen associated with this window changes size
+	void enableButtonCallback(InputDevice::ButtonCallbackData* cbData); // Callback called when the button to enable rendering changes state
 	void moveWindow(const NavTransform& transform); // Applies the given window transformation due to panning or scaling to derived window state
 	void render(const GLWindow::WindowPos& viewportPos,int screenIndex,const Point& eye,bool canRender); // Renders the view of the given eye onto the given screen
 	
 	/* Constructors and destructors: */
 	public:
-	static void initContext(GLContext* context,int screen,const WindowProperties& properties,const Misc::ConfigurationFileSection& configFileSection); // Initializes the given OpenGL context based on settings from the given window properties and configuration file section
+	static int getVisualFlags(const Misc::ConfigurationFileSection& configFileSection); // Retrieves the visual flags requested by the given window configuration file section
+	static void initContext(GLContext* context,int screen,const WindowProperties& properties,int visualFlags); // Initializes the given OpenGL context based on settings from the given window properties and visual flags
 	VRWindow(GLContext* sContext,const OutputConfiguration& sOutputConfiguration,const char* windowName,const Misc::ConfigurationFileSection& configFileSection,VruiState* sVruiState,InputDeviceAdapterMouse* sMouseAdapter); // Initializes VR window using given OpenGL context and settings from given configuration file section
 	virtual ~VRWindow(void);
 	

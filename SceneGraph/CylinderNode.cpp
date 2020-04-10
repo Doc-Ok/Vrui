@@ -1,7 +1,7 @@
 /***********************************************************************
 CylinderNode - Class for upright circular cylinders as renderable
 geometry.
-Copyright (c) 2009 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -185,6 +185,7 @@ Box CylinderNode::calcBoundingBox(void) const
 void CylinderNode::glRenderAction(GLRenderState& renderState) const
 	{
 	/* Set up OpenGL state: */
+	renderState.setFrontFace(GL_CCW);
 	renderState.enableCulling(GL_BACK);
 	
 	/* Render the display list: */

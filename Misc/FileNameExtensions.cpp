@@ -1,7 +1,7 @@
 /***********************************************************************
 FileNameExtensions - Helper functions to extract or test path names or
 extensions from file names.
-Copyright (c) 2009-2012 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -56,14 +56,24 @@ const char* getExtension(const char* fileName)
 const char* getExtension(const char* fileNameBegin,const char* fileNameEnd)
 	{
 	/* Find the final period in the final component of the given path name: */
-	const char* extPtr=fileNameEnd;
-	for(const char* fnPtr=fileNameBegin;fnPtr!=fileNameEnd;++fnPtr)
-		if(*fnPtr=='.') // Remember period position
-			extPtr=fnPtr;
-		else if(*fnPtr=='/') // Reset period position when a new component is started
-			extPtr=fileNameEnd;
+	const char* extPtr;
+	for(extPtr=fileNameEnd;extPtr!=fileNameBegin&&extPtr[-1]!='/'&&extPtr[-1]!='.';--extPtr)
+		;
 	
-	return extPtr;
+	/* There is an extension if search stopped on a period: */
+	if(extPtr!=fileNameBegin&&extPtr[-1]=='.')
+		return extPtr-1;
+	else
+		return fileNameEnd;
+	}
+
+bool hasExtension(const char* fileNameBegin,const char* fileNameEnd,const char* extension)
+	{
+	/* Get the extension: */
+	const char* extPtr=getExtension(fileNameBegin,fileNameEnd);
+	
+	/* Compare the extension against the given pattern: */
+	return strncmp(extPtr,extension,fileNameEnd-extPtr)==0&&extension[fileNameEnd-extPtr]=='\0';
 	}
 
 bool hasExtension(const char* fileName,const char* extension)
@@ -82,6 +92,15 @@ bool hasCaseExtension(const char* fileName,const char* extension)
 	
 	/* Compare the extension against the given pattern: */
 	return strcasecmp(extPtr,extension)==0;
+	}
+
+bool hasCaseExtension(const char* fileNameBegin,const char* fileNameEnd,const char* extension)
+	{
+	/* Get the extension: */
+	const char* extPtr=getExtension(fileNameBegin,fileNameEnd);
+	
+	/* Compare the extension against the given pattern: */
+	return strncasecmp(extPtr,extension,fileNameEnd-extPtr)==0&&extension[fileNameEnd-extPtr]=='\0';
 	}
 
 }

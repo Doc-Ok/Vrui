@@ -1,7 +1,7 @@
 /***********************************************************************
 GzippedFile - Class for high-performance reading from gzip-compressed
 standard operating system files.
-Copyright (c) 2011-2012 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -37,7 +37,7 @@ size_t GzippedFile::readData(File::Byte* buffer,size_t bufferSize)
 	
 	/* Check for fatal read errors: */
 	if(readSize<0)
-		throw Error(Misc::printStdErrMsg("IO::GzippedFile: Fatal error while reading from file"));
+		throw Error("IO::GzippedFile: Fatal error while reading from file");
 	
 	return size_t(readSize);
 	}
@@ -48,7 +48,10 @@ GzippedFile::GzippedFile(const char* inputFileName)
 	{
 	/* Open the compressed input file: */
 	if((inputFile=gzopen(inputFileName,"r"))==0)
-		throw OpenError(Misc::printStdErrMsg("IO::GzippedFile: Error while opening gzipped input file %s",inputFileName));
+		{
+		char buffer[1024];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::GzippedFile: Error while opening gzipped input file %s",inputFileName));
+		}
 	}
 
 GzippedFile::~GzippedFile(void)

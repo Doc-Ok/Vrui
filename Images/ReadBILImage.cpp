@@ -2,7 +2,7 @@
 ReadBILImage - Functions to read RGB images from image files in BIL
 (Band Interleaved by Line), BIP (Band Interleaved by Pixel), or BSQ
 (Band Sequential) formats over an IO::File abstraction.
-Copyright (c) 2018 Oliver Kreylos
+Copyright (c) 2018-2019 Oliver Kreylos
 
 This file is part of the Image Handling Library (Images).
 
@@ -33,6 +33,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <IO/File.h>
 #include <IO/Directory.h>
 #include <IO/ValueSource.h>
+#include <IO/OpenFile.h>
 #include <GL/gl.h>
 #include <Images/BaseImage.h>
 
@@ -44,36 +45,10 @@ namespace {
 Helper classes and functions to read BIL images:
 ***********************************************/
 
-struct BILLayout // Structure describing the data layout of a BIL file
-	{
-	/* Embedded classes: */
-	public:
-	enum Layout
-		{
-		BIP,BIL,BSQ
-		};
-	
-	/* Elements: */
-	size_t size[2]; // Image width and height
-	size_t nbands; // Number of bands
-	size_t nbits; // Number of bits per band per pixel
-	bool pixelSigned; // Flag if pixels are signed integers
-	Misc::Endianness byteOrder; // File's byte order
-	Layout layout; // File's band layout
-	size_t skipBytes; // Number of bytes to skip at beginning of image file
-	size_t bandRowBytes; // Number of bytes per band per image row
-	size_t totalRowBytes; // Number of bytes per image row
-	size_t bandGapBytes; // Number of bytes between bands in a BSQ layout
-	double map[2]; // Map coordinates of center of upper-left pixel
-	double dim[2]; // Pixel dimension in map coordinates
-	bool haveNoData; // Flag whether the image file defines an invalid pixel value
-	double noData; // Pixel value indicating an invalid pixel
-	};
-
-BILLayout readHeaderFile(const IO::Directory& directory,const char* headerFileName,const char* ext,int extLen)
+BILFileLayout readHeaderFile(IO::FilePtr headerFile,const char* ext,int extLen)
 	{
 	/* Create default BIL file layout: */
-	BILLayout result;
+	BILFileLayout result;
 	result.size[1]=result.size[0]=~size_t(0);
 	result.nbands=1;
 	result.nbits=8;
@@ -81,28 +56,32 @@ BILLayout readHeaderFile(const IO::Directory& directory,const char* headerFileNa
 	result.byteOrder=Misc::HostEndianness;
 	
 	/* Determine default file layout based on image file name extension: */
-	result.layout=BILLayout::BIL;
+	result.layout=BILFileLayout::BIL;
 	if(extLen==4)
 		{
-		if(strncasecmp(ext+1,"BIP",extLen-1)==0)
-			result.layout=BILLayout::BIP;
-		else if(strncasecmp(ext+1,"BSQ",extLen-1)==0)
-			result.layout=BILLayout::BSQ;
+		if(strncasecmp(ext+1,"BIP",3)==0)
+			result.layout=BILFileLayout::BIP;
+		else if(strncasecmp(ext+1,"BSQ",3)==0)
+			result.layout=BILFileLayout::BSQ;
 		}
 	
 	result.skipBytes=0;
 	result.bandGapBytes=0;
-	result.map[0]=0.0;
-	result.map[1]=0.0;
-	result.dim[0]=1.0;
-	result.dim[1]=1.0;
-	result.haveNoData=false;
+	result.metadata.haveMap=false;
+	result.metadata.map[0]=0.0;
+	result.metadata.map[1]=0.0;
+	result.metadata.haveDim=false;
+	result.metadata.dim[0]=1.0;
+	result.metadata.dim[1]=1.0;
+	result.metadata.haveNoData=false;
 	bool haveBandRowBytes=false;
 	bool haveTotalRowBytes=false;
+	int mapMask=0x0;
 	bool mapIsLowerLeft=true;
+	int dimMask=0x0;
 	
-	/* Open the header file: */
-	IO::ValueSource header(directory.openFile(headerFileName));
+	/* Read the header file: */
+	IO::ValueSource header(headerFile);
 	header.setPunctuation("\n");
 	
 	/* Process all token=value pairs in the header file: */
@@ -148,11 +127,11 @@ BILLayout readHeaderFile(const IO::Directory& directory,const char* headerFileNa
 			/* Read the file layout: */
 			std::string layout=header.readString();
 			if(strcasecmp(layout.c_str(),"BIP")==0)
-				result.layout=BILLayout::BIP;
+				result.layout=BILFileLayout::BIP;
 			else if(strcasecmp(layout.c_str(),"BIL")==0)
-				result.layout=BILLayout::BIL;
+				result.layout=BILFileLayout::BIL;
 			else if(strcasecmp(layout.c_str(),"BSQ")==0)
-				result.layout=BILLayout::BSQ;
+				result.layout=BILFileLayout::BSQ;
 			else
 				throw std::runtime_error("Images::readGenericBILImage: Invalid image file layout declaration in image header");
 			}
@@ -172,34 +151,47 @@ BILLayout readHeaderFile(const IO::Directory& directory,const char* headerFileNa
 			}
 		else if(strcasecmp(token.c_str(),"ULXMAP")==0||strcasecmp(token.c_str(),"UL_X_COORDINATE")==0)
 			{
-			result.map[0]=header.readNumber();
+			mapMask|=0x1;
+			result.metadata.map[0]=header.readNumber();
 			mapIsLowerLeft=false;
 			}
 		else if(strcasecmp(token.c_str(),"ULYMAP")==0||strcasecmp(token.c_str(),"UL_Y_COORDINATE")==0)
 			{
-			result.map[1]=header.readNumber();
+			mapMask|=0x2;
+			result.metadata.map[1]=header.readNumber();
 			mapIsLowerLeft=false;
 			}
 		else if(strcasecmp(token.c_str(),"XLLCORNER")==0)
 			{
-			result.map[0]=header.readNumber();
+			mapMask|=0x1;
+			result.metadata.map[0]=header.readNumber();
 			mapIsLowerLeft=true;
 			}
 		else if(strcasecmp(token.c_str(),"YLLCORNER")==0)
 			{
-			result.map[1]=header.readNumber();
+			mapMask|=0x2;
+			result.metadata.map[1]=header.readNumber();
 			mapIsLowerLeft=true;
 			}
 		else if(strcasecmp(token.c_str(),"XDIM")==0)
-			result.dim[0]=header.readNumber();
+			{
+			dimMask|=0x1;
+			result.metadata.dim[0]=header.readNumber();
+			}
 		else if(strcasecmp(token.c_str(),"YDIM")==0)
-			result.dim[1]=header.readNumber();
+			{
+			dimMask|=0x2;
+			result.metadata.dim[1]=header.readNumber();
+			}
 		else if(strcasecmp(token.c_str(),"CELLSIZE")==0)
-			result.dim[1]=result.dim[0]=header.readNumber();
+			{
+			dimMask=0x3;
+			result.metadata.dim[1]=result.metadata.dim[0]=header.readNumber();
+			}
 		else if(strcasecmp(token.c_str(),"NODATA")==0||strcasecmp(token.c_str(),"NODATA_VALUE")==0)
 			{
-			result.haveNoData=true;
-			result.noData=header.readNumber();
+			result.metadata.haveNoData=true;
+			result.metadata.noData=header.readNumber();
 			}
 		
 		/* Skip the rest of the line: */
@@ -211,15 +203,20 @@ BILLayout readHeaderFile(const IO::Directory& directory,const char* headerFileNa
 	if(!haveBandRowBytes)
 		result.bandRowBytes=(result.size[0]*result.nbits+7)/8;
 	if(!haveTotalRowBytes)
-		result.totalRowBytes=result.layout==BILLayout::BIL?result.nbands*result.bandRowBytes:(result.size[0]*result.nbands*result.nbits+7)/8;
-	if(mapIsLowerLeft)
-		result.map[1]=result.map[1]+double(result.size[1]-1)*result.dim[1];
+		result.totalRowBytes=result.layout==BILFileLayout::BIL?result.nbands*result.bandRowBytes:(result.size[0]*result.nbands*result.nbits+7)/8;
+	if(mapMask==0x3)
+		{
+		result.metadata.haveMap=true;
+		if(mapIsLowerLeft&&(dimMask&0x2)!=0x0)
+			result.metadata.map[1]=result.metadata.map[1]+double(result.size[1]-1)*result.metadata.dim[1];
+		}
+	result.metadata.haveDim=dimMask==0x3;
 	
 	return result;
 	}
 
 template <class ComponentParam>
-void readBIPImageData(IO::File& imageFile,const BILLayout& layout,ComponentParam* data)
+void readBIPImageData(IO::File& imageFile,const BILFileLayout& layout,ComponentParam* data)
 	{
 	/* Read the image file line-by-line: */
 	size_t rowSize=layout.size[0]*layout.nbands;
@@ -236,7 +233,7 @@ void readBIPImageData(IO::File& imageFile,const BILLayout& layout,ComponentParam
 	}
 
 template <class ComponentParam>
-void readBILImageData(IO::File& imageFile,const BILLayout& layout,ComponentParam* data)
+void readBILImageData(IO::File& imageFile,const BILFileLayout& layout,ComponentParam* data)
 	{
 	/* Read the image file line-by-line and band-by-band: */
 	Misc::SelfDestructArray<ComponentParam> band(layout.size[0]);
@@ -267,7 +264,7 @@ void readBILImageData(IO::File& imageFile,const BILLayout& layout,ComponentParam
 	}
 
 template <class ComponentParam>
-void readBSQImageData(IO::File& imageFile,const BILLayout& layout,ComponentParam* data)
+void readBSQImageData(IO::File& imageFile,const BILFileLayout& layout,ComponentParam* data)
 	{
 	/* Read the image file band-by-band and line-by-line: */
 	Misc::SelfDestructArray<ComponentParam> band(layout.size[0]);
@@ -293,7 +290,7 @@ void readBSQImageData(IO::File& imageFile,const BILLayout& layout,ComponentParam
 	}
 
 template <class ComponentParam>
-BaseImage readImageData(IO::File& imageFile,const BILLayout& layout,GLenum scalarType)
+BaseImage readImageData(IO::File& imageFile,const BILFileLayout& layout,GLenum scalarType)
 	{
 	/* Determine a compatible texture format: */
 	GLenum format;
@@ -328,15 +325,15 @@ BaseImage readImageData(IO::File& imageFile,const BILLayout& layout,GLenum scala
 	/* Read the image file according to its interleave format: */
 	switch(layout.layout)
 		{
-		case BILLayout::BIP:
+		case BILFileLayout::BIP:
 			readBIPImageData(imageFile,layout,static_cast<ComponentParam*>(result.modifyPixels()));
 			break;
 		
-		case BILLayout::BIL:
+		case BILFileLayout::BIL:
 			readBILImageData(imageFile,layout,static_cast<ComponentParam*>(result.modifyPixels()));
 			break;
 		
-		case BILLayout::BSQ:
+		case BILFileLayout::BSQ:
 			readBSQImageData(imageFile,layout,static_cast<ComponentParam*>(result.modifyPixels()));
 			break;
 		}
@@ -346,7 +343,35 @@ BaseImage readImageData(IO::File& imageFile,const BILLayout& layout,GLenum scala
 
 }
 
-BaseImage readGenericBILImage(const IO::Directory& directory,const char* imageFileName)
+BaseImage readGenericBILImage(IO::File& file,const BILFileLayout& fileLayout)
+	{
+	/* Set the image file's byte order: */
+	file.setEndianness(fileLayout.byteOrder);
+	
+	/* Read the image file according to its pixel type: */
+	switch(fileLayout.nbits)
+		{
+		case 8:
+			if(fileLayout.pixelSigned)
+				return readImageData<Misc::SInt8>(file,fileLayout,GL_BYTE);
+			else
+				return readImageData<Misc::UInt8>(file,fileLayout,GL_UNSIGNED_BYTE);
+		
+		case 16:
+			if(fileLayout.pixelSigned)
+				return readImageData<Misc::SInt16>(file,fileLayout,GL_SHORT);
+			else
+				return readImageData<Misc::UInt16>(file,fileLayout,GL_UNSIGNED_SHORT);
+		
+		case 32:
+			return readImageData<Misc::Float32>(file,fileLayout,GL_FLOAT);
+		
+		default:
+			throw std::runtime_error("Images::readGenericBILImage: Image has unsupported pixel size");
+		}
+	}
+
+BaseImage readGenericBILImage(const char* imageFileName,BILMetadata* metadata)
 	{
 	/* Retrieve the file name extension: */
 	const char* ext=Misc::getExtension(imageFileName);
@@ -364,10 +389,66 @@ BaseImage readGenericBILImage(const IO::Directory& directory,const char* imageFi
 	headerFileName.append(".hdr");
 	
 	/* Read the image's header file to detect its layout: */
-	BILLayout layout=readHeaderFile(directory,headerFileName.c_str(),ext,extLen);
+	BILFileLayout layout=readHeaderFile(IO::openFile(headerFileName.c_str()),ext,extLen);
+	
+	/* Fill in metadata structure if provided: */
+	if(metadata!=0)
+		*metadata=layout.metadata;
+	
+	/* Open the image file: */
+	IO::FilePtr imageFile=IO::openFile(imageFileName);
+	imageFile->setEndianness(layout.byteOrder);
+	
+	/* Read the image file according to its pixel type: */
+	switch(layout.nbits)
+		{
+		case 8:
+			if(layout.pixelSigned)
+				return readImageData<Misc::SInt8>(*imageFile,layout,GL_BYTE);
+			else
+				return readImageData<Misc::UInt8>(*imageFile,layout,GL_UNSIGNED_BYTE);
+		
+		case 16:
+			if(layout.pixelSigned)
+				return readImageData<Misc::SInt16>(*imageFile,layout,GL_SHORT);
+			else
+				return readImageData<Misc::UInt16>(*imageFile,layout,GL_UNSIGNED_SHORT);
+		
+		case 32:
+			return readImageData<Misc::Float32>(*imageFile,layout,GL_FLOAT);
+		
+		default:
+			throw std::runtime_error("Images::readGenericBILImage: Image has unsupported pixel size");
+		}
+	}
+
+BaseImage readGenericBILImage(const IO::Directory& directory,const char* imageFileName,BILMetadata* metadata)
+	{
+	/* Retrieve the file name extension: */
+	const char* ext=Misc::getExtension(imageFileName);
+	int extLen=strlen(ext);
+	if(strcasecmp(ext,".gz")==0)
+		{
+		/* Strip the gzip extension and try again: */
+		const char* gzExt=ext;
+		ext=Misc::getExtension(imageFileName,gzExt);
+		extLen=gzExt-ext;
+		}
+	
+	/* Construct the header file name: */
+	std::string headerFileName(imageFileName,ext);
+	headerFileName.append(".hdr");
+	
+	/* Read the image's header file to detect its layout: */
+	BILFileLayout layout=readHeaderFile(directory.openFile(headerFileName.c_str()),ext,extLen);
+	
+	/* Fill in metadata structure if provided: */
+	if(metadata!=0)
+		*metadata=layout.metadata;
 	
 	/* Open the image file: */
 	IO::FilePtr imageFile=directory.openFile(imageFileName);
+	imageFile->setEndianness(layout.byteOrder);
 	
 	/* Read the image file according to its pixel type: */
 	switch(layout.nbits)

@@ -2,7 +2,7 @@
 BaseImage - Generic base class to represent images of arbitrary pixel
 formats. The image coordinate system is such that pixel (0,0) is in the
 lower-left corner.
-Copyright (c) 2016-2018 Oliver Kreylos
+Copyright (c) 2016-2020 Oliver Kreylos
 
 This file is part of the Image Handling Library (Images).
 
@@ -24,8 +24,14 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #ifndef IMAGES_BASEIMAGE_INCLUDED
 #define IMAGES_BASEIMAGE_INCLUDED
 
+#include <stddef.h>
 #include <Threads/Atomic.h>
 #include <GL/gl.h>
+
+/* Forward declarations: */
+namespace IO {
+class File;
+}
 
 namespace Images {
 
@@ -94,6 +100,7 @@ class BaseImage
 		:rep(new ImageRepresentation(sWidth,sHeight,sNumChannels,sChannelSize,sFormat,sScalarType))
 		{
 		}
+	BaseImage(IO::File& imageFile); // Reads an image in internal format from a binary file
 	BaseImage(const BaseImage& source) // Copies an existing image (does not copy image representation)
 		:rep(source.rep!=0?source.rep->attach():0)
 		{
@@ -184,6 +191,7 @@ class BaseImage
 		{
 		return rep->scalarType;
 		}
+	void write(IO::File& imageFile) const; // Writes the image in internal format to the given binary file
 	
 	/* Basic image processing methods: */
 	BaseImage dropAlpha(void) const; // Returns a new image with the alpha channel dropped; returns itself when there is no alpha channel

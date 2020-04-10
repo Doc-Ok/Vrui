@@ -1,7 +1,7 @@
 /***********************************************************************
 ToolKillZoneBox - Class for box-shaped "kill zones" for tools and input
 devices.
-Copyright (c) 2004-2014 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -75,6 +75,10 @@ void ToolKillZoneBox::setCenter(const Point& newCenter)
 
 bool ToolKillZoneBox::isDeviceIn(const InputDevice* device) const
 	{
+	/* Bail out if the tool kill zone is inactive: */
+	if(!active)
+		return false;
+	
 	if(device->isRayDevice())
 		{
 		/* Check if the device's ray intersects the kill box: */

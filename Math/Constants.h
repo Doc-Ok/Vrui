@@ -1,7 +1,7 @@
 /***********************************************************************
 Constants - Classes providing generic access to type-specific math-
 relevant information.
-Copyright (c) 2003-2018 Oliver Kreylos
+Copyright (c) 2003-2020 Oliver Kreylos
 
 This file is part of the Templatized Math Library (Math).
 
@@ -248,6 +248,46 @@ class Constants<unsigned long>
 	static const Scalar one=1UL;
 	static const Scalar min=0UL;
 	static const Scalar max=ULONG_MAX;
+	};
+
+template <>
+class Constants<long long>
+	{
+	/* Embedded classes: */
+	public:
+	typedef long long Scalar;
+	typedef double FieldScalar;
+	typedef double PrecisionScalar;
+	
+	/* Elements: */
+	static const bool isIntegral=true;
+	static const bool isRing=true;
+	static const bool isField=false;
+	static const bool isReal=false;
+	static const Scalar zero=0LL;
+	static const Scalar one=1LL;
+	static const Scalar min=LLONG_MIN;
+	static const Scalar max=LLONG_MAX;
+	};
+
+template <>
+class Constants<unsigned long long>
+	{
+	/* Embedded classes: */
+	public:
+	typedef unsigned long long Scalar;
+	typedef double FieldScalar;
+	typedef double PrecisionScalar;
+	
+	/* Elements: */
+	static const bool isIntegral=true;
+	static const bool isRing=false;
+	static const bool isField=false;
+	static const bool isReal=false;
+	static const Scalar zero=0ULL;
+	static const Scalar one=1ULL;
+	static const Scalar min=0ULL;
+	static const Scalar max=ULLONG_MAX;
 	};
 
 template <>

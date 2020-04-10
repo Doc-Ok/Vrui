@@ -1,0 +1,104 @@
+#VRML V2.0 utf8
+
+Transform
+	{
+	translation 0 -0.0860499814952 0.00695706005998
+	rotation -1 0 0 3.66519142919
+	children
+		[
+		MeshFile
+			{
+			url "STEAMVRRENDERMODELSDIR/vr_controller_vive_1_5/body.obj"
+			materialLibrary DEF ViveML MaterialLibrary
+				{
+				urls "STEAMVRRENDERMODELSDIR/vr_controller_vive_1_5/body.mtl"
+				}
+			}
+		
+		MeshFile
+			{
+			url "STEAMVRRENDERMODELSDIR/vr_controller_vive_1_5/trigger.obj"
+			materialLibrary USE ViveML
+			}
+		
+		Switch
+			{
+			choice
+				[
+				Group
+					{
+					children
+						[
+						MeshFile
+							{
+							url "STEAMVRRENDERMODELSDIR/vr_controller_vive_1_5/trackpad.obj"
+							materialLibrary USE ViveML
+							}
+						
+						Switch
+							{
+							choice
+								[
+								MeshFile
+									{
+									url "STEAMVRRENDERMODELSDIR/vr_controller_vive_1_5/trackpad_touch.obj"
+									materialLibrary USE ViveML
+									}
+								]
+							whichChoice -1
+							}
+						]
+					}
+				
+				Group
+					{
+					children
+						[
+						MeshFile
+							{
+							url "STEAMVRRENDERMODELSDIR/vr_controller_vive_1_5/trackpad_scroll_cut.obj"
+							materialLibrary USE ViveML
+							}
+						
+						MeshFile
+							{
+							url "STEAMVRRENDERMODELSDIR/vr_controller_vive_1_5/scroll_wheel.obj"
+							materialLibrary USE ViveML
+							}
+						]
+					}
+				]
+			whichChoice 0
+			}
+		
+		MeshFile
+			{
+			url "STEAMVRRENDERMODELSDIR/vr_controller_vive_1_5/l_grip.obj"
+			materialLibrary USE ViveML
+			}
+		
+		MeshFile
+			{
+			url "STEAMVRRENDERMODELSDIR/vr_controller_vive_1_5/r_grip.obj"
+			materialLibrary USE ViveML
+			}
+		
+		MeshFile
+			{
+			url "STEAMVRRENDERMODELSDIR/vr_controller_vive_1_5/sys_button.obj"
+			materialLibrary USE ViveML
+			}
+		
+		MeshFile
+			{
+			url "STEAMVRRENDERMODELSDIR/vr_controller_vive_1_5/button.obj"
+			materialLibrary USE ViveML
+			}
+		
+		MeshFile
+			{
+			url "STEAMVRRENDERMODELSDIR/vr_controller_vive_1_5/led.obj"
+			materialLibrary USE ViveML
+			}
+		]
+	}

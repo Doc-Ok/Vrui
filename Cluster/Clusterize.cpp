@@ -2,7 +2,7 @@
 Clusterize - Helper functions to distribute an application across a
 cluster, and establish communications between nodes using a multicast
 pipe multiplexer.
-Copyright (c) 2009-2011 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Cluster Abstraction Library (Cluster).
 
@@ -37,6 +37,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <Misc/GetCurrentDirectory.h>
 #include <Cluster/Multiplexer.h>
 #include <Cluster/MulticastPipe.h>
+#include <Cluster/Opener.h>
 
 namespace Cluster {
 
@@ -108,7 +109,7 @@ Multiplexer* clusterize(int& argc,char**& argv)
 			argc=slaveArgc;
 			argv=slaveArgv;
 			}
-		catch(std::runtime_error error)
+		catch(const std::runtime_error& error)
 			{
 			std::cerr<<"Node "<<nodeIndex<<": Caught exception "<<error.what()<<" while initializing cluster communication"<<std::endl;
 			delete result;
@@ -263,12 +264,25 @@ Multiplexer* clusterize(int& argc,char**& argv)
 					Misc::writeCString(argv[i],argPipe);
 				}
 				}
-			catch(std::runtime_error error)
+			catch(const std::runtime_error& error)
 				{
 				std::cerr<<"Master node: Caught exception "<<error.what()<<" while initializing cluster communication"<<std::endl;
 				delete result;
 				result=0;
 				}
+			}
+		}
+	
+	if(result!=0)
+		{
+		/* Register the new cluster multiplexer with the Opener object of the Cluster library: */
+		Opener* opener=dynamic_cast<Opener*>(IO::Opener::getOpener());
+		if(opener!=0)
+			opener->setMultiplexer(result);
+		else
+			{
+			/* Warn the user and continue: */
+			std::cerr<<"Active IO::Opener is not a Cluster::Opener; automatic cluster sharing of files will not work"<<std::endl;
 			}
 		}
 	
@@ -279,6 +293,11 @@ void unclusterize(Multiplexer* multiplexer)
 	{
 	if(multiplexer!=0)
 		{
+		/* Unregister cluster multiplexer from the Opener object of the Cluster library: */
+		Opener* opener=dynamic_cast<Opener*>(IO::Opener::getOpener());
+		if(opener!=0)
+			opener->setMultiplexer(0);
+		
 		bool master=multiplexer->isMaster();
 		
 		/* Destroy the multiplexer: */

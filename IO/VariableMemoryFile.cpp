@@ -1,7 +1,7 @@
 /***********************************************************************
 VariableMemoryFile - Class to write to variable-sized in-memory files as
 temporary file storage.
-Copyright (c) 2011-2016 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -200,6 +200,13 @@ void VariableMemoryFile::clear(void)
 	
 	/* Install the current buffer as the buffered file's write buffer: */
 	setWriteBuffer(writeBufferSize,reinterpret_cast<Byte*>(current+1),false); // current+1 points to actual data in buffer
+	}
+
+void VariableMemoryFile::rewind(void)
+	{
+	/* Reset the buffered file's read buffer: */
+	flushReadBuffer();
+	setReadBuffer(0,0,false);
 	}
 
 }

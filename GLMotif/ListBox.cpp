@@ -1,6 +1,6 @@
 /***********************************************************************
 ListBox - Class for widgets containing lists of text strings.
-Copyright (c) 2008-2010 Oliver Kreylos
+Copyright (c) 2008-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -117,6 +117,152 @@ void ListBox::updatePageSlots(void)
 	
 	/* Update the page slots version number: */
 	++version;
+	}
+
+void ListBox::selectItem(int index,bool moveToPage,bool interactive)
+	{
+	/* Bail out if the request is invalid or a no-op: */
+	if(index<0||size_t(index)>=items.size())
+		index=-1;
+	if(selectionMode==ALWAYS_ONE&&index==-1)
+		return;
+	if(selectionMode==MULTIPLE&&(index<0||items[index].selected))
+		return;
+	if(selectionMode!=MULTIPLE&&index==lastSelectedItem)
+		return;
+	
+	/* Deselect the previously selected item in single-item selection modes: */
+	if(selectionMode!=MULTIPLE&&lastSelectedItem>=0)
+		{
+		/* Deselect the last selected item: */
+		items[lastSelectedItem].selected=false;
+		
+		{
+		/* Call the selection changed callbacks: */
+		SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::ITEM_DESELECTED,lastSelectedItem,interactive);
+		selectionChangedCallbacks.call(&cbData);
+		}
+		
+		/* Invalidate the page slot cache if the old selected item was visible: */
+		if(lastSelectedItem>=position&&lastSelectedItem<position+pageSize)
+			{
+			pageSlots[lastSelectedItem-position].selected=false;
+			++version;
+			}
+		}
+	
+	/* Check if the item is valid: */
+	if(index>=0)
+		{
+		/* Select the item: */
+		items[index].selected=true;
+		
+		{
+		/* Call the selection changed callbacks: */
+		SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::ITEM_SELECTED,index,interactive);
+		selectionChangedCallbacks.call(&cbData);
+		}
+		
+		if(moveToPage)
+			{
+			/* Move the selected item to the page if it is not visible: */
+			if(position>index)
+				setPosition(index);
+			else if(position<index-pageSize+1)
+				setPosition(index-pageSize+1);
+			else
+				{
+				/* Update the page slot and invalidate the cache: */
+				pageSlots[index-position].selected=true;
+				++version;
+				}
+			}
+		else
+			{
+			/* Invalidate the page slot cache if the selected item is visible: */
+			if(index>=position&&index<position+pageSize)
+				{
+				pageSlots[index-position].selected=true;
+				++version;
+				}
+			}
+		}
+	
+	/* Remember the last selected item: */
+	int oldLastSelectedItem=lastSelectedItem;
+	lastSelectedItem=index;
+	
+	{
+	/* Call the value changed callbacks: */
+	ValueChangedCallbackData cbData(this,oldLastSelectedItem,lastSelectedItem,interactive);
+	valueChangedCallbacks.call(&cbData);
+	}
+	
+	/* Invalidate the visual representation: */
+	update();
+	}
+
+void ListBox::deselectItem(int index,bool moveToPage,bool interactive)
+	{
+	/* Bail out if the request is invalid or a no-op: */
+	if(selectionMode==ALWAYS_ONE)
+		return;
+	if(index<0||size_t(index)>=items.size())
+		return;
+	if(!items[index].selected)
+		return;
+	
+	/* Deselect the item: */
+	items[index].selected=false;
+	
+	{
+	/* Call the selection changed callbacks: */
+	SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::ITEM_DESELECTED,index,interactive);
+	selectionChangedCallbacks.call(&cbData);
+	}
+	
+	if(moveToPage)
+		{
+		/* Move the deselected item to the page if it is not visible: */
+		if(position>index)
+			setPosition(index);
+		else if(position<index-pageSize+1)
+			setPosition(index-pageSize+1);
+		}
+	else
+		{
+		/* Invalidate the page slot cache if the deselected item is visible: */
+		if(index>=position&&index<position+pageSize)
+			{
+			pageSlots[index-position].selected=false;
+			++version;
+			}
+		}
+	
+	/* Update the last selected item: */
+	if(selectionMode!=MULTIPLE)
+		{
+		/* Select the invalid element: */
+		int oldLastSelectedItem=lastSelectedItem;
+		lastSelectedItem=-1;
+		
+		/* Call the value changed callbacks: */
+		ValueChangedCallbackData cbData(this,oldLastSelectedItem,lastSelectedItem,interactive);
+		valueChangedCallbacks.call(&cbData);
+		}
+	else if(lastSelectedItem!=index)
+		{
+		/* Select the deselected element: */
+		int oldLastSelectedItem=lastSelectedItem;
+		lastSelectedItem=index;
+		
+		/* Call the value changed callbacks: */
+		ValueChangedCallbackData cbData(this,oldLastSelectedItem,lastSelectedItem,interactive);
+		valueChangedCallbacks.call(&cbData);
+		}
+	
+	/* Invalidate the visual representation: */
+	update();
 	}
 
 ListBox::ListBox(const char* sName,Container* sParent,ListBox::SelectionMode sSelectionMode,int sPreferredWidth,int sPreferredPageSize,bool sManageChild)
@@ -387,9 +533,9 @@ void ListBox::pointerButtonDown(Event& event)
 				{
 				/* Toggle the list item's selection state: */
 				if(items[position+i].selected)
-					deselectItem(position+i);
+					deselectItem(position+i,false,true);
 				else
-					selectItem(position+i);
+					selectItem(position+i,false,true);
 				
 				/* Reset the click counter: */
 				numClicks=1;
@@ -529,7 +675,7 @@ void ListBox::insertItem(int index,const char* newItem,bool moveToPage)
 	
 	{
 	/* Call the selection change callbacks: */
-	SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::NUMITEMS_CHANGED,-1);
+	SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::NUMITEMS_CHANGED,-1,false);
 	selectionChangedCallbacks.call(&cbData);
 	}
 	
@@ -540,7 +686,7 @@ void ListBox::insertItem(int index,const char* newItem,bool moveToPage)
 		++lastSelectedItem;
 		
 		/* Call the value changed callbacks: */
-		ValueChangedCallbackData cbData(this,lastSelectedItem-1,lastSelectedItem);
+		ValueChangedCallbackData cbData(this,lastSelectedItem-1,lastSelectedItem,false);
 		valueChangedCallbacks.call(&cbData);
 		}
 	
@@ -553,13 +699,13 @@ void ListBox::insertItem(int index,const char* newItem,bool moveToPage)
 		
 		{
 		/* Call the selection change callbacks: */
-		SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::ITEM_SELECTED,lastSelectedItem);
+		SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::ITEM_SELECTED,lastSelectedItem,false);
 		selectionChangedCallbacks.call(&cbData);
 		}
 		
 		{
 		/* Call the value changed callbacks: */
-		ValueChangedCallbackData cbData(this,-1,lastSelectedItem);
+		ValueChangedCallbackData cbData(this,-1,lastSelectedItem,false);
 		valueChangedCallbacks.call(&cbData);
 		}
 		}
@@ -773,7 +919,7 @@ void ListBox::removeItem(int index)
 	
 	{
 	/* Call the selection change callbacks: */
-	SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::NUMITEMS_CHANGED,-1);
+	SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::NUMITEMS_CHANGED,-1,false);
 	selectionChangedCallbacks.call(&cbData);
 	}
 	
@@ -794,7 +940,7 @@ void ListBox::removeItem(int index)
 				}
 			
 			/* Call the selection change callbacks: */
-			SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::ITEM_SELECTED,lastSelectedItem);
+			SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::ITEM_SELECTED,lastSelectedItem,false);
 			selectionChangedCallbacks.call(&cbData);
 			}
 		else
@@ -804,7 +950,7 @@ void ListBox::removeItem(int index)
 			}
 		
 		/* Call the value changed callbacks: */
-		ValueChangedCallbackData cbData(this,index,lastSelectedItem);
+		ValueChangedCallbackData cbData(this,index,lastSelectedItem,false);
 		valueChangedCallbacks.call(&cbData);
 		}
 	else if(lastSelectedItem>index)
@@ -813,7 +959,7 @@ void ListBox::removeItem(int index)
 		--lastSelectedItem;
 		
 		/* Call the value changed callbacks: */
-		ValueChangedCallbackData cbData(this,lastSelectedItem+1,lastSelectedItem);
+		ValueChangedCallbackData cbData(this,lastSelectedItem+1,lastSelectedItem,false);
 		valueChangedCallbacks.call(&cbData);
 		}
 	
@@ -882,7 +1028,7 @@ void ListBox::clear(void)
 	
 	{
 	/* Call the selection change callbacks: */
-	SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::NUMITEMS_CHANGED,-1);
+	SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::NUMITEMS_CHANGED,-1,false);
 	selectionChangedCallbacks.call(&cbData);
 	}
 	
@@ -893,7 +1039,7 @@ void ListBox::clear(void)
 		lastSelectedItem=-1;
 		
 		/* Call the value changed callbacks: */
-		ValueChangedCallbackData cbData(this,oldLastSelectedItem,lastSelectedItem);
+		ValueChangedCallbackData cbData(this,oldLastSelectedItem,lastSelectedItem,false);
 		valueChangedCallbacks.call(&cbData);
 		}
 	
@@ -998,152 +1144,6 @@ std::vector<int> ListBox::getSelectedItems(void) const
 	return result;
 	}
 
-void ListBox::selectItem(int index,bool moveToPage)
-	{
-	/* Bail out if the request is invalid or a no-op: */
-	if(index<0||size_t(index)>=items.size())
-		index=-1;
-	if(selectionMode==ALWAYS_ONE&&index==-1)
-		return;
-	if(selectionMode==MULTIPLE&&(index<0||items[index].selected))
-		return;
-	if(selectionMode!=MULTIPLE&&index==lastSelectedItem)
-		return;
-	
-	/* Deselect the previously selected item in single-item selection modes: */
-	if(selectionMode!=MULTIPLE&&lastSelectedItem>=0)
-		{
-		/* Deselect the last selected item: */
-		items[lastSelectedItem].selected=false;
-		
-		{
-		/* Call the selection changed callbacks: */
-		SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::ITEM_DESELECTED,lastSelectedItem);
-		selectionChangedCallbacks.call(&cbData);
-		}
-		
-		/* Invalidate the page slot cache if the old selected item was visible: */
-		if(lastSelectedItem>=position&&lastSelectedItem<position+pageSize)
-			{
-			pageSlots[lastSelectedItem-position].selected=false;
-			++version;
-			}
-		}
-	
-	/* Check if the item is valid: */
-	if(index>=0)
-		{
-		/* Select the item: */
-		items[index].selected=true;
-		
-		{
-		/* Call the selection changed callbacks: */
-		SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::ITEM_SELECTED,index);
-		selectionChangedCallbacks.call(&cbData);
-		}
-		
-		if(moveToPage)
-			{
-			/* Move the selected item to the page if it is not visible: */
-			if(position>index)
-				setPosition(index);
-			else if(position<index-pageSize+1)
-				setPosition(index-pageSize+1);
-			else
-				{
-				/* Update the page slot and invalidate the cache: */
-				pageSlots[index-position].selected=true;
-				++version;
-				}
-			}
-		else
-			{
-			/* Invalidate the page slot cache if the selected item is visible: */
-			if(index>=position&&index<position+pageSize)
-				{
-				pageSlots[index-position].selected=true;
-				++version;
-				}
-			}
-		}
-	
-	/* Remember the last selected item: */
-	int oldLastSelectedItem=lastSelectedItem;
-	lastSelectedItem=index;
-	
-	{
-	/* Call the value changed callbacks: */
-	ValueChangedCallbackData cbData(this,oldLastSelectedItem,lastSelectedItem);
-	valueChangedCallbacks.call(&cbData);
-	}
-	
-	/* Invalidate the visual representation: */
-	update();
-	}
-
-void ListBox::deselectItem(int index,bool moveToPage)
-	{
-	/* Bail out if the request is invalid or a no-op: */
-	if(selectionMode==ALWAYS_ONE)
-		return;
-	if(index<0||size_t(index)>=items.size())
-		return;
-	if(!items[index].selected)
-		return;
-	
-	/* Deselect the item: */
-	items[index].selected=false;
-	
-	{
-	/* Call the selection changed callbacks: */
-	SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::ITEM_DESELECTED,index);
-	selectionChangedCallbacks.call(&cbData);
-	}
-	
-	if(moveToPage)
-		{
-		/* Move the deselected item to the page if it is not visible: */
-		if(position>index)
-			setPosition(index);
-		else if(position<index-pageSize+1)
-			setPosition(index-pageSize+1);
-		}
-	else
-		{
-		/* Invalidate the page slot cache if the deselected item is visible: */
-		if(index>=position&&index<position+pageSize)
-			{
-			pageSlots[index-position].selected=false;
-			++version;
-			}
-		}
-	
-	/* Update the last selected item: */
-	if(selectionMode!=MULTIPLE)
-		{
-		/* Select the invalid element: */
-		int oldLastSelectedItem=lastSelectedItem;
-		lastSelectedItem=-1;
-		
-		/* Call the value changed callbacks: */
-		ValueChangedCallbackData cbData(this,oldLastSelectedItem,lastSelectedItem);
-		valueChangedCallbacks.call(&cbData);
-		}
-	else if(lastSelectedItem!=index)
-		{
-		/* Select the deselected element: */
-		int oldLastSelectedItem=lastSelectedItem;
-		lastSelectedItem=index;
-		
-		/* Call the value changed callbacks: */
-		ValueChangedCallbackData cbData(this,oldLastSelectedItem,lastSelectedItem);
-		valueChangedCallbacks.call(&cbData);
-		}
-	
-	/* Invalidate the visual representation: */
-	update();
-	}
-
 void ListBox::clearSelection(void)
 	{
 	if(selectionMode==MULTIPLE)
@@ -1158,7 +1158,7 @@ void ListBox::clearSelection(void)
 		if(hadSelectedItems)
 			{
 			/* Call the selection changed callbacks: */
-			SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::SELECTION_CLEARED,-1);
+			SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::SELECTION_CLEARED,-1,false);
 			selectionChangedCallbacks.call(&cbData);
 			
 			/* Update the page, assuming that something changed: */
@@ -1171,7 +1171,7 @@ void ListBox::clearSelection(void)
 		items[lastSelectedItem].selected=false;
 		
 		/* Call the selection changed callbacks: */
-		SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::SELECTION_CLEARED,-1);
+		SelectionChangedCallbackData cbData(this,SelectionChangedCallbackData::SELECTION_CLEARED,-1,false);
 		selectionChangedCallbacks.call(&cbData);
 		
 		/* Invalidate the page slot cache if the deselected item is visible: */
@@ -1189,7 +1189,7 @@ void ListBox::clearSelection(void)
 		lastSelectedItem=-1;
 		
 		/* Call the value changed callbacks: */
-		ValueChangedCallbackData cbData(this,oldLastSelectedItem,lastSelectedItem);
+		ValueChangedCallbackData cbData(this,oldLastSelectedItem,lastSelectedItem,false);
 		valueChangedCallbacks.call(&cbData);
 		}
 	

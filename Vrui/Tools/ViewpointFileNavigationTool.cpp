@@ -1,7 +1,7 @@
 /***********************************************************************
 ViewpointFileNavigationTool - Class for tools to play back previously
 saved viewpoint data files.
-Copyright (c) 2007-2015 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -26,11 +26,12 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <stdio.h>
 #include <stdexcept>
 #include <Misc/FileNameExtensions.h>
-#include <Misc/File.h>
 #include <Misc/StandardValueCoders.h>
 #include <Misc/ConfigurationFile.h>
 #include <Misc/MessageLogger.h>
 #include <IO/File.h>
+#include <IO/ValueSource.h>
+#include <IO/OpenFile.h>
 #include <Math/Math.h>
 #include <Math/Matrix.h>
 #include <Geometry/Point.h>
@@ -47,7 +48,6 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <GLMotif/FileSelectionHelper.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/ToolManager.h>
-#include <Vrui/OpenFile.h>
 
 namespace Vrui {
 
@@ -135,7 +135,7 @@ GLMotif::FileSelectionHelper* ViewpointFileNavigationToolFactory::getViewpointSe
 	{
 	/* Create a new file selection helper if there isn't one yet: */
 	if(viewpointSelectionHelper==0)
-		viewpointSelectionHelper=new GLMotif::FileSelectionHelper(getWidgetManager(),"",".view,.views,.curve",openDirectory("."));
+		viewpointSelectionHelper=new GLMotif::FileSelectionHelper(getWidgetManager(),"",".view,.views,.curve");
 	
 	return viewpointSelectionHelper;
 	}
@@ -190,7 +190,7 @@ void ViewpointFileNavigationTool::speedSliderCallback(GLMotif::TextFieldSlider::
 
 void ViewpointFileNavigationTool::createGui(void)
 	{
-	const GLMotif::StyleSheet& ss=*getWidgetManager()->getStyleSheet();
+	const GLMotif::StyleSheet& ss=*getUiStyleSheet();
 	
 	/* Create the playback control dialog window: */
 	controlDialogPopup=new GLMotif::PopupWindow("ControlDialogPopup",getWidgetManager(),"Playback Control");
@@ -228,6 +228,25 @@ void ViewpointFileNavigationTool::createGui(void)
 	popupPrimaryWidget(controlDialogPopup);
 	}
 
+ViewpointFileNavigationTool::ControlPoint ViewpointFileNavigationTool::readControlPoint(IO::ValueSource& file)
+	{
+	/* Read the next control point: */
+	ControlPoint result;
+	for(int i=0;i<3;++i)
+		result.center[i]=Scalar(file.readNumber());
+	result.size=Math::log(Scalar(file.readNumber())); // Sizes are interpolated logarithmically
+	for(int i=0;i<3;++i)
+		result.forward[i]=Scalar(file.readNumber());
+	for(int i=0;i<3;++i)
+		result.up[i]=Scalar(file.readNumber());
+	
+	/* Check the file for correctness: */
+	if(!file.isLiteral('\n'))
+		throw std::runtime_error("Malformed viewpoint file");
+	
+	return result;
+	}
+
 void ViewpointFileNavigationTool::readViewpointFile(const char* fileName)
 	{
 	try
@@ -235,7 +254,7 @@ void ViewpointFileNavigationTool::readViewpointFile(const char* fileName)
 		if(Misc::hasCaseExtension(fileName,".view"))
 			{
 			/* Load a single viewpoint keyframe from the binary view file: */
-			IO::FilePtr viewpointFile=Vrui::openFile(fileName);
+			IO::FilePtr viewpointFile=IO::openFile(fileName);
 			viewpointFile->setEndianness(Misc::LittleEndian);
 			
 			/* Check the header: */
@@ -262,22 +281,23 @@ void ViewpointFileNavigationTool::readViewpointFile(const char* fileName)
 			}
 		else if(Misc::hasCaseExtension(fileName,".views"))
 			{
-			/* Load all viewpoint keyframes from the file: */
-			Misc::File viewpointFile(fileName,"rt");
+			/* Open an ASCII viewpoint file: */
+			IO::ValueSource viewpointFile(IO::openFile(fileName));
+			viewpointFile.setPunctuation("\n");
+			viewpointFile.setWhitespace(" \t\r(),");
+			viewpointFile.skipWs();
 			
+			/* Load all viewpoint keyframes from the file: */
 			Scalar time(0);
-			while(true)
+			while(!viewpointFile.eof())
 				{
 				/* Read the next viewpoint: */
-				Scalar timeInterval;
-				ControlPoint v;
-				if(fscanf(viewpointFile.getFilePtr(),"%lf (%lf, %lf, %lf) %lf (%lf, %lf, %lf) (%lf, %lf, %lf)\n",&timeInterval,&v.center[0],&v.center[1],&v.center[2],&v.size,&v.forward[0],&v.forward[1],&v.forward[2],&v.up[0],&v.up[1],&v.up[2])!=11)
-					break;
+				Scalar timeInterval=Scalar(viewpointFile.readNumber());
+				ControlPoint v=readControlPoint(viewpointFile);
 				
 				/* Store the viewpoint: */
 				time+=timeInterval;
 				times.push_back(time);
-				v.size=Math::log(v.size); // Sizes are interpolated logarithmically
 				viewpoints.push_back(v);
 				}
 			
@@ -366,19 +386,22 @@ void ViewpointFileNavigationTool::readViewpointFile(const char* fileName)
 			}
 		else if(Misc::hasCaseExtension(fileName,".curve"))
 			{
-			/* Load all spline segments from the file: */
-			Misc::File viewpointFile(fileName,"rt");
+			/* Open an ASCII curve file: */
+			IO::ValueSource curveFile(IO::openFile(fileName));
+			curveFile.setPunctuation("\n");
+			curveFile.setWhitespace(" \t\r(),");
+			curveFile.skipWs();
 			
-			while(true)
+			/* Load all spline segments from the file: */
+			while(!curveFile.eof())
 				{
 				SplineSegment s;
 				if(splines.empty())
 					{
 					/* Read the first control point: */
-					ControlPoint cp;
-					if(fscanf(viewpointFile.getFilePtr(),"(%lf, %lf, %lf) %lf (%lf, %lf, %lf) (%lf, %lf, %lf)\n",&cp.center[0],&cp.center[1],&cp.center[2],&cp.size,&cp.forward[0],&cp.forward[1],&cp.forward[2],&cp.up[0],&cp.up[1],&cp.up[2])!=10)
-						break;
-					cp.size=Math::log(cp.size); // Sizes are interpolated logarithmically
+					ControlPoint cp=readControlPoint(curveFile);
+					
+					/* Store the control point: */
 					viewpoints.push_back(cp);
 					times.push_back(Scalar(0));
 					s.t[0]=Scalar(0);
@@ -392,28 +415,17 @@ void ViewpointFileNavigationTool::readViewpointFile(const char* fileName)
 					}
 				
 				/* Read the segment's parameter interval: */
-				double pi;
-				if(fscanf(viewpointFile.getFilePtr(),"%lf\n",&pi)!=1)
-					break;
-				s.t[1]=s.t[0]+Scalar(pi);
+				Scalar parameterInterval=Scalar(curveFile.readNumber());
+				if(!curveFile.isLiteral('\n'))
+					throw std::runtime_error("Malformed viewpoint file");
+				s.t[1]=s.t[0]+parameterInterval;
 				
 				/* Read the intermediate control points: */
-				ControlPoint m0;
-				if(fscanf(viewpointFile.getFilePtr(),"(%lf, %lf, %lf) %lf (%lf, %lf, %lf) (%lf, %lf, %lf)\n",&m0.center[0],&m0.center[1],&m0.center[2],&m0.size,&m0.forward[0],&m0.forward[1],&m0.forward[2],&m0.up[0],&m0.up[1],&m0.up[2])!=10)
-					break;
-				m0.size=Math::log(m0.size); // Sizes are interpolated logarithmically
-				s.p[1]=m0;
-				ControlPoint m1;
-				if(fscanf(viewpointFile.getFilePtr(),"(%lf, %lf, %lf) %lf (%lf, %lf, %lf) (%lf, %lf, %lf)\n",&m1.center[0],&m1.center[1],&m1.center[2],&m1.size,&m1.forward[0],&m1.forward[1],&m1.forward[2],&m1.up[0],&m1.up[1],&m1.up[2])!=10)
-					break;
-				m1.size=Math::log(m1.size); // Sizes are interpolated logarithmically
-				s.p[2]=m1;
+				s.p[1]=readControlPoint(curveFile);
+				s.p[2]=readControlPoint(curveFile);
 				
 				/* Read the last control point: */
-				ControlPoint cp;
-				if(fscanf(viewpointFile.getFilePtr(),"(%lf, %lf, %lf) %lf (%lf, %lf, %lf) (%lf, %lf, %lf)\n",&cp.center[0],&cp.center[1],&cp.center[2],&cp.size,&cp.forward[0],&cp.forward[1],&cp.forward[2],&cp.up[0],&cp.up[1],&cp.up[2])!=10)
-					break;
-				cp.size=Math::log(cp.size); // Sizes are interpolated logarithmically
+				ControlPoint cp=readControlPoint(curveFile);
 				viewpoints.push_back(cp);
 				times.push_back(s.t[1]);
 				s.p[3]=cp;
@@ -428,7 +440,7 @@ void ViewpointFileNavigationTool::readViewpointFile(const char* fileName)
 			Misc::formattedUserError("Curve File Animation: Curve file %s has unrecognized extension %s",fileName,Misc::getExtension(fileName));
 			}
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Display an error message: */
 		Misc::formattedUserError("Curve File Animation: Could not read curve file %s due to exception %s",fileName,err.what());
@@ -583,16 +595,12 @@ void ViewpointFileNavigationTool::initialize(void)
 	/* Load scheduled pauses if the file exists: */
 	try
 		{
-		Misc::File pauseFile(configuration.pauseFileName.c_str(),"rt");
-		while(true)
-			{
-			double pauseTime;
-			if(fscanf(pauseFile.getFilePtr(),"%lf",&pauseTime)!=1)
-				break;
-			pauses.push_back(Scalar(pauseTime));
-			}
+		IO::ValueSource pauseFile(IO::openFile(configuration.pauseFileName.c_str()));
+		pauseFile.skipWs();
+		while(!pauseFile.eof())
+			pauses.push_back(Scalar(pauseFile.readNumber()));
 		}
-	catch(std::runtime_error)
+	catch(const std::runtime_error&)
 		{
 		/* Ignore the error */
 		}

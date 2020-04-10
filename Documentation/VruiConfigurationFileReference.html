@@ -328,6 +328,11 @@ The floor plane is used by some navigation tools or applications to lock the vir
 </TR>
 
 <TR>
+<TD>commandPipeName</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
+<TD>Name of a POSIX named pipe that can be used to send commands to a running Vrui application.</TD>
+</TR>
+
+<TR>
 <TD><A NAME="frontplaneDist">frontplaneDist</A></TD><TD><A HREF="VruiCFGTypes.html#number">number</A></TD>
 <TD>Defines the distance in physical units of the OpenGL front clipping plane from the eye points of Vrui viewers. This defines how closely a viewer can approach 3D objects before the objects are clipped away.</TD>
 </TR>
@@ -460,6 +465,16 @@ The floor plane is used by some navigation tools or applications to lock the vir
 <TR>
 <TD>uiManager</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
 <TD>Name of <A HREF="#uimanagersection">UI manager section</A>. The UI manager is responsible for arranging 2.5D UI components in physical space.</TD>
+</TR>
+
+<TR>
+<TD>textEntryMethod</TD><TD><A HREF="VruiCFGTypes.html#enumerant">enumerant</A></TD>
+<TD><DL>
+<DT>Keyboard</DT>
+<DD>Uses a real keyboard to enter text. Requires an active mouse input device adapter.</DD>
+<DT>Quikwriting</DT>
+<DD>Uses a Quikwriting panel to enter text.</DD>
+</DL></TD>
 </TR>
 
 <TR>
@@ -1088,6 +1103,11 @@ The floor plane is used by some navigation tools or applications to lock the vir
 <TR><TH>Setting Tag</TH><TH>Setting Value Type</TH><TH>Setting Description</TH></TR>
 
 <TR>
+<TD>baseDirectory</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
+<TD>Common base directory for all files read or created during playback.</TD>
+</TR>
+
+<TR>
 <TD>inputDeviceDataFileName</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
 <TD>Name of the input file from which to read input device data. The file must have been created by saving input device data from a previous run of the same Vrui application, in the exact same environment; otherwise, results are undefined.</TD>
 </TR>
@@ -1182,6 +1202,11 @@ The floor plane is used by some navigation tools or applications to lock the vir
 
 <TABLE BORDER=1 CELLPADDING=4 CELLSPACING=1>
 <TR><TH>Setting Tag</TH><TH>Setting Value Type</TH><TH>Setting Description</TH></TR>
+
+<TR>
+<TD>baseDirectory</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
+<TD>Common base directory for all files created during recording.</TD>
+</TR>
 
 <TR>
 <TD>inputDeviceDataFileName</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
@@ -1594,6 +1619,21 @@ The floor plane is used by some navigation tools or applications to lock the vir
 </TR>
 
 <TR>
+<TD>enableButtonDevice</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
+<TD>Name of an input device carrying a button used to enable rendering to this window. Typically for head-mounted devices featuring a face detection sensor.</TD>
+</TR>
+
+<TR>
+<TD>enableButton</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
+<TD>Name of the enable button on the enable button device.</TD>
+</TR>
+
+<TR>
+<TD>invertEnableButton</TD><TD><A HREF="VruiCFGTypes.html#boolean">boolean</A></TD>
+<TD>Flag to invert the state of the enable button, i.e., whether to enable this window while the button is not pressed.</TD>
+</TR>
+
+<TR>
 <TD>toolKillZonePos</TD><TD><A HREF="VruiCFGTypes.html#windowpoint">window point</A></TD>
 <TD>Setting to override the position of the tool kill zone when moving/resizing panning-viewport windows. By default, the position of the tool kill zone is given in physical coordinates and does not move with the window. If this tag is set, the tool kill zone will always stay at the given relative window coordinates. Relative window coordinates map (0, 0) to the lower-left window corner and (1, 1) to the top-right window corner.</TD>
 </TR>
@@ -1630,7 +1670,22 @@ The floor plane is used by some navigation tools or applications to lock the vir
 
 <TR>
 <TD>saveMovie</TD><TD><A HREF="VruiCFGTypes.html#boolean">boolean</A></TD>
-<TD>Flag to enable saving the contents of this window as a movie, either as a sequence of frames or directly as an Ogg/Theora video file.</TD>
+<TD>Flag to enable saving the contents of this window as a movie, either as a sequence of frames or directly as an Ogg/Theora video file. Recording does not start until the pause/resume key is pressed for the first time.</TD>
+</TR>
+
+<TR>
+<TD>saveMovieAutostart</TD><TD><A HREF="VruiCFGTypes.html#boolean">boolean</A></TD>
+<TD>Flag to start saving movie frames immediately.</TD>
+</TR>
+
+<TR>
+<TD>pauseMovieSaverKey</TD><TD><A HREF="VruiCFGTypes.html#qualifiedkeyname">qualified key name</A></TD>
+<TD>Key to pause/resume saving movie frames when the saveMovie flag is true. While paused after initial resume, the movie saver repeatedly writes the most recent movie frame. Defaults to Super+Pause.</TD>
+</TR>
+
+<TR>
+<TD>movieBaseDirectory</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
+<TD>Common base directory for all files created during movie creation.</TD>
 </TR>
 
 <TR>
@@ -1640,7 +1695,7 @@ The floor plane is used by some navigation tools or applications to lock the vir
 
 <TR>
 <TD>movieFileName</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
-<TD>Name of Ogg/Theora video file to create.</TD>
+<TD>Name of Ogg/Theora video file to create. Relative to common base directory unless it starts with a /.</TD>
 </TR>
 
 <TR>
@@ -1660,7 +1715,7 @@ The floor plane is used by some navigation tools or applications to lock the vir
 
 <TR>
 <TD>movieFrameNameTemplate</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
-<TD>Printf-style name template for movie frame images when not saving to an Ogg/Theora video file. The format string must contain exactly one %u placeholder, and no other placeholders.</TD>
+<TD>Printf-style name template for movie frame images when not saving to an Ogg/Theora video file. The format string must contain exactly one %u placeholder, and no other placeholders. Relative to common base directory unless it starts with a /.</TD>
 </TR>
 
 <TR>
@@ -1670,7 +1725,7 @@ The floor plane is used by some navigation tools or applications to lock the vir
 
 <TR>
 <TD>movieSoundFileName</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
-<TD>Name of sound file to record while saving a movie. If not specified, no sound will be recorded.</TD>
+<TD>Name of sound file to record while saving a movie. If not specified, no sound will be recorded. Relative to common base directory unless it starts with a /.</TD>
 </TR>
 
 <TR>
@@ -1808,6 +1863,11 @@ The floor plane is used by some navigation tools or applications to lock the vir
 <TD>fixContrast</TD><TD><A HREF="VruiCFGTypes.html#boolean">boolean</A></TD>
 <TD>Flag to enable or disable automatic contrast reduction when OLED overdrive correction is enabled. Default value is true.</TD>
 </TR>
+
+<TR>
+<TD>ipdDisplayTimeout</TD><TD><A HREF="VruiCFGTypes.html#number"></A>number</TD>
+<TD>Time-out for the IPD display dialog when IPD is changed by the HMD hardware in seconds.</TD>
+</TR>
 </TABLE>
 
 <H4><A NAME="lensdistortionfunctionsections">Lens Distortion Function Sections</A></H4>
@@ -1941,6 +2001,21 @@ The floor plane is used by some navigation tools or applications to lock the vir
 <DD>Ditto, with minimum and maximum gain clamping.</DD>
 </DL></TD>
 </TR>
+
+<TR>
+<TD>referenceDistance</TD><TD><A HREF="VruiCFGTypes.html#number">number</A></TD>
+<TD>Recommended reference distance for sound sources in physical coordinate units.</TD>
+</TR>
+
+<TR>
+<TD>rolloffFactor</TD><TD><A HREF="VruiCFGTypes.html#number">number</A></TD>
+<TD>Recommended roll-off factor for sound sources.</TD>
+</TR>
+
+<TR>
+<TD>recordingDeviceName</TD><TD><A HREF="VruiCFGTypes.html#string">string</A></TD>
+<TD>Name of a sound recording device associated with this sound context.</TD>
+</TR>
 </TABLE>
 
 <H2><A NAME="uimanagersection">UI Manager Section</A></H2>
@@ -2065,6 +2140,11 @@ settings</A>.</DD>
 <DT>Frustum</DT><DD>3D frustum kill zone, defined by a viewer, a screen, and a box in screen coordinates. Covers all input devices that are projected into the screen space box from the viewer's head position. Rest of section contains <A HREF="#killzonefrustumsettings">frustum tool kill zone settings</A>.</DD>
 </DL>
 </TD>
+</TR>
+
+<TR>
+<TD>killZoneActive</TD><TD><A HREF="VruiCFGTypes.html#boolean">boolean</A></TD>
+<TD>Flag whether the tool kill zone is active, i.e., deletes tools on contact.</TD>
 </TR>
 
 <TR>

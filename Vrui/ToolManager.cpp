@@ -1,7 +1,7 @@
 /***********************************************************************
 ToolManager - Class to manage tool classes, and dynamic assignment of
 tools to input devices.
-Copyright (c) 2004-2018 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -548,6 +548,54 @@ void ToolManager::addClassToMenu(ToolFactory* newFactory)
 	menu->manageMenu();
 	}
 
+void ToolManager::removeClassFromMenu(ToolFactory* factory)
+	{
+	/* Extract the tool factory's ancestor classes: */
+	const ToolFactory* ancestor=factory;
+	std::vector<const ToolFactory*> ancestors;
+	while(true)
+		{
+		ancestor=!ancestor->getParents().empty()?dynamic_cast<const ToolFactory*>(ancestor->getParents().front()):0;
+		if(ancestor==0)
+			break;
+		ancestors.push_back(ancestor);
+		}
+	
+	/* Traverse the tool menu: */
+	GLMotif::PopupMenu* menu=toolMenuPopup;
+	for(std::vector<const ToolFactory*>::reverse_iterator aIt=ancestors.rbegin();aIt!=ancestors.rend();++aIt)
+		{
+		GLMotif::Widget* ancestorWidget=menu->getMenu()->findChild((*aIt)->getClassName());
+		GLMotif::CascadeButton* ancestorCascade=dynamic_cast<GLMotif::CascadeButton*>(ancestorWidget);
+		if(ancestorCascade!=0)
+			{
+			/* Go to the ancestor's tool submenu: */
+			menu=static_cast<GLMotif::PopupMenu*>(ancestorCascade->getPopup());
+			}
+		else
+			{
+			/* Got lost somewhere: */
+			menu=0;
+			break;
+			}
+		}
+	
+	if(menu!=0)
+		{
+		/* Find the tool factory's button in the menu: */
+		GLMotif::Button* factoryButton=dynamic_cast<GLMotif::Button*>(menu->getMenu()->findChild(factory->getClassName()));
+		if(factoryButton!=0)
+			{
+			/* Remove the factory's button: */
+			menu->getMenu()->removeChild(factoryButton);
+			}
+		else
+			throw std::runtime_error("Vrui::ToolManager::removeClassFromMenu: Removed class's button not found");
+		}
+	else
+		throw std::runtime_error("Vrui::ToolManager::removeClassFromMenu: Removed class's sub-menu not found");
+	}
+
 void ToolManager::inputDeviceDestructionCallback(Misc::CallbackData* cbData)
 	{
 	/* Check if the tool manager is in tool creation mode: */
@@ -620,12 +668,12 @@ void ToolManager::toolCreationDeviceMotionCallback(Misc::CallbackData* cbData)
 	}
 
 ToolManager::ToolManager(InputDeviceManager* sInputDeviceManager,const Misc::ConfigurationFileSection& sConfigFileSection)
-	:Plugins::FactoryManager<ToolFactory>(sConfigFileSection.retrieveString("./toolDsoNameTemplate",VRUI_INTERNAL_CONFIG_TOOLDSONAMETEMPLATE)),
+	:Plugins::FactoryManager<ToolFactory>(sConfigFileSection.retrieveString("./toolDsoNameTemplate",VRUI_INTERNAL_CONFIG_TOOLDIR "/" VRUI_INTERNAL_CONFIG_TOOLNAMETEMPLATE)),
 	 inputGraphManager(sInputDeviceManager->getInputGraphManager()),
 	 inputDeviceManager(sInputDeviceManager),
 	 configFileSection(new Misc::ConfigurationFileSection(sConfigFileSection)),
 	 toolCreationDevice(0),toolCreationTool(0),
-	 toolMenuPopup(0),toolMenu(0),toolCreationState(0),
+	 toolMenuPopup(0),toolMenu(0),toolCreationState(0),callCreatedToolFrame(false),
 	 toolKillZone(0)
 	{
 	typedef std::vector<std::string> StringList;
@@ -782,11 +830,8 @@ void ToolManager::addClass(ToolFactory* newFactory,ToolManager::BaseClass::Destr
 		}
 	}
 
-void ToolManager::releaseClass(const char* className)
+void ToolManager::releaseClass(ToolFactory* factory)
 	{
-	/* Get a pointer to the given class' factory object: */
-	ToolFactory* factory=getFactory(className);
-	
 	/* Bail out if the class does not exist: */
 	if(factory==0)
 		return;
@@ -804,8 +849,15 @@ void ToolManager::releaseClass(const char* className)
 		destroyTool(*tIt);
 		}
 	
+	/* Check if the tool selection menu already/still exists: */
+	if(toolMenuPopup!=0)
+		{
+		/* Remove the class from the tool selection menu: */
+		removeClassFromMenu(factory);
+		}
+	
 	/* Call the base class method to release the tool class: */
-	BaseClass::releaseClass(className);
+	BaseClass::releaseClass(factory);
 	}
 
 void ToolManager::addClass(const char* className)
@@ -915,6 +967,12 @@ void ToolManager::loadDefaultTools(void)
 	/* Read all tool bindings from the given section: */
 	Misc::ConfigurationFileSection defaultToolSection=configFileSection->getSection(defaultToolSectionName.c_str());
 	inputGraphManager->loadInputGraph(defaultToolSection);
+	}
+
+void ToolManager::enterMainLoop(void)
+	{
+	/* Call new tools' frame methods: */
+	callCreatedToolFrame=true;
 	}
 
 void ToolManager::startToolCreation(const InputDeviceFeature& feature)
@@ -1049,6 +1107,10 @@ Tool* ToolManager::createTool(ToolFactory* factory,const ToolInputAssignment& ti
 		MenuTool* menuTool=dynamic_cast<MenuTool*>(newTool);
 		if(menuTool!=0&&menuTool->getMenu()==0)
 			menuTool->setMenu(getMainMenu());
+		
+		/* Call the newly-created tool's frame method if we are inside Vrui's main loop: */
+		if(callCreatedToolFrame)
+			newTool->frame();
 		}
 	catch(...)
 		{
@@ -1185,6 +1247,49 @@ void ToolManager::update(void)
 	
 	/* Clear the tool management queue: */
 	toolManagementQueue.clear();
+	}
+
+void ToolManager::destroyTools(void)
+	{
+	/* Delete all tools: */
+	for(ToolList::iterator tIt=tools.begin();tIt!=tools.end();++tIt)
+		{
+		#if DEBUGGING
+		std::cout<<"TM: Tool deletion process for "<<*tIt<<" of class "<<(*tIt)->getFactory()->getName()<<std::endl;
+		#endif
+		
+		/* De-initialize the tool: */
+		#if DEBUGGING
+		std::cout<<"TM: De-initializing tool "<<*tIt<<std::endl;
+		#endif
+		(*tIt)->deinitialize();
+		
+		/* Call tool destruction callbacks: */
+		#if DEBUGGING
+		std::cout<<"TM: Calling destruction callbacks for tool "<<*tIt<<std::endl;
+		#endif
+		ToolDestructionCallbackData cbData(*tIt);
+		toolDestructionCallbacks.call(&cbData);
+		
+		/* Remove the tool from the input graph: */
+		#if DEBUGGING
+		std::cout<<"TM: Removing tool "<<*tIt<<" from input graph manager"<<std::endl;
+		#endif
+		inputGraphManager->removeTool(*tIt);
+		
+		/* Delete the tool: */
+		#if DEBUGGING
+		std::cout<<"TM: Deleting tool "<<*tIt<<std::endl;
+		#endif
+		(*tIt)->getFactory()->destroyTool(*tIt);
+		
+		#if DEBUGGING
+		std::cout<<"TM: Finished tool deletion process for "<<*tIt<<std::endl;
+		#endif
+		}
+	
+	/* Clear the tools list: */
+	tools.clear();
 	}
 
 void ToolManager::glRenderAction(GLContextData& contextData) const

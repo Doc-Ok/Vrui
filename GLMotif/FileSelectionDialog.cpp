@@ -1,6 +1,6 @@
 /***********************************************************************
 FileSelectionDialog - A popup window to select a file name.
-Copyright (c) 2008-2012 Oliver Kreylos
+Copyright (c) 2008-2020 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -26,7 +26,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <string>
 #include <vector>
 #include <algorithm>
-#include <Misc/StringMarshaller.h>
 #include <Misc/FileNameExtensions.h>
 #include <Misc/GetCurrentDirectory.h>
 #include <Misc/FileTests.h>
@@ -306,7 +305,7 @@ bool FileSelectionDialog::selectListItem(int selectedItem)
 			
 			return true;
 			}
-		catch(std::runtime_error)
+		catch(const std::runtime_error&)
 			{
 			return false;
 			}

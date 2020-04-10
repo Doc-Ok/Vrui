@@ -1,0 +1,642 @@
+/***********************************************************************
+PolygonTriangulator - Class to split a simple (non-self-intersecting)
+non-convex polygon in the 2D plane into a set of triangles covering its
+interior.
+Copyright (c) 2018-2019 Oliver Kreylos
+
+This file is part of the Templatized Geometry Library (TGL).
+
+The Templatized Geometry Library is free software; you can redistribute
+it and/or modify it under the terms of the GNU General Public License as
+published by the Free Software Foundation; either version 2 of the
+License, or (at your option) any later version.
+
+The Templatized Geometry Library is distributed in the hope that it will
+be useful, but WITHOUT ANY WARRANTY; without even the implied warranty
+of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with the Templatized Geometry Library; if not, write to the Free
+Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+02111-1307 USA
+***********************************************************************/
+
+#define GEOMETRY_POLYGONTRIANGULATOR_IMPLEMENTATION
+
+#include <Geometry/PolygonTriangulator.h>
+
+// DEBUGGING
+#if 0
+#include <stdexcept>
+#include <iostream>
+#endif
+
+namespace Geometry {
+
+/******************************************
+Methods of class PolygonTriangulator::Edge:
+******************************************/
+
+template <class ScalarParam>
+inline
+typename PolygonTriangulator<ScalarParam>::Scalar
+PolygonTriangulator<ScalarParam>::Edge::calcIntercept(
+	typename PolygonTriangulator<ScalarParam>::Scalar y) const
+	{
+	if(y<v1[1])
+		return v0[0]+(v1[0]-v0[0])*(y-v0[1])/(v1[1]-v0[1]);
+	else
+		return v1[1];
+	}
+
+/*********************************************
+Embedded classes of class PolygonTriangulator:
+*********************************************/
+
+template <class ScalarParam>
+struct PolygonTriangulator<ScalarParam>::EdgeEvent
+	{
+	/* Embedded classes: */
+	public:
+	enum EventType // Type of edge event
+		{
+		Start,End,Intersect
+		};
+	
+	/* Elements: */
+	public:
+	EventType eventType; // Type of this edge event
+	Point p; // Position where the edge event occurs
+	const Edge* edge; // Edge affected by event
+	const Edge* otherEdge; // Other edge involved in an intersect event
+	
+	/* Constructors and destructors: */
+	EdgeEvent(EventType sEventType,const Point& sP,const Edge& sEdge) // Creates a start or end event
+		:eventType(sEventType),p(sP),edge(&sEdge)
+		{
+		}
+	EdgeEvent(const Point& sP,const Edge& sEdge,const Edge& sOtherEdge) // Creates an intersect event
+		:eventType(Intersect),p(sP),edge(&sEdge),otherEdge(&sOtherEdge)
+		{
+		}
+	
+	/* Methods: */
+	static bool lessEqual(const EdgeEvent& ee0,const EdgeEvent& ee1) // Comparison operator for priority heap
+		{
+		/* Edge events are processed in order of increasing y coordinate, and then in order of increasing x coordinate: */
+		if(ee0.p[1]<ee1.p[1])
+			return true;
+		else if(ee0.p[1]>ee1.p[1])
+			return false;
+		
+		if(ee0.p[0]<ee1.p[0])
+			return true;
+		else if(ee0.p[0]>ee1.p[0])
+			return false;
+		
+		/* If both components are the same, and both events are the same type, then the events must be ordered based on the slopes of their respective edges: */
+		if(ee0.eventType==Start&&ee1.eventType==Start)
+			{
+			/* Order the events by the end points of their respective edges: */
+			if(ee0.edge->v1[1]<ee1.edge->v1[1])
+				return ee0.edge->v1[0]<=ee1.edge->calcIntercept(ee0.edge->v1[1]);
+			else if(ee0.edge->v1[1]>ee1.edge->v1[1])
+				return ee0.edge->calcIntercept(ee1.edge->v1[1])<=ee1.edge->v1[0];
+			else
+				return ee0.edge->v1[0]<=ee1.edge->v1[0];
+			}
+		else if(ee0.eventType==End&&ee1.eventType==End)
+			{
+			/* Order the events by the start points of their respective edges: */
+			if(ee0.edge->v0[1]<ee1.edge->v0[1])
+				return ee0.edge->calcIntercept(ee1.edge->v0[1])<=ee1.edge->v0[0];
+			else if(ee0.edge->v0[1]>ee1.edge->v0[1])
+				return ee0.edge->v0[0]<=ee1.edge->calcIntercept(ee0.edge->v0[1]);
+			else
+				return ee0.edge->v0[0]<=ee1.edge->v0[0];
+			}
+		
+		/* If the events are of mixed type, process end events before start events: */
+		return ee0.eventType==End;
+		}
+	};
+
+template <class ScalarParam>
+struct PolygonTriangulator<ScalarParam>::PolygonVertex
+	{
+	/* Elements: */
+	public:
+	Point pos; // Vertex position
+	Index i; // Vertex index
+	PolygonVertex* pred; // Pointer to previous polygon vertex
+	PolygonVertex* succ; // Pointer to next polygon vertex
+	
+	/* Constructors and destructors: */
+	PolygonVertex(const Point& sPos,Index sI,PolygonVertex* sPred,PolygonVertex* sSucc)
+		:pos(sPos),i(sI),pred(sPred),succ(sSucc)
+		{
+		}
+	PolygonVertex(const Vertex& sVertex,PolygonVertex* sPred,PolygonVertex* sSucc)
+		:pos(sVertex),i(sVertex.i),pred(sPred),succ(sSucc)
+		{
+		}
+	
+	/* Methods: */
+	static bool checkEar(PolygonVertex* mid,std::vector<Index>& triangleVertexIndices) // Checks if the three polygon vertices around the given one form a convex "ear" and emits a triangle into the vector of vertex index triples if so
+		{
+		/* Check if the triangle is degenerate: */
+		if(mid->pos==mid->pred->pos||mid->pos==mid->succ->pos||mid->pred->pos==mid->succ->pos)
+			{
+			// DEBUGGING
+			// std::cout<<"Omitting degenerate triangle "<<mid->pos<<", "<<mid->succ->pos<<", "<<mid->pred->pos<<std::endl;
+			
+			/* Remove the triangle from the vertex list: */
+			mid->pred->succ=mid->succ;
+			mid->succ->pred=mid->pred;
+			delete mid;
+			
+			return true;
+			}
+		
+		/* Check if the three vertices are oriented correctly: */
+		Vector l=mid->pred->pos-mid->pos;
+		Vector r=mid->succ->pos-mid->pos;
+		if(r[0]*l[1]>r[1]*l[0])
+			{
+			// DEBUGGING
+			// std::cout<<"Emitting triangle "<<mid->pos<<", "<<mid->succ->pos<<", "<<mid->pred->pos<<std::endl;
+			
+			/* Emit the triangle: */
+			triangleVertexIndices.push_back(mid->i);
+			triangleVertexIndices.push_back(mid->succ->i);
+			triangleVertexIndices.push_back(mid->pred->i);
+			
+			/* Remove the triangle from the vertex list: */
+			mid->pred->succ=mid->succ;
+			mid->succ->pred=mid->pred;
+			delete mid;
+			
+			return true;
+			}
+		else
+			return false;
+		}
+	};
+
+template <class ScalarParam>
+struct PolygonTriangulator<ScalarParam>::ActiveEdge
+	{
+	/* Elements: */
+	public:
+	const Edge* edge; // Pointer to the corresponding edge in the edge list
+	Vector d; // Vector between the edge's end points
+	PolygonVertex* leftTail; // Pointer to last polygon vertex in active interval to the left of this edge, or 0
+	PolygonVertex* rightHead; // Pointer to first polygon vertex in active interval to the right of this edge, or 0
+	
+	/* Constructors and destructors: */
+	ActiveEdge(const Edge* sEdge)
+		:edge(sEdge),d(edge->v1-edge->v0),
+		 leftTail(0),rightHead(0)
+		{
+		}
+	
+	/* Methods: */
+	Scalar calcIntercept(Scalar y) const // Calculates the x coordinate of the edge's intersection with the given horizontal line, assumed to be inside the edge's y interval
+		{
+		if(y<edge->v1[1])
+			return edge->v0[0]+d[0]*(y-edge->v0[1])/d[1];
+		else
+			return edge->v1[0];
+		}
+	void addLeftVertex(const Vertex& newV,std::vector<Index>& triangleVertexIndices) // Adds a vertex to the tail of the active edge's left polygon
+		{
+		/* Add the new vertex: */
+		leftTail=leftTail->succ=new PolygonVertex(newV,leftTail,0);
+		
+		/* Triangulate potential ears created by the addition of the new vertex: */
+		while(leftTail->pred!=0&&leftTail->pred->pred!=0&&PolygonVertex::checkEar(leftTail->pred,triangleVertexIndices))
+			;
+		}
+	void addRightVertex(const Vertex& newV,std::vector<Index>& triangleVertexIndices) // Adds a vertex to the head of the active edge's right polygon
+		{
+		/* Add the new vertex: */
+		rightHead=rightHead->pred=new PolygonVertex(newV,0,rightHead);
+		
+		/* Triangulate potential ears created by the addition of the new vertex: */
+		while(rightHead->succ!=0&&rightHead->succ->succ!=0&&PolygonVertex::checkEar(rightHead->succ,triangleVertexIndices))
+			;
+		}
+	};
+
+template <class ScalarParam>
+class PolygonTriangulator<ScalarParam>::ActiveEdgeComp
+	{
+	/* Elements: */
+	public:
+	Scalar y; // Y coordinate of the sweep line position
+	
+	/* Constructors and destructors: */
+	public:
+	ActiveEdgeComp(Scalar sY)
+		:y(sY)
+		{
+		}
+	
+	/* Methods: */
+	bool lessEqual(const ActiveEdge& ae1,const ActiveEdge& ae2) const
+		{
+		/*****************************************************************
+		Compare the edges by their intersections with the sweep line
+		first; then, if those are equal, compare by their intercepts with
+		a horizontal line through the shorter edge's endpoint. This is to
+		ensure that the comparison comes out the same way in either order
+		of comparison, regardless of numerical errors.
+		*****************************************************************/
+		
+		Scalar x1=ae1.calcIntercept(y);
+		Scalar x2=ae2.calcIntercept(y);
+		if(x1<x2)
+			return true;
+		else if(x1>x2)
+			return false;
+		else if(ae1.edge->v1[1]<ae2.edge->v1[1])
+			return ae1.edge->v1[0]<=ae2.calcIntercept(ae1.edge->v1[1]);
+		else if(ae1.edge->v1[1]>ae2.edge->v1[1])
+			return ae1.calcIntercept(ae2.edge->v1[1])<=ae2.edge->v1[0];
+		else
+			return ae1.edge->v1[0]<=ae2.edge->v1[0];
+		}
+	};
+
+/************************************
+Methods of class PolygonTriangulator:
+************************************/
+
+template <class ScalarParam>
+inline
+PolygonTriangulator<ScalarParam>::PolygonTriangulator(
+	void)
+	{
+	}
+
+template <class ScalarParam>
+inline
+void
+PolygonTriangulator<ScalarParam>::triangulate(
+	typename PolygonTriangulator<ScalarParam>::IndexList& triangleVertexIndices) const
+	{
+	/* Create edge events for all edges: */
+	EdgeEventPriorityList edgeEvents; // List of edge events in order of increasing y coordinate
+	for(typename std::vector<Edge>::const_iterator eIt=edges.begin();eIt!=edges.end();++eIt)
+		{
+		/* Add a start event to the edge event list: */
+		edgeEvents.insert(EdgeEvent(EdgeEvent::Start,eIt->v0,*eIt));
+		
+		/* Add an end event to the edge event list: */
+		edgeEvents.insert(EdgeEvent(EdgeEvent::End,eIt->v1,*eIt));
+		}
+	
+	/* Initialize the scan line algorithm by starting at the first edge event, which must be a start event: */
+	ActiveEdgeComp sweep(edgeEvents.getSmallest().p[1]);
+	
+	/* Initialize the active edge list by collecting all edges starting at the minimum y coordinate: */
+	ActiveEdgeList activeEdges;
+	typename ActiveEdgeList::iterator prevAeIt=activeEdges.end();
+	ActiveEdgeMap activeEdgeMap(17);
+	while(!edgeEvents.isEmpty()&&edgeEvents.getSmallest().p[1]==sweep.y)
+		{
+		/* Add a new active edge to the list: */
+		typename ActiveEdgeList::iterator aeIt=activeEdges.insertAfter(ActiveEdge(edgeEvents.getSmallest().edge),sweep);
+		edgeEvents.removeSmallest();
+		activeEdgeMap[aeIt->edge]=aeIt;
+		
+		/* Check if this is the second edge of an active interval: */
+		if(prevAeIt!=activeEdges.end())
+			{
+			/* Initialize the active interval's untriangulated polygon: */
+			aeIt->leftTail=prevAeIt->rightHead=new PolygonVertex(prevAeIt->edge->v0,0,0);
+			if(prevAeIt->edge->v0[0]<aeIt->edge->v0[0])
+				aeIt->addLeftVertex(aeIt->edge->v0,triangleVertexIndices);
+			
+			/* Reset the left edge iterator: */
+			prevAeIt=activeEdges.end();
+			}
+		else
+			prevAeIt=aeIt;
+		}
+	
+	/* Process all edge events in increasing y order: */
+	while(!edgeEvents.isEmpty())
+		{
+		// DEBUGGING
+		#if 0
+		for(typename ActiveEdgeList::iterator aeIt1=activeEdges.begin();aeIt1!=activeEdges.end();++aeIt1)
+			{
+			typename ActiveEdgeList::iterator aeIt2=aeIt1;
+			++aeIt2;
+			if(aeIt2==activeEdges.end())
+				throw std::runtime_error("Odd number of active edges!");
+			
+			std::cout<<"Active interval between "<<aeIt1->edge->calcIntercept(sweep.y)<<" and "<<aeIt2->edge->calcIntercept(sweep.y)<<std::endl;
+			
+			aeIt1=aeIt2;
+			}
+		#endif
+		
+		/* Go to the next scan line: */
+		sweep.y=edgeEvents.getSmallest().p[1];
+		
+		// DEBUGGING
+		#if 0
+		/* Check that the current list of active edges is internally consistent: */
+		for(typename ActiveEdgeList::iterator aeIt1=activeEdges.begin();aeIt1!=activeEdges.end();++aeIt1)
+			{
+			typename ActiveEdgeList::iterator aeIt2=aeIt1;
+			++aeIt2;
+			if(aeIt2==activeEdges.end())
+				throw std::runtime_error("Odd number of active edges!");
+			
+			if(aeIt1->leftTail!=0)
+				throw std::runtime_error("Left interval edge has polygon tail");
+			if(aeIt1->rightHead==0)
+				throw std::runtime_error("Left interval edge has no polygon head");
+			if(aeIt2->leftTail==0)
+				throw std::runtime_error("Right interval edge has no polygon tail");
+			if(aeIt2->rightHead!=0)
+				throw std::runtime_error("Right interval edge has polygon head");
+			
+			PolygonVertex* pv;
+			for(pv=aeIt1->rightHead;pv->succ!=0;pv=pv->succ)
+				;
+			if(pv!=aeIt2->leftTail)
+				throw std::runtime_error("Interval polygon doesn't link to right edge");
+			for(pv=aeIt2->leftTail;pv->pred!=0;pv=pv->pred)
+				;
+			if(pv!=aeIt1->rightHead)
+				throw std::runtime_error("Interval polygon doesn't link to left edge");
+			
+			aeIt1=aeIt2;
+			}
+		#endif
+		
+		/*****************************************************************
+		Process edge events on the new scan line in pairs, going left to
+		right, to distinguish a small number of different update cases:
+		*****************************************************************/
+		
+		while(!edgeEvents.isEmpty()&&edgeEvents.getSmallest().p[1]==sweep.y)
+			{
+			/* Get the first edge event in the pair: */
+			EdgeEvent ee1=edgeEvents.getSmallest();
+			edgeEvents.removeSmallest();
+			
+			/* Edge events must come in pairs, but check anyway: */
+			if(edgeEvents.isEmpty()||edgeEvents.getSmallest().p[1]!=sweep.y)
+				throw HoleInPolygon;
+			EdgeEvent ee2=edgeEvents.getSmallest();
+			edgeEvents.removeSmallest();
+			
+			// DEBUGGING
+			#if 0
+			std::cout<<"Event pair:"<<std::endl;
+			if(ee1.eventType==EdgeEvent::Start)
+				std::cout<<"  Edge start event at "<<ee1.p[0]<<std::endl;
+			else if(ee1.eventType==EdgeEvent::End)
+				std::cout<<"  Edge end event at "<<ee1.p[0]<<std::endl;
+			if(ee2.eventType==EdgeEvent::Start)
+				std::cout<<"  Edge start event at "<<ee2.p[0]<<std::endl;
+			else if(ee2.eventType==EdgeEvent::End)
+				std::cout<<"  Edge end event at "<<ee2.p[0]<<std::endl;
+			#endif
+			
+			/* Check the type of the event pair: */
+			if(ee1.eventType==EdgeEvent::Start&&ee2.eventType==EdgeEvent::Start)
+				{
+				/*************************************************************
+				This event pair either opens a new active interval, or splits
+				an existing one.
+				*************************************************************/
+				
+				/* Insert two new active edges into the list: */
+				typename ActiveEdgeList::iterator aeIt1=activeEdges.insertAfter(ActiveEdge(ee1.edge),sweep);
+				activeEdgeMap[aeIt1->edge]=aeIt1;
+				typename ActiveEdgeList::iterator aeIt2=activeEdges.insertAfter(ActiveEdge(ee2.edge),sweep);
+				activeEdgeMap[aeIt2->edge]=aeIt2;
+				
+				/* Check if the two new edges are neighbors; if not, there is self-intersection and shit happens: */
+				typename ActiveEdgeList::iterator aet1=aeIt1;
+				++aet1;
+				typename ActiveEdgeList::iterator aet2=aeIt2;
+				--aet2;
+				if(aet1!=aeIt2||aet2!=aeIt1)
+					throw SelfIntersection;
+				
+				/* Find the left neighbor of the left new edge, and the right neighbor of the right new edge: */
+				typename ActiveEdgeList::iterator aeIt0=aeIt1;
+				--aeIt0;
+				typename ActiveEdgeList::iterator aeIt3=aeIt2;
+				++aeIt3;
+				
+				/* Check if the new edges are inside an active interval: */
+				if(aeIt0!=activeEdges.end()&&aeIt0->rightHead!=0)
+					{
+					/***********************************************************
+					Split the existing active interval's untriangulated polygon
+					between the two halves of the split interval.
+					***********************************************************/
+					
+					/* Find the first polygon vertex that would form an ear if connected to the right edge of the left interval part: */
+					PolygonVertex* split=aeIt0->rightHead;
+					while(split->succ!=0)
+						{
+						/* Check if the current polygon vertex would form an ear: */
+						PolygonVertex* succ=split->succ;
+						Vector v1=succ->pos-split->pos;
+						Vector v2=aeIt1->edge->v0-split->pos;
+						if(v1[0]*v2[1]>v1[1]*v2[0])
+							break;
+						
+						/* Go to the next polygon vertex: */
+						split=succ;
+						}
+					
+					/* Split the untriangulated polygon by duplicating the split vertex: */
+					PolygonVertex* split2=new PolygonVertex(split->pos,split->i,0,split->succ);
+					split->succ=0;
+					aeIt1->leftTail=split;
+					aeIt2->rightHead=split2;
+					if(split2->succ!=0)
+						split2->succ->pred=split2;
+					else
+						aeIt3->leftTail=split2;
+					
+					/* Insert the new active edges' starting vertices into their respective untriangulated polygons: */
+					aeIt1->addLeftVertex(aeIt1->edge->v0,triangleVertexIndices);
+					aeIt2->addRightVertex(aeIt1->edge->v0,triangleVertexIndices);
+					if(aeIt1->edge->v0[0]<aeIt2->edge->v0[0])
+						aeIt2->addRightVertex(aeIt2->edge->v0,triangleVertexIndices);
+					}
+				else
+					{
+					/* Create a new active interval: */
+					aeIt2->leftTail=aeIt1->rightHead=new PolygonVertex(aeIt1->edge->v0,0,0);
+					if(aeIt1->edge->v0[0]<aeIt2->edge->v0[0])
+						aeIt2->addLeftVertex(aeIt2->edge->v0,triangleVertexIndices);
+					}
+				}
+			else if(ee1.eventType==EdgeEvent::End&&ee2.eventType==EdgeEvent::End)
+				{
+				/*************************************************************
+				This event pair either closes an active interval, or merges
+				two existing ones.
+				*************************************************************/
+				
+				/* Retrieve the active edge pair associated with this event from the active edge map: */
+				typename ActiveEdgeList::iterator aeIt1=activeEdgeMap.getEntry(ee1.edge).getDest();
+				typename ActiveEdgeList::iterator aeIt2=activeEdgeMap.getEntry(ee2.edge).getDest();
+				
+				/* Check if the two existing edges are neighbors; if not, there is self-intersection and shit happens: */
+				typename ActiveEdgeList::iterator aet1=aeIt1+1;
+				typename ActiveEdgeList::iterator aet2=aeIt2-1;
+				if(aet1!=aeIt2||aet2!=aeIt1)
+					{
+					// DEBUGGING
+					#if 0
+					typename ActiveEdgeList::iterator aet0=aeIt1-1;
+					typename ActiveEdgeList::iterator aet3=aeIt2+1;
+					std::cout<<"Sweep line position "<<sweep.y<<": Existing edges are not neighbors"<<std::endl;
+					std::cout<<"First edge's left neighbor  : "<<aet0->calcIntercept(sweep.y)<<", "<<aet0->edge<<", "<<aet0->edge->v0<<"<->"<<aet0->edge->v1<<std::endl;
+					std::cout<<"First edge                  : "<<aeIt1->calcIntercept(sweep.y)<<", "<<aeIt1->edge<<", "<<aeIt1->edge->v0<<"<->"<<aeIt1->edge->v1<<std::endl;
+					std::cout<<"First edge's right neighbor : "<<aet1->calcIntercept(sweep.y)<<", "<<aet1->edge<<", "<<aet1->edge->v0<<"<->"<<aet1->edge->v1<<std::endl;
+					std::cout<<"Second edge's left neighbor : "<<aet2->calcIntercept(sweep.y)<<", "<<aet2->edge<<", "<<aet2->edge->v0<<"<->"<<aet2->edge->v1<<std::endl;
+					std::cout<<"Second edge                 : "<<aeIt2->calcIntercept(sweep.y)<<", "<<aeIt2->edge<<", "<<aeIt2->edge->v0<<"<->"<<aeIt2->edge->v1<<std::endl;
+					std::cout<<"Second edge's right neighbor: "<<aet3->calcIntercept(sweep.y)<<", "<<aet3->edge<<", "<<aet3->edge->v0<<"<->"<<aet3->edge->v1<<std::endl;
+					#endif
+					
+					throw SelfIntersection;
+					}
+				
+				/* Check if the two edges define an active interval: */
+				if(aeIt1->rightHead!=0)
+					{
+					/***********************************************************
+					Close the active interval defined by the active edge pair:
+					***********************************************************/
+					
+					/* Insert the two edges' ending vertices into the active interval's untriangulated polygon: */
+					aeIt1->addRightVertex(aeIt1->edge->v1,triangleVertexIndices);
+					if(aeIt2->edge->v1[0]!=aeIt1->edge->v1[0])
+						aeIt2->addLeftVertex(aeIt2->edge->v1,triangleVertexIndices);
+					
+					/* This is where we would check that the untriangulated polygon is now a straight line of possibly zero length */
+					// ...
+					
+					/* Destroy the active interval's remaining untriangulated polygon: */
+					for(PolygonVertex* pv=aeIt1->rightHead;pv!=0;)
+						{
+						PolygonVertex* succ=pv->succ;
+						delete pv;
+						pv=succ;
+						}
+					}
+				else
+					{
+					/***********************************************************
+					Merge the two active intervals on either side of this edge
+					pair:
+					***********************************************************/
+					
+					/* Insert the two edges' ending vertices into their respective active interval's untriangulated polygons: */
+					aeIt1->addLeftVertex(aeIt1->edge->v1,triangleVertexIndices);
+					if(aeIt2->edge->v1[0]!=aeIt1->edge->v1[0])
+						aeIt2->addRightVertex(aeIt2->edge->v1,triangleVertexIndices);
+					
+					/* Link the two active intervals' untriangulated polygons: */
+					aeIt1->leftTail->succ=aeIt2->rightHead;
+					aeIt2->rightHead->pred=aeIt1->leftTail;
+					
+					/* Triangulate potential ears created by the linkage of the two untriangulated polygons: */
+					while(aeIt1->leftTail->succ!=0&&aeIt1->leftTail->succ->succ!=0&&PolygonVertex::checkEar(aeIt1->leftTail->succ,triangleVertexIndices))
+						;
+					}
+				
+				/* Remove the pair of active edges from the active edge list: */
+				activeEdgeMap.removeEntry(aeIt1->edge);
+				activeEdges.erase(aeIt1);
+				activeEdgeMap.removeEntry(aeIt2->edge);
+				activeEdges.erase(aeIt2);
+				}
+			else
+				{
+				/*************************************************************
+				This event pair extends the left or right edge of a current
+				active interval.
+				*************************************************************/
+				
+				/* Retrieve the existing active edge from the active edge map: */
+				typename ActiveEdgeList::iterator aeItOld=activeEdgeMap.getEntry(ee1.eventType==EdgeEvent::Start?ee2.edge:ee1.edge).getDest();
+				
+				/* Insert the new active edge into the list: */
+				typename ActiveEdgeList::iterator aeItNew=activeEdges.insertAfter(ActiveEdge(ee1.eventType==EdgeEvent::Start?ee1.edge:ee2.edge),sweep);
+				activeEdgeMap[aeItNew->edge]=aeItNew;
+				
+				/* Check if the existing and new edges are neighbors; if not, there is self-intersection and shit happens: */
+				typename ActiveEdgeList::iterator aeol=aeItOld-1;
+				typename ActiveEdgeList::iterator aeor=aeItOld+1;
+				typename ActiveEdgeList::iterator aenl=aeItNew-1;
+				typename ActiveEdgeList::iterator aenr=aeItNew+1;
+				if((aeol!=aeItNew||aenr!=aeItOld)&&(aeor!=aeItNew||aenl!=aeItOld))
+					{
+					// DEBUGGING
+					#if 0
+					std::cout<<"Existing and new edges are not neighbors at sweep "<<sweep.y<<std::endl;
+					std::cout<<"Old's left neighbor : "<<aeol->calcIntercept(sweep.y)<<", "<<aeol->edge<<", "<<aeol->edge->v0<<"<->"<<aeol->edge->v1<<std::endl;
+					std::cout<<"Old active edge     : "<<aeItOld->calcIntercept(sweep.y)<<", "<<aeItOld->edge<<", "<<aeItOld->edge->v0<<"<->"<<aeItOld->edge->v1<<std::endl;
+					std::cout<<"Old's right neighbor: "<<aeor->calcIntercept(sweep.y)<<", "<<aeor->edge<<", "<<aeor->edge->v0<<"<->"<<aeor->edge->v1<<std::endl;
+					
+					std::cout<<"New's left neighbor : "<<aenl->calcIntercept(sweep.y)<<", "<<aenl->edge<<", "<<aenl->edge->v0<<"<->"<<aenl->edge->v1<<std::endl;
+					std::cout<<"New active edge     : "<<aeItNew->calcIntercept(sweep.y)<<", "<<aeItNew->edge<<", "<<aeItNew->edge->v0<<"<->"<<aeItNew->edge->v1<<std::endl;
+					std::cout<<"New's right neighbor: "<<aenr->calcIntercept(sweep.y)<<", "<<aenr->edge<<", "<<aenr->edge->v0<<"<->"<<aenr->edge->v1<<std::endl;
+					#endif
+					
+					throw SelfIntersection;
+					}
+				
+				/* Check if the existing edge is the start or end of an active interval: */
+				if(aeItOld->rightHead!=0)
+					{
+					/* Insert the old edge's ending vertex and the new edge's starting vertex into the active interval's untriangulated polygon: */
+					aeItOld->addRightVertex(aeItOld->edge->v1,triangleVertexIndices);
+					if(aeItOld->edge->v1[0]!=aeItNew->edge->v0[0])
+						aeItOld->addRightVertex(aeItNew->edge->v0,triangleVertexIndices);
+					
+					/* Transfer the untriangulated polygon to the new edge: */
+					aeItNew->rightHead=aeItOld->rightHead;
+					}
+				else
+					{
+					/* Insert the old edge's ending vertex and the new edge's starting vertex into the active interval's untriangulated polygon: */
+					if(aeItOld->edge->v1[0]>aeItNew->edge->v0[0])
+						{
+						/* Add the first vertex without attempting to cut ears to avoid connecting to the other side early, which could cause degenerate triangles: */
+						aeItOld->leftTail=aeItOld->leftTail->succ=new PolygonVertex(aeItOld->edge->v1,aeItOld->leftTail,0);
+						}
+					else
+						aeItOld->addLeftVertex(aeItOld->edge->v1,triangleVertexIndices);
+					if(aeItOld->edge->v1[0]!=aeItNew->edge->v0[0])
+						aeItOld->addLeftVertex(aeItNew->edge->v0,triangleVertexIndices);
+					
+					/* Transfer the untriangulated polygon to the new edge: */
+					aeItNew->leftTail=aeItOld->leftTail;
+					}
+				
+				/* Remove the existing active edge from the active edge list: */
+				activeEdgeMap.removeEntry(aeItOld->edge);
+				activeEdges.erase(aeItOld);
+				}
+			}
+		}
+	}
+
+}

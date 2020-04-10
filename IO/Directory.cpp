@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <IO/Directory.h>
 
 #include <Misc/ThrowStdErr.h>
+#include <IO/SeekableFilter.h>
 
 namespace IO {
 
@@ -201,6 +202,22 @@ std::string Directory::createNumberedFileName(const char* fileNameTemplate,int n
 	return result;
 	}
 
+SeekableFilePtr Directory::openSeekableFile(const char* fileName,File::AccessMode accessMode) const
+	{
+	/* Open a regular file first: */
+	FilePtr file=openFile(fileName,accessMode);
+	
+	/* Check if the file is already seekable: */
+	SeekableFilePtr result=file;
+	if(result==0)
+		{
+		/* Wrap a seekable filter around the file: */
+		result=new SeekableFilter(file);
+		}
+	
+	return result;
+	}
+
 DirectoryPtr Directory::openFileDirectory(const char* fileName) const
 	{
 	/* Find the last directory component of the given file name: */
@@ -217,8 +234,8 @@ DirectoryPtr Directory::openFileDirectory(const char* fileName) const
 		}
 	else
 		{
-		/* File is inside this directory: */
-		return openDirectory(".");
+		/* File is inside this directory, but we can't just return ourselves due to constness: */
+		return openDirectory("");
 		}
 	}
 

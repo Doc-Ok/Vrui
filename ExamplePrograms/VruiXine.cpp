@@ -1,7 +1,7 @@
 /***********************************************************************
 VruiXine - A VR video player based on Vrui and the xine multimedia
 engine.
-Copyright (c) 2015-2017 Oliver Kreylos
+Copyright (c) 2015-2019 Oliver Kreylos
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -45,6 +45,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <GL/Extensions/GLARBVertexBufferObject.h>
 #include <GL/GLShader.h>
 #include <GL/GLVertexArrayParts.h>
+#include <GL/GLGeometryWrappers.h>
 #include <GL/GLGeometryVertex.h>
 #include <GLMotif/StyleSheet.h>
 #include <GLMotif/WidgetManager.h>
@@ -68,7 +69,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <Vrui/CoordinateManager.h>
 #include <Vrui/GenericAbstractToolFactory.h>
 #include <Vrui/DisplayState.h>
-#include <Vrui/OpenFile.h>
 
 class VruiXine:public Vrui::Application,public GLObject
 	{
@@ -189,6 +189,7 @@ class VruiXine:public Vrui::Application,public GLObject
 	int screenMode; // Current screen mode, 0: window, 1: theater, 2: half sphere, 3: full sphere
 	GLMotif::PopupWindow* screenControlDialog; // Dialog window to control the position and size of the virtual video projection screen
 	GLMotif::RadioBox* screenModes; // Radio box to select screen mode
+	bool lockScreenToEyes; // Flag whether to lock the screen center for half/full sphere screens to the viewer's eyes
 	
 	/* Private methods: */
 	static void xineEventCallback(void* userData,const xine_event_t* event); // Callback called when a playback event occurs
@@ -232,7 +233,6 @@ class VruiXine:public Vrui::Application,public GLObject
 	void fullSphereRadiusValueChangedCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData); // Callback called when the full-sphere radius slider changes value
 	void screenAzimuthValueChangedCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData); // Callback called when the screen azimuth angle slider changes value
 	void screenElevationValueChangedCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData); // Callback called when the screen elevation angle slider changes value
-	
 	GLMotif::PopupWindow* createScreenControlDialog(void); // Creates the screen control dialog
 	
 	/* Constructors and destructors: */
@@ -505,6 +505,9 @@ void VruiXine::xineOutputCallback(void* userData,int frameFormat,int frameWidth,
 
 void VruiXine::xineOverlayCallback(void* userData,int numOverlays,raw_overlay_t* overlays)
 	{
+	// DEBUGGING
+	return;
+	
 	VruiXine* thisPtr=static_cast<VruiXine*>(userData);
 	
 	/* Prepare a new slot in the overlay set triple buffer: */
@@ -631,6 +634,9 @@ void VruiXine::setStereoMode(int newStereoMode)
 	
 	/* Update the stereo mode radio box: */
 	stereoModes->setSelectedToggle(stereoMode);
+	
+	/* Check whether to lock the screen to the viewer's eyes: */
+	lockScreenToEyes=(stereoMode==1||stereoMode==2)&&(screenMode==2||screenMode==3);
 	}
 
 void VruiXine::setStereoLayout(int newStereoLayout)
@@ -768,6 +774,9 @@ void VruiXine::setScreenMode(int newScreenMode)
 	
 	/* Update the UI: */
 	screenModes->setSelectedToggle(screenMode);
+	
+	/* Check whether to lock the screen to the viewer's eyes: */
+	lockScreenToEyes=(stereoMode==1||stereoMode==2)&&(screenMode==2||screenMode==3);
 	}
 
 void VruiXine::loadVideo(const char* newVideoFileName)
@@ -884,7 +893,7 @@ void VruiXine::cropSliderValueChangedCallback(GLMotif::TextFieldSlider::ValueCha
 
 GLMotif::PopupWindow* VruiXine::createStreamControlDialog(void)
 	{
-	const GLMotif::StyleSheet& ss=*Vrui::getWidgetManager()->getStyleSheet();
+	const GLMotif::StyleSheet& ss=*Vrui::getUiStyleSheet();
 	
 	GLMotif::PopupWindow* streamControlDialogPopup=new GLMotif::PopupWindow("StreamControlDialogPopup",Vrui::getWidgetManager(),"Stream Settings");
 	streamControlDialogPopup->setResizableFlags(false,false);
@@ -1075,7 +1084,7 @@ void VruiXine::volumeSliderValueChangedCallback(GLMotif::Slider::ValueChangedCal
 
 GLMotif::PopupWindow* VruiXine::createDvdNavigationDialog(void)
 	{
-	const GLMotif::StyleSheet& ss=*Vrui::getWidgetManager()->getStyleSheet();
+	const GLMotif::StyleSheet& ss=*Vrui::getUiStyleSheet();
 	
 	GLMotif::PopupWindow* dvdNavigationDialogPopup=new GLMotif::PopupWindow("DvdNavigationDialogPopup",Vrui::getWidgetManager(),"DVD Navigation");
 	dvdNavigationDialogPopup->setResizableFlags(false,false);
@@ -1301,7 +1310,7 @@ void VruiXine::playbackSliderValueChangedCallback(GLMotif::Slider::ValueChangedC
 
 GLMotif::PopupWindow* VruiXine::createPlaybackControlDialog(void)
 	{
-	const GLMotif::StyleSheet& ss=*Vrui::getWidgetManager()->getStyleSheet();
+	const GLMotif::StyleSheet& ss=*Vrui::getUiStyleSheet();
 	
 	GLMotif::PopupWindow* playbackControlDialogPopup=new GLMotif::PopupWindow("PlaybackControlDialogPopup",Vrui::getWidgetManager(),"Playback Control");
 	playbackControlDialogPopup->setResizableFlags(true,false);
@@ -1403,7 +1412,7 @@ void VruiXine::screenElevationValueChangedCallback(GLMotif::TextFieldSlider::Val
 
 GLMotif::PopupWindow* VruiXine::createScreenControlDialog(void)
 	{
-	const GLMotif::StyleSheet& ss=*Vrui::getWidgetManager()->getStyleSheet();
+	const GLMotif::StyleSheet& ss=*Vrui::getUiStyleSheet();
 	
 	GLMotif::PopupWindow* screenControlDialogPopup=new GLMotif::PopupWindow("ScreenControlDialogPopup",Vrui::getWidgetManager(),"Screen Control");
 	screenControlDialogPopup->setResizableFlags(true,false);
@@ -1522,7 +1531,7 @@ GLMotif::PopupWindow* VruiXine::createScreenControlDialog(void)
 VruiXine::VruiXine(int& argc,char**& argv)
 	:Vrui::Application(argc,argv),
 	 xine(0),videoOutPort(0),audioOutPort(0),stream(0),eventQueue(0),
-	 videoFileSelectionHelper(Vrui::getWidgetManager(),"",".mp4;.m4v;.iso",Vrui::openDirectory(".")),
+	 videoFileSelectionHelper(Vrui::getWidgetManager(),"",".mp4;.m4v;.iso"),
 	 videoFrameVersion(0),overlaySetVersion(0),
 	 streamControlDialog(0),
 	 dvdNavigationDialog(0),
@@ -1533,7 +1542,8 @@ VruiXine::VruiXine(int& argc,char**& argv)
 	 stereoMode(0),stereoLayout(0),stereoSquashed(false),forceMono(false),stereoSeparation(0.0f),
 	 frameSizeReported(false),
 	 screenParametersVersion(1),
-	 screenControlDialog(0)
+	 screenControlDialog(0),
+	 lockScreenToEyes(false)
 	{
 	frameSize[0]=frameSize[1]=0;
 	
@@ -1845,8 +1855,9 @@ void VruiXine::frame(void)
 
 void VruiXine::display(GLContextData& contextData) const
 	{
-	/* Get the context data item: */
+	/* Get the context data item and display state: */
 	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);
+	const Vrui::DisplayState& displayState=Vrui::getDisplayState(contextData);
 	
 	/* Handle the current video frame based on its format: */
 	const Frame& frame=videoFrames.getLockedValue();
@@ -1934,7 +1945,7 @@ void VruiXine::display(GLContextData& contextData) const
 	if(stereoMode!=3)
 		{
 		/* Set up a texture transformation: */
-		int eyeIndex=stereoMode==0||forceMono?0:Vrui::getDisplayState(contextData).eyeIndex;
+		int eyeIndex=stereoMode==0||forceMono?0:displayState.eyeIndex;
 		GLfloat texScale[2]={1.0f,1.0f};
 		GLfloat texOffset[2]={0.0f,0.0f};
 		if(stereoMode==1) // Side-by-side stereo
@@ -1946,7 +1957,6 @@ void VruiXine::display(GLContextData& contextData) const
 			}
 		else if(stereoMode==2) // Top/bottom stereo
 			{
-			const Vrui::DisplayState& ds=Vrui::getDisplayState(contextData);
 			texScale[1]=0.5f;
 			texOffset[1]=eyeIndex==0?0.0f:0.5f;
 			if(stereoLayout==1)
@@ -2111,6 +2121,8 @@ void VruiXine::display(GLContextData& contextData) const
 	
 	/* Draw the screen: */
 	glPushMatrix();
+	if(lockScreenToEyes)
+		glTranslate(Vrui::getInverseNavigationTransformation().transform(Vrui::getDisplayState(contextData).eyePosition)-Vrui::Point::origin);
 	glRotated(screenAzimuth,0.0,0.0,1.0);
 	glRotated(screenElevation,1.0,0.0,0.0);
 	

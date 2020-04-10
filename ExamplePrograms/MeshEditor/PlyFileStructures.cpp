@@ -1,11 +1,12 @@
 /***********************************************************************
 PlyFileStructures - Data structures to read 3D polygon files in PLY
 format.
-Copyright (c) 2004-2011 Oliver Kreylos
+Copyright (c) 2004-2018 Oliver Kreylos
 ***********************************************************************/
 
 #include "PlyFileStructures.h"
 
+#include <stdexcept>
 #include <Misc/SizedTypes.h>
 #include <Misc/ThrowStdErr.h>
 #include <IO/ValueSource.h>
@@ -229,6 +230,9 @@ class PLYDataValueFactory
 			
 			case PLY_FLOAT64:
 				return new PLYDataValueTemplate<PLY_FLOAT64>;
+			
+			default:
+				throw std::runtime_error("PLYDataValueFactory::newDataValue: Invalid data type");
 			}
 		}
 	};
@@ -378,6 +382,7 @@ PLYFileHeader::PLYFileHeader(IO::File& plyFile)
 	{
 	/* Attach a new value source to the PLY file: */
 	IO::ValueSource ply(&plyFile);
+	ply.setPunctuation("\r\n");
 	ply.skipWs();
 	
 	/* Process the PLY file header: */
@@ -415,12 +420,6 @@ PLYFileHeader::PLYFileHeader(IO::File& plyFile)
 			if(version!=1.0)
 				break;
 			}
-		else if(tag=="comment")
-			{
-			/* Skip the rest of the line: */
-			ply.skipLine();
-			ply.skipWs();
-			}
 		else if(tag=="element")
 			{
 			/* Read the element type and number of elements: */
@@ -438,24 +437,20 @@ PLYFileHeader::PLYFileHeader(IO::File& plyFile)
 				/* Parse a property: */
 				currentElement->addProperty(ply);
 				}
-			else
-				{
-				/* Skip the property: */
-				ply.skipLine();
-				ply.skipWs();
-				}
 			}
 		else if(tag=="end_header")
 			{
+			/* Skip the line break after the end_header tag: */
+			ply.skipLine();
+			
+			/* Bail out: */
 			haveEndHeader=true;
 			break;
 			}
-		else
-			{
-			/* Skip the unknown tag: */
-			ply.skipLine();
-			ply.skipWs();
-			}
+		
+		/* Skip the unknown or ignored tag: */
+		ply.skipLine();
+		ply.skipWs();
 		}
 	
 	/* Check if the header was read completely: */

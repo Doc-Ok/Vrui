@@ -1,7 +1,7 @@
 /***********************************************************************
 ALSAAudioCaptureDevice - Wrapper class around audio capture devices as
 represented by the ALSA sound library.
-Copyright (c) 2010-2011 Oliver Kreylos
+Copyright (c) 2010-2018 Oliver Kreylos
 
 This file is part of the Basic Sound Library (Sound).
 
@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #ifndef SOUND_LINUX_ALSAAUDIOCAPTUREDEVICE_INCLUDED
 #define SOUND_LINUX_ALSAAUDIOCAPTUREDEVICE_INCLUDED
 
+#include <Threads/Thread.h>
 #include <Sound/AudioCaptureDevice.h>
 #include <alsa/asoundlib.h>
 
@@ -59,6 +60,11 @@ class ALSAAudioCaptureDevice:public AudioCaptureDevice
 	size_t frameBufferSize; // Size of allocated frame buffers in samples
 	unsigned int numFrameBuffers; // Number of allocated frame buffers
 	char** frameBuffers; // Array of allocated frame buffers
+	unsigned int nextFrameBufferIndex; // Index of next frame buffer to be used
+	Threads::Thread streamingThread; // Background thread reading frame buffers from the ALSA PCM device
+	
+	/* Private methods: */
+	void* streamingThreadMethod(void); // Method reading frame buffers from the ALSA PCM device in a background thread
 	
 	/* Device enumeration method: */
 	public:

@@ -1,7 +1,7 @@
 /***********************************************************************
 ArrayValueCoders - Generic value coder classes for standard C-style
 arrays with fixed or dynamic array sizes or array wrapper classes.
-Copyright (c) 2004-2013 Oliver Kreylos
+Copyright (c) 2004-2018 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -271,7 +271,7 @@ ValueCoder<FixedArray<ElementParam,sizeParam> >::decode(
 		CFixedArrayValueCoder<ElementParam,sizeParam>(result.getElements()).decode(start,end,decodeEnd);
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Misc::FixedArray due to ")+err.what());
 		}

@@ -1,7 +1,7 @@
 /***********************************************************************
 Marshaller - Generic class to read or write values of arbitrary types
 from or to binary data sources or sinks.
-Copyright (c) 2010 Oliver Kreylos
+Copyright (c) 2010-2020 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -24,6 +24,8 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #ifndef MISC_MARSHALLER_INCLUDED
 #define MISC_MARSHALLER_INCLUDED
 
+#include <stddef.h>
+
 namespace Misc {
 
 /************************
@@ -41,9 +43,44 @@ class Marshaller
 	template <class DataSinkParam>
 	static void write(const ValueParam& value,DataSinkParam& sink); // Writes the given value to given sink
 	template <class DataSourceParam>
-	static ValueParam read(DataSourceParam& source); // Reads value from given source
+	static ValueParam& read(DataSourceParam& source,ValueParam& value); // Reads value from given source into existing object
+	template <class DataSourceParam>
+	static ValueParam read(DataSourceParam& source); // Reads value from given source into a new object
 	#endif
 	};
+
+/*************************************************************
+Convenience functions to read/write objects using marshallers:
+*************************************************************/
+
+template <class ValueParam,class DataSinkParam>
+inline
+void
+write(
+	const ValueParam& value,
+	DataSinkParam& sink)
+	{
+	Marshaller<ValueParam>::write(value,sink);
+	}
+
+template <class DataSourceParam,class ValueParam>
+inline
+ValueParam&
+read(
+	DataSourceParam& source,
+	ValueParam& value)
+	{
+	return Marshaller<ValueParam>::read(source,value);
+	}
+
+template <class DataSourceParam,class ValueParam>
+inline
+ValueParam
+read(
+	DataSourceParam& source)
+	{
+	return Marshaller<ValueParam>::read(source);
+	}
 
 }
 

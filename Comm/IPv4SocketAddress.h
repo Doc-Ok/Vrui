@@ -1,7 +1,7 @@
 /***********************************************************************
 IPv4SocketAddress - Simple wrapper class for IP v4 socket addresses in
 network byte order.
-Copyright (c) 2015-2017 Oliver Kreylos
+Copyright (c) 2015-2019 Oliver Kreylos
 
 This file is part of the Portable Communications Library (Comm).
 
@@ -24,6 +24,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #ifndef IPV4SOCKETADDRESS_INCLUDED
 #define IPV4SOCKETADDRESS_INCLUDED
 
+#include <stddef.h>
 #include <netinet/in.h>
 #include <Comm/IPv4Address.h>
 
@@ -60,6 +61,10 @@ class IPv4SocketAddress:public sockaddr_in
 	bool operator!=(const IPv4SocketAddress& other) const
 		{
 		return sin_family!=other.sin_family||sin_port!=other.sin_port||sin_addr.s_addr!=other.sin_addr.s_addr;
+		}
+	static size_t hash(const IPv4SocketAddress& source,size_t tableSize) // Returns a hash value for the given socket address
+		{
+		return ((size_t(source.sin_addr.s_addr)<<16)|size_t(source.sin_port))%tableSize;
 		}
 	unsigned int getPort(void) const // Returns the socket's port ID
 		{

@@ -1,6 +1,6 @@
 /***********************************************************************
 BoxNode - Class for axis-aligned boxes as renderable geometry.
-Copyright (c) 2009-2010 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -184,6 +184,7 @@ Box BoxNode::calcBoundingBox(void) const
 void BoxNode::glRenderAction(GLRenderState& renderState) const
 	{
 	/* Set up OpenGL state: */
+	renderState.setFrontFace(GL_CCW);
 	renderState.enableCulling(GL_BACK);
 	
 	/* Render the display list: */

@@ -1,7 +1,7 @@
 /***********************************************************************
 ShapeNode - Class for shapes represented as a combination of a geometry
 node and an appearance node defining the geometry's appearance.
-Copyright (c) 2009 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -25,7 +25,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <SceneGraph/FieldTypes.h>
 #include <SceneGraph/GraphNode.h>
-#include <SceneGraph/AppearanceNode.h>
+#include <SceneGraph/BaseAppearanceNode.h>
 #include <SceneGraph/GeometryNode.h>
 
 namespace SceneGraph {
@@ -34,14 +34,14 @@ class ShapeNode:public GraphNode
 	{
 	/* Embedded classes: */
 	public:
-	typedef SF<AppearanceNodePointer> SFAppearanceNode;
+	typedef SF<BaseAppearanceNodePointer> SFBaseAppearanceNode;
 	typedef SF<GeometryNodePointer> SFGeometryNode;
 	
 	/* Elements: */
 	
 	/* Fields: */
 	public:
-	SFAppearanceNode appearance; // The shape's appearance
+	SFBaseAppearanceNode appearance; // The shape's appearance
 	SFGeometryNode geometry; // The shape's geometry
 	
 	/* Constructors and destructors: */

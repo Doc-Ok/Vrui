@@ -1,6 +1,6 @@
 /***********************************************************************
 ImageTextureNode - Class for textures loaded from external image files.
-Copyright (c) 2009-2010 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -22,6 +22,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #ifndef SCENEGRAPH_IMAGETEXTURENODE_INCLUDED
 #define SCENEGRAPH_IMAGETEXTURENODE_INCLUDED
 
+#include <Misc/Autopointer.h>
+#include <IO/Directory.h>
 #include <GL/gl.h>
 #include <GL/GLObject.h>
 #include <SceneGraph/FieldTypes.h>
@@ -51,9 +53,12 @@ class ImageTextureNode:public TextureNode,public GLObject
 	MFString url;
 	SFBool repeatS;
 	SFBool repeatT;
+	SFBool filter; // Enables bilinear (or trilinear if mipmapLevel>0) filtering
+	SFInt mipmapLevel; // Maximum mipmap level that should be generated from the texture image; 0 disables mipmapping
 	
 	/* Derived state: */
 	protected:
+	IO::DirectoryPtr baseDirectory; // Base directory for image URLs
 	unsigned int version; // Version number of texture
 	
 	/* Constructors and destructors: */
@@ -72,7 +77,13 @@ class ImageTextureNode:public TextureNode,public GLObject
 	
 	/* Methods from GLObject: */
 	virtual void initContext(GLContextData& contextData) const;
+	
+	/* New methods: */
+	void setUrl(const std::string& newUrl,IO::Directory& newBaseDirectory); // Sets an image URL and its base directory
+	void setUrl(const std::string& newUrl); // Ditto, with URL relative to the current directory
 	};
+
+typedef Misc::Autopointer<ImageTextureNode> ImageTextureNodePointer;
 
 }
 

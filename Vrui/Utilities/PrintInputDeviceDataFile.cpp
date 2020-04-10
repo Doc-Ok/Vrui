@@ -175,7 +175,7 @@ int main(int argc,char* argv[])
 			{
 			timeStamp=inputDeviceDataFile->read<double>();
 			}
-		catch(IO::File::ReadError)
+		catch(const IO::File::ReadError&)
 			{
 			/* At end of file */
 			break;

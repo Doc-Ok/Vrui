@@ -1,7 +1,7 @@
 /***********************************************************************
 StandardMarshallers - Specialized Marshaller classes for standard data
 types.
-Copyright (c) 2010 Oliver Kreylos
+Copyright (c) 2010-2020 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -27,6 +27,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <string>
 #include <Misc/SizedTypes.h>
 #include <Misc/Marshaller.h>
+#include <Misc/VarIntMarshaller.h>
 
 namespace Misc {
 
@@ -43,6 +44,12 @@ class Marshaller<bool>
 	static void write(const bool& value,DataSinkParam& sink)
 		{
 		sink.template write<unsigned char>(value?1:0);
+		}
+	template <class DataSourceParam>
+	static bool& read(DataSourceParam& source,bool& value)
+		{
+		value=source.template read<unsigned char>()!=0;
+		return value;
 		}
 	template <class DataSourceParam>
 	static bool read(DataSourceParam& source)
@@ -66,6 +73,12 @@ class Marshaller<unsigned char>
 		sink.template write<unsigned char>(value);
 		}
 	template <class DataSourceParam>
+	static unsigned char& read(DataSourceParam& source,unsigned char& value)
+		{
+		value=source.template read<unsigned char>();
+		return value;
+		}
+	template <class DataSourceParam>
 	static unsigned char read(DataSourceParam& source)
 		{
 		return source.template read<unsigned char>();
@@ -85,6 +98,12 @@ class Marshaller<signed char>
 	static void write(const signed char& value,DataSinkParam& sink)
 		{
 		sink.template write<signed char>(value);
+		}
+	template <class DataSourceParam>
+	static signed char& read(DataSourceParam& source,signed char& value)
+		{
+		value=source.template read<signed char>();
+		return value;
 		}
 	template <class DataSourceParam>
 	static signed char read(DataSourceParam& source)
@@ -108,6 +127,12 @@ class Marshaller<unsigned short int>
 		sink.template write<unsigned short int>(value);
 		}
 	template <class DataSourceParam>
+	static unsigned short int& read(DataSourceParam& source,unsigned short int& value)
+		{
+		value=source.template read<unsigned short int>();
+		return value;
+		}
+	template <class DataSourceParam>
 	static unsigned short int read(DataSourceParam& source)
 		{
 		return source.template read<unsigned short int>();
@@ -127,6 +152,12 @@ class Marshaller<signed short int>
 	static void write(const signed short int& value,DataSinkParam& sink)
 		{
 		sink.template write<signed short int>(value);
+		}
+	template <class DataSourceParam>
+	static signed short int& read(DataSourceParam& source,signed short int& value)
+		{
+		value=source.template read<signed short int>();
+		return value;
 		}
 	template <class DataSourceParam>
 	static signed short int read(DataSourceParam& source)
@@ -150,6 +181,12 @@ class Marshaller<unsigned int>
 		sink.template write<unsigned int>(value);
 		}
 	template <class DataSourceParam>
+	static unsigned int& read(DataSourceParam& source,unsigned int& value)
+		{
+		value=source.template read<unsigned int>();
+		return value;
+		}
+	template <class DataSourceParam>
 	static unsigned int read(DataSourceParam& source)
 		{
 		return source.template read<unsigned int>();
@@ -169,6 +206,12 @@ class Marshaller<signed int>
 	static void write(const signed int& value,DataSinkParam& sink)
 		{
 		sink.template write<signed int>(value);
+		}
+	template <class DataSourceParam>
+	static signed int& read(DataSourceParam& source,signed int& value)
+		{
+		value=source.template read<signed int>();
+		return value;
 		}
 	template <class DataSourceParam>
 	static signed int read(DataSourceParam& source)
@@ -192,6 +235,12 @@ class Marshaller<unsigned long int>
 		sink.template write<unsigned long int>(value);
 		}
 	template <class DataSourceParam>
+	static unsigned long int& read(DataSourceParam& source,unsigned long int& value)
+		{
+		value=source.template read<unsigned long int>();
+		return value;
+		}
+	template <class DataSourceParam>
 	static unsigned long int read(DataSourceParam& source)
 		{
 		return source.template read<unsigned long int>();
@@ -211,6 +260,12 @@ class Marshaller<signed long int>
 	static void write(const signed long int& value,DataSinkParam& sink)
 		{
 		sink.template write<signed long int>(value);
+		}
+	template <class DataSourceParam>
+	static signed long int& read(DataSourceParam& source,signed long int& value)
+		{
+		value=source.template read<signed long int>();
+		return value;
 		}
 	template <class DataSourceParam>
 	static signed long int read(DataSourceParam& source)
@@ -234,6 +289,12 @@ class Marshaller<float>
 		sink.template write<float>(value);
 		}
 	template <class DataSourceParam>
+	static float& read(DataSourceParam& source,float& value)
+		{
+		value=source.template read<float>();
+		return value;
+		}
+	template <class DataSourceParam>
 	static float read(DataSourceParam& source)
 		{
 		return source.template read<float>();
@@ -255,6 +316,12 @@ class Marshaller<double>
 		sink.template write<double>(value);
 		}
 	template <class DataSourceParam>
+	static double& read(DataSourceParam& source,double& value)
+		{
+		value=source.template read<double>();
+		return value;
+		}
+	template <class DataSourceParam>
 	static double read(DataSourceParam& source)
 		{
 		return source.template read<double>();
@@ -268,28 +335,60 @@ class Marshaller<std::string>
 	public:
 	static size_t getSize(const std::string& value)
 		{
-		return sizeof(UInt32)+value.length()*sizeof(std::string::value_type);
+		/* Return the size of the variable-sized length tag plus the length of the string itself: */
+		size_t length=value.length();
+		return getVarInt32Size(UInt32(length))+length*sizeof(char);
 		}
 	template <class DataSinkParam>
 	static void write(const std::string& value,DataSinkParam& sink)
 		{
-		sink.template write<UInt32>(UInt32(value.length()));
-		sink.template write<std::string::value_type>(value.data(),value.length());
+		/* Write the string's length as a variable-sized integer: */
+		size_t length=value.length();
+		writeVarInt32(UInt32(length),sink);
+		
+		/* Write the string's characters: */
+		sink.template write<char>(value.data(),length);
+		}
+	template <class DataSourceParam>
+	static std::string& read(DataSourceParam& source,std::string& value)
+		{
+		/* Clear the string: */
+		value.clear();
+		
+		/* Read the string's length as a variable-sized integer: */
+		size_t length(readVarInt32(source));
+		value.reserve(length);
+		
+		/* Read the string's characters in chunks: */
+		while(length>0)
+			{
+			char buffer[256];
+			size_t readSize=length;
+			if(readSize>sizeof(buffer))
+				readSize=sizeof(buffer);
+			source.template read<char>(buffer,readSize);
+			value.append(buffer,buffer+readSize);
+			length-=readSize;
+			}
+		
+		return value;
 		}
 	template <class DataSourceParam>
 	static std::string read(DataSourceParam& source)
 		{
+		/* Read the string's length as a variable-sized integer: */
+		size_t length(readVarInt32(source));
+		
+		/* Read the string's characters in chunks: */
 		std::string result;
-		size_t length=source.template read<UInt32>();
 		result.reserve(length);
 		while(length>0)
 			{
-			const size_t bufferSize=256;
-			std::string::value_type buffer[bufferSize];
+			char buffer[256];
 			size_t readSize=length;
-			if(readSize>bufferSize)
-				readSize=bufferSize;
-			source.template read<std::string::value_type>(buffer,readSize);
+			if(readSize>sizeof(buffer))
+				readSize=sizeof(buffer);
+			source.template read<char>(buffer,readSize);
 			result.append(buffer,buffer+readSize);
 			length-=readSize;
 			}

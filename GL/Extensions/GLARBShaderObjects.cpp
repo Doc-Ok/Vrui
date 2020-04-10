@@ -1,7 +1,7 @@
 /***********************************************************************
 GLARBShaderObjects - OpenGL extension class for the
 GL_ARB_shader_objects extension.
-Copyright (c) 2007-2014 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 
 This file is part of the OpenGL Support Library (GLSupport).
 
@@ -252,6 +252,29 @@ void glCompileShaderFromFile(GLhandleARB shaderObject,const char* shaderSourceFi
 		}
 	}
 
+void glLinkAndTestShader(GLhandleARB programObject)
+	{
+	/* Link the program: */
+	glLinkProgramARB(programObject);
+	
+	/* Check if the program linked successfully: */
+	GLint linkStatus;
+	glGetObjectParameterivARB(programObject,GL_OBJECT_LINK_STATUS_ARB,&linkStatus);
+	if(!linkStatus)
+		{
+		/* Get some more detailed information: */
+		GLcharARB linkLogBuffer[2048];
+		GLsizei linkLogSize;
+		glGetInfoLogARB(programObject,sizeof(linkLogBuffer),&linkLogSize,linkLogBuffer);
+		
+		/* Delete the program object: */
+		glDeleteObjectARB(programObject);
+		
+		/* Signal an error: */
+		Misc::throwStdErr("glLinkAndTestShader: Error \"%s\" while linking shader program",linkLogBuffer);
+		}
+	}
+
 GLhandleARB glLinkShader(const std::vector<GLhandleARB>& shaderObjects)
 	{
 	/* Create the program object: */
@@ -280,6 +303,10 @@ GLhandleARB glLinkShader(const std::vector<GLhandleARB>& shaderObjects)
 		/* Signal an error: */
 		Misc::throwStdErr("glLinkShader: Error \"%s\" while linking shader program",linkLogBuffer);
 		}
+	
+	/* Detach all shader objects from the shader program again: */
+	for(std::vector<GLhandleARB>::const_iterator soIt=shaderObjects.begin();soIt!=shaderObjects.end();++soIt)
+		glDetachObjectARB(programObject,*soIt);
 	
 	return programObject;
 	}
@@ -312,6 +339,10 @@ GLhandleARB glLinkShader(size_t numShaderObjects,va_list ap)
 		/* Signal an error: */
 		Misc::throwStdErr("glLinkShader: Error \"%s\" while linking shader program",linkLogBuffer);
 		}
+	
+	/* Detach all shader objects from the shader program again: */
+	for(size_t i=0;i<numShaderObjects;++i)
+		glDetachObjectARB(programObject,va_arg(ap,GLhandleARB));
 	
 	return programObject;
 	}
@@ -366,6 +397,10 @@ GLhandleARB glLinkShader(GLhandleARB vertexShaderObject,GLhandleARB fragmentShad
 		/* Signal an error: */
 		Misc::throwStdErr("glLinkShader: Error \"%s\" while linking shader program",linkLogBuffer);
 		}
+	
+	/* Detach all shader objects from the shader program again: */
+	glDetachObjectARB(programObject,vertexShaderObject);
+	glDetachObjectARB(programObject,fragmentShaderObject);
 	
 	return programObject;
 	}

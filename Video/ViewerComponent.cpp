@@ -548,7 +548,7 @@ void ViewerComponent::openVideoDevice(unsigned int newVideoDeviceIndex,const Vid
 		/* Start streaming from the new video device: */
 		startStreaming();
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/*******************************************************************
 		Something went horribly awry; clean up as much as possible:
@@ -595,7 +595,7 @@ void ViewerComponent::startStreaming(void)
 			videoDevice->allocateFrameBuffers(5);
 			videoDevice->startStreaming(Misc::createFunctionCall(this,&ViewerComponent::frameCallback));
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			/* Clean up as much as possible: */
 			delete videoExtractor;
@@ -617,7 +617,7 @@ void ViewerComponent::stopStreaming(void)
 			videoDevice->stopStreaming();
 			videoDevice->releaseFrameBuffers();
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			/* Show an error message: */
 			Misc::formattedUserWarning("ViewerComponent: Exception %s while stopping streaming from video device %s",err.what(),videoDeviceList[videoDeviceIndex]->getName().c_str());
@@ -653,7 +653,7 @@ void ViewerComponent::changeVideoFormat(const VideoDataFormat& newVideoFormat)
 			if(videoFormatSizeChangedCallback!=0)
 				(*videoFormatSizeChangedCallback)(videoFormat);
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			/* Show an error message: */
 			Misc::formattedUserError("ViewerComponent: Unable to change video format on video device %s due to exception %s",videoDeviceList[videoDeviceIndex]->getName().c_str(),err.what());

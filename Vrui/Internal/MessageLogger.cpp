@@ -1,7 +1,7 @@
 /***********************************************************************
 MessageLogger - Class derived from Misc::MessageLogger to log and
 present messages inside a Vrui application.
-Copyright (c) 2015 Oliver Kreylos
+Copyright (c) 2015-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -25,6 +25,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 #include <ctype.h>
 #include <unistd.h>
+#include <utility>
 #include <string>
 #include <GLMotif/WidgetManager.h>
 #include <GLMotif/PopupWindow.h>
@@ -95,8 +96,20 @@ void MessageLogger::logMessageInternal(Target target,int messageLevel,const char
 		}
 	else
 		{
-		/* Present a note/warning/error dialog to the user: */
-		showMessageDialog(messageLevel,message);
+		/* Store the message for presentation as a dialog window during the next frame: */
+		Threads::Mutex::Lock pendingMessagesLock(pendingMessagesMutex);
+		pendingMessages.push_back(PendingMessage(messageLevel,message));
+		
+		if(!frameCallbackRegistered)
+			{
+			/* Register a callback with Vrui to be called during the next frame: */
+			Vrui::addFrameCallback(frameCallback,this);
+			
+			/* Wake up the main thread: */
+			Vrui::requestUpdate();
+			
+			frameCallbackRegistered=true;
+			}
 		}
 	}
 
@@ -187,8 +200,29 @@ void MessageLogger::showMessageDialog(int messageLevel,const char* messageString
 	popupPrimaryWidget(messageDialog);
 	}
 
+bool MessageLogger::frameCallback(void* userData)
+	{
+	MessageLogger* thisPtr=static_cast<MessageLogger*>(userData);
+	
+	/* Grab the list of pending messages: */
+	std::vector<PendingMessage> pendingMessages;
+	{
+	Threads::Mutex::Lock pendingMessagesLock(thisPtr->pendingMessagesMutex);
+	std::swap(thisPtr->pendingMessages,pendingMessages);
+	thisPtr->frameCallbackRegistered=false;
+	}
+	
+	/* Process all grabbed messages: */
+	for(std::vector<PendingMessage>::iterator pmIt=pendingMessages.begin();pmIt!=pendingMessages.end();++pmIt)
+		thisPtr->showMessageDialog(pmIt->messageLevel,pmIt->message.c_str());
+	
+	/* Remove the callback again: */
+	return true;
+	}
+
 MessageLogger::MessageLogger(void)
-	:userToConsole(true)
+	:userToConsole(true),
+	 frameCallbackRegistered(false)
 	{
 	}
 

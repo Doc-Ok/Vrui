@@ -2,7 +2,7 @@
 ValuatorWalkSurfaceNavigationTool - Version of the
 WalkSurfaceNavigationTool that uses a pair of valuators to move instead
 of head position.
-Copyright (c) 2013-2017 Oliver Kreylos
+Copyright (c) 2013-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -90,7 +90,7 @@ void ValuatorWalkSurfaceNavigationToolFactory::Configuration::read(const Misc::C
 	valuatorViewFollowFactor=cfs.retrieveValue<Scalar>("./valuatorViewFollowFactor",valuatorViewFollowFactor);
 	valuatorViewFollowFactor=Math::clamp(valuatorViewFollowFactor,Scalar(0),Scalar(1));
 	centerViewDirection=cfs.retrieveValue<Vector>("./centerViewDirection",centerViewDirection);
-	centerViewDirection-=getUpDirection()*((centerViewDirection*getUpDirection())/Geometry::sqr(getUpDirection()));
+	centerViewDirection-=getUpDirection()*(centerViewDirection*getUpDirection());
 	centerViewDirection.normalize();
 	rotateSpeed=Math::rad(cfs.retrieveValue<Scalar>("./rotateSpeed",Math::deg(rotateSpeed)));
 	innerAngle=Math::rad(cfs.retrieveValue<Scalar>("./innerAngle",Math::deg(innerAngle)));
@@ -507,7 +507,7 @@ void ValuatorWalkSurfaceNavigationTool::frame(void)
 		
 		/* Calculate azimuth angle change based on the current viewing direction: */
 		Vector viewDir=getMainViewer()->getViewDirection();
-		viewDir-=getUpDirection()*((viewDir*getUpDirection())/Geometry::sqr(getUpDirection()));
+		viewDir-=getUpDirection()*(viewDir*getUpDirection());
 		Scalar viewDir2=Geometry::sqr(viewDir);
 		if(viewDir2!=Scalar(0))
 			{
@@ -578,12 +578,11 @@ void ValuatorWalkSurfaceNavigationTool::frame(void)
 		/* Calculate movement from valuators: */
 		Vector valuatorMoveDir=configuration.centerViewDirection*(Scalar(1)-configuration.valuatorViewFollowFactor)+viewDir*configuration.valuatorViewFollowFactor;
 		valuatorMoveDir.normalize();
-		Scalar vmx=getValuatorState(1)*configuration.valuatorMoveSpeeds[1];
-		Scalar vmy=getValuatorState(0)*configuration.valuatorMoveSpeeds[0];
-		moveDir[0]+=valuatorMoveDir[0]*vmx;
-		moveDir[1]+=valuatorMoveDir[1]*vmx;
-		moveDir[0]+=valuatorMoveDir[1]*vmy;
-		moveDir[1]-=valuatorMoveDir[0]*vmy;
+		Vector valuatorStrafeDir=valuatorMoveDir^getUpDirection();
+		valuatorStrafeDir.normalize();
+		Scalar vmx=getValuatorState(0)*configuration.valuatorMoveSpeeds[0];
+		Scalar vmy=getValuatorState(1)*configuration.valuatorMoveSpeeds[1];
+		moveDir+=valuatorStrafeDir*vmx+valuatorMoveDir*vmy;
 		newMoving=newMoving||vmx!=Scalar(0)||vmy!=Scalar(0);
 		
 		/* Add the current flying and falling velocities: */

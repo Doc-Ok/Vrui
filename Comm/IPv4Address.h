@@ -1,7 +1,7 @@
 /***********************************************************************
 IPv4Address - Simple wrapper class for IP v4 addresses in network byte
 order.
-Copyright (c) 2015 Oliver Kreylos
+Copyright (c) 2015-2018 Oliver Kreylos
 
 This file is part of the Portable Communications Library (Comm).
 
@@ -37,6 +37,10 @@ class IPv4Address:public in_addr
 		{
 		s_addr=htonl(INADDR_ANY);
 		}
+	IPv4Address(in_addr_t address) // Constructs from 4-byte unsigned integer in host byte order
+		{
+		s_addr=htonl(address);
+		}
 	IPv4Address(const struct in_addr& source) // Copies an existing IP address
 		{
 		s_addr=source.s_addr;
@@ -51,6 +55,10 @@ class IPv4Address:public in_addr
 	bool operator!=(const IPv4Address& other) const
 		{
 		return s_addr!=other.s_addr;
+		}
+	in_addr_t getAddressUInt(void) const // Returns the address as a 4-byte unsigned integer in host byte order
+		{
+		return ntohl(s_addr);
 		}
 	std::string getAddress(void) const; // Returns the address in dotted decimal notation
 	std::string getHostname(void) const; // Returns a host name for the IP address, or the address in dotted notation if host name look-up fails

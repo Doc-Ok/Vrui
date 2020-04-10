@@ -1,7 +1,7 @@
 /***********************************************************************
 DropdownBox - Class for labels that show one string out of a list of
 strings and allow changing the selection by choosing from a pop-up list.
-Copyright (c) 2006-2016 Oliver Kreylos
+Copyright (c) 2006-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <GLMotif/DropdownBox.h>
 
 #include <stdio.h>
+#include <Math/Math.h>
 #include <GL/gl.h>
 #include <GL/GLColorTemplates.h>
 #include <GL/GLNormalTemplates.h>
@@ -55,6 +56,9 @@ void DropdownBox::itemSelectedCallbackWrapper(Misc::CallbackData* cbData,void* u
 		int oldSelectedItem=thisPtr->selectedItem;
 		thisPtr->selectedItem=newSelectedItem;
 		thisPtr->setString(cbStruct->button->getString());
+		
+		/* Update a potential tracked variable: */
+		thisPtr->setTrackedSInt(newSelectedItem);
 		
 		/* Call the value changed callbacks: */
 		ValueChangedCallbackData cbData(thisPtr,oldSelectedItem,thisPtr->selectedItem);
@@ -242,6 +246,29 @@ void DropdownBox::setBackgroundColor(const Color& newBackgroundColor)
 	
 	/* Set the dropdown arrow's background color: */
 	arrow.setGlyphColor(newBackgroundColor);
+	}
+
+void DropdownBox::updateVariables(void)
+	{
+	/* Check if tracking is active: */
+	if(isTracking())
+		{
+		/* Get the variable's current value and limit it to the valid range: */
+		int newSelectedItem=Math::clamp(int(getTrackedSInt()),0,numItems-1);
+		
+		/* Check if the value changed: */
+		if(selectedItem!=newSelectedItem)
+			{
+			/* Set the selected item: */
+			selectedItem=newSelectedItem;
+			
+			/* Update a potential tracked variable: */
+			setTrackedSInt(selectedItem);
+			
+			/* Change the displayed label: */
+			setString(static_cast<Button*>(items->getChild(selectedItem))->getString());
+			}
+		}
 	}
 
 void DropdownBox::draw(GLContextData& contextData) const
@@ -469,6 +496,9 @@ void DropdownBox::clearItems(void)
 	/* Reset the selected item: */
 	selectedItem=-1;
 	
+	/* Reset a potential tracked variable: */
+	setTrackedSInt(-1);
+	
 	/* Resize the widget to accomodate the new list: */
 	if(isManaged)
 		parent->requestResize(this,calcNaturalSize());
@@ -503,10 +533,17 @@ Widget* DropdownBox::addItem(const char* newItem)
 
 void DropdownBox::setSelectedItem(int newSelectedItem)
 	{
-	if(newSelectedItem>=0&&newSelectedItem<numItems&&selectedItem!=newSelectedItem)
+	/* Limit the selected item to the valid range: */
+	newSelectedItem=Math::clamp(newSelectedItem,0,numItems-1);
+	
+	/* Check if the selected item changed: */
+	if(selectedItem!=newSelectedItem)
 		{
 		/* Set the selected item: */
 		selectedItem=newSelectedItem;
+		
+		/* Update a potential tracked variable: */
+		setTrackedSInt(selectedItem);
 		
 		/* Change the displayed label: */
 		setString(static_cast<Button*>(items->getChild(selectedItem))->getString());

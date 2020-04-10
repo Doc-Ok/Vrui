@@ -1,7 +1,7 @@
 /***********************************************************************
 TextEventDispatcher - Class to centralize management and serialization
 of GLMotif text and text control events.
-Copyright (c) 2014 Oliver Kreylos
+Copyright (c) 2014-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -24,7 +24,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/TextEventDispatcher.h>
 
 #include <Misc/SizedTypes.h>
-#include <Misc/VarInt.h>
+#include <Misc/VarIntMarshaller.h>
 #include <IO/File.h>
 #include <GLMotif/WidgetManager.h>
 
@@ -43,23 +43,23 @@ TextEventDispatcher::TextEventDispatcher(bool sEnqueueLocalEvents)
 void TextEventDispatcher::writeEventQueues(IO::File& file) const
 	{
 	/* Write the number of enqueued text events: */
-	Misc::writeVarInt(Misc::UInt32(textEvents.size()),file);
+	Misc::writeVarInt32(Misc::UInt32(textEvents.size()),file);
 	
 	/* Write all enqueued text events: */
 	for(std::vector<TextEvent>::const_iterator teIt=textEvents.begin();teIt!=textEvents.end();++teIt)
 		{
-		Misc::writeVarInt(Misc::UInt32(teIt->ordinal),file);
-		Misc::writeVarInt(Misc::UInt32(teIt->event.getTextLength()),file);
+		Misc::writeVarInt32(Misc::UInt32(teIt->ordinal),file);
+		Misc::writeVarInt32(Misc::UInt32(teIt->event.getTextLength()),file);
 		file.write(teIt->event.getText(),teIt->event.getTextLength());
 		}
 	
 	/* Write the number of enqueued text control events: */
-	Misc::writeVarInt(Misc::UInt32(textControlEvents.size()),file);
+	Misc::writeVarInt32(Misc::UInt32(textControlEvents.size()),file);
 	
 	/* Write all enqueued text control events: */
 	for(std::vector<TextControlEvent>::const_iterator tceIt=textControlEvents.begin();tceIt!=textControlEvents.end();++tceIt)
 		{
-		Misc::writeVarInt(Misc::UInt32(tceIt->ordinal),file);
+		Misc::writeVarInt32(Misc::UInt32(tceIt->ordinal),file);
 		file.write(Misc::UInt8(tceIt->event.event));
 		file.write(Misc::UInt8(tceIt->event.selection?1U:0U));
 		}
@@ -70,17 +70,17 @@ void TextEventDispatcher::readEventQueues(IO::File& file)
 	unsigned int newNextEventOrdinal=nextEventOrdinal;
 	
 	/* Read the number of saved text events: */
-	unsigned int numTextEvents=Misc::readVarInt(file);
+	unsigned int numTextEvents=(unsigned int)(Misc::readVarInt32(file));
 	
 	/* Read and enqueue all saved text events: */
 	size_t stringBufferLen=31;
 	char* stringBuffer=new char[stringBufferLen+1];
-	for(unsigned int i=0;i<numTextEvents;++i)
+	for(Misc::UInt32 i=0;i<numTextEvents;++i)
 		{
-		unsigned int ordinal=Misc::readVarInt(file)+nextEventOrdinal;
+		unsigned int ordinal=(unsigned int)(Misc::readVarInt32(file))+nextEventOrdinal;
 		if(newNextEventOrdinal<ordinal+1)
 			newNextEventOrdinal=ordinal+1;
-		unsigned int stringLen=Misc::readVarInt(file);
+		unsigned int stringLen=(unsigned int)(Misc::readVarInt32(file));
 		if(stringBufferLen<stringLen)
 			{
 			delete[] stringBuffer;
@@ -95,12 +95,12 @@ void TextEventDispatcher::readEventQueues(IO::File& file)
 	delete[] stringBuffer;
 	
 	/* Read the number of saved text control events: */
-	unsigned int numTextControlEvents=Misc::readVarInt(file);
+	unsigned int numTextControlEvents=(unsigned int)(Misc::readVarInt32(file));
 	
 	/* Read and enqueue all saved text control events: */
 	for(unsigned int i=0;i<numTextControlEvents;++i)
 		{
-		unsigned int ordinal=Misc::readVarInt(file)+nextEventOrdinal;
+		unsigned int ordinal=(unsigned int)(Misc::readVarInt32(file))+nextEventOrdinal;
 		if(newNextEventOrdinal<ordinal+1)
 			newNextEventOrdinal=ordinal+1;
 		GLMotif::TextControlEvent::EventType event=GLMotif::TextControlEvent::EventType(file.read<Misc::UInt8>());

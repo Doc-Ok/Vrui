@@ -1,7 +1,7 @@
 /***********************************************************************
 Tool - Abstract base class for user interaction tools (navigation, menu
 selection, selection, etc.).
-Copyright (c) 2004-2015 Oliver Kreylos
+Copyright (c) 2004-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -81,6 +81,10 @@ class Tool
 	
 	/* Protected helper methods: */
 	protected:
+	int getNumButtons(void) const // Returns the number of button slots
+		{
+		return input.getNumButtonSlots();
+		}
 	const InputDevice* getButtonDevice(int buttonSlotIndex) const // Returns the input device associated with the given button slot
 		{
 		return input.getButtonSlot(buttonSlotIndex).device;
@@ -109,6 +113,10 @@ class Tool
 		{
 		const ToolInputAssignment::Slot& slot=input.getButtonSlot(buttonSlotIndex);
 		return slot.device->getButtonState(slot.index);
+		}
+	int getNumValuators(void) const // Returns the number of valuator slots
+		{
+		return input.getNumValuatorSlots();
 		}
 	const InputDevice* getValuatorDevice(int valuatorSlotIndex) const // Returns the input device associated with the given valuator slot
 		{

@@ -1,7 +1,7 @@
 ########################################################################
 # BasicMakefile - Definitions and rules to build object files, shared
 # and static libraries, and executables.
-# Copyright (c) 1999-2014 Oliver Kreylos
+# Copyright (c) 1999-2020 Oliver Kreylos
 # Mac OS X adaptation copyright (c) 2006 Braden Pellett
 #
 # This file is part of the WhyTools Build Environment.
@@ -40,60 +40,74 @@ CONFIG_SETMAKEVAR = sed -i -e 's@^$(2) \(:\?=\) .*@$(2) := $(3)@' $1
 #
 
 # Set up the optimization and debugging level flags:
-ifndef OPTLEVEL
-  OPTLEVEL = $(DEFAULTOPTLEVEL)
-endif
-ifndef DEBUGLEVEL
-  DEBUGLEVEL = $(DEFAULTDEBUGLEVEL)
-endif
+OPTLEVEL ?= $(DEFAULTOPTLEVEL)
+DEBUGLEVEL ?= $(DEFAULTDEBUGLEVEL)
 
 # Set compiler flags for the system environment:
 CSYSFLAGS = $(EXTRACSYSFLAGS)
 CPPSYSFLAGS = $(EXTRACPPSYSFLAGS)
 
-# Recursively expand the list of packages:
-# Well, this is not really recursion... it goes only nine levels, which should be enough ;)
-PACKAGES1 = $(foreach PACKAGENAME,$(PACKAGES),$($(PACKAGENAME)_DEPENDS))
-PACKAGES2 = $(foreach PACKAGENAME,$(PACKAGES1),$($(PACKAGENAME)_DEPENDS))
-PACKAGES3 = $(foreach PACKAGENAME,$(PACKAGES2),$($(PACKAGENAME)_DEPENDS))
-PACKAGES4 = $(foreach PACKAGENAME,$(PACKAGES3),$($(PACKAGENAME)_DEPENDS))
-PACKAGES5 = $(foreach PACKAGENAME,$(PACKAGES4),$($(PACKAGENAME)_DEPENDS))
-PACKAGES6 = $(foreach PACKAGENAME,$(PACKAGES5),$($(PACKAGENAME)_DEPENDS))
-PACKAGES7 = $(foreach PACKAGENAME,$(PACKAGES6),$($(PACKAGENAME)_DEPENDS))
-PACKAGES8 = $(foreach PACKAGENAME,$(PACKAGES7),$($(PACKAGENAME)_DEPENDS))
-PACKAGES9 = $(foreach PACKAGENAME,$(PACKAGES8),$($(PACKAGENAME)_DEPENDS))
-PACKAGES_RECEXPAND = $(PACKAGES) $(PACKAGES1) $(PACKAGES2) $(PACKAGES3) $(PACKAGES4) $(PACKAGES5) $(PACKAGES6) $(PACKAGES7) $(PACKAGES8) $(PACKAGES9)
+########################################################################
+# Generate compiler and linker flags from the list of packages requested
+# by a target, and their recursively-expanded dependency lists.
+########################################################################
 
-# Generate the list of include file directories from list of packages, not including the system directory:
-CINCLUDEFLAGS = $(EXTRACINCLUDEFLAGS) $(sort $(filter-out -I/usr/$(INCLUDEEXT),$(foreach PACKAGENAME,$(PACKAGES_RECEXPAND),$($(PACKAGENAME)_INCLUDE))))
+# Function to replace a list of package names with the list of their direct dependencies:
+_PDS = $(foreach PN,$(1),$($(PN)_DEPENDS))
 
-# Generate compiler flags from list of packages:
-CPACKAGEFLAGS = $(sort $(foreach PACKAGENAME,$(PACKAGES_RECEXPAND),$($(PACKAGENAME)_CFLAGS)))
+# Function to pseudo-recursively (10 levels) expand a list of package names:
+_RECPS = $(shell $(VRUI_MAKEDIR)/StripPackages \
+         $(1) \
+         $(call _PDS,$(1)) \
+         $(call _PDS,$(call _PDS,$(1))) \
+         $(call _PDS,$(call _PDS,$(call _PDS,$(1)))) \
+         $(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(1))))) \
+         $(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(1)))))) \
+         $(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(1))))))) \
+         $(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(1)))))))) \
+         $(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(1))))))))) \
+         $(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(1)))))))))) \
+         $(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(call _PDS,$(1))))))))))) \
+         )
 
-# Generate the list of library directories from list of packages, not including the system directory:
-LINKDIRFLAGS  = $(EXTRALINKDIRFLAGS) $(sort $(filter-out -L/usr/$(LIBEXT),$(foreach PACKAGENAME,$(PACKAGES_RECEXPAND),$($(PACKAGENAME)_LIBDIR))))
+#
+# Functions to generate compiler flags from a list of package names:
+#
 
-# Generate the list of libraries from list of packages:
-ifneq ($(SORT_LINKLIBFLAGS),0)
-  LINKLIBFLAGS  = $(EXTRALINKLIBFLAGS) $(foreach PACKAGENAME,$(sort $(PACKAGES_RECEXPAND)),$($(PACKAGENAME)_LIBS))
-else
-  LINKLIBFLAGS  = $(EXTRALINKLIBFLAGS) $(foreach PACKAGENAME,$(PACKAGES_RECEXPAND),$($(PACKAGENAME)_LIBS))
-endif
+# Function to generate per-package compiler flags:
+_CPFS = $(foreach PN,$(1),$($(PN)_CFLAGS))
+
+# Function to generate include file search paths:
+_CIFS = $(EXTRACINCLUDEFLAGS) $(sort $(foreach PN,$(1),$($(PN)_INCLUDE)))
+
+# Functions to generate the full set of compiler flags:
+_CCFS = -g$(DEBUGLEVEL) -O$(OPTLEVEL) $(CFLAGS) $(CSYSFLAGS) $(call _CPFS,$(1)) $(call _CIFS,$(1))
+_CPPCFS = -g$(DEBUGLEVEL) -O$(OPTLEVEL) $(CFLAGS) $(CPPSYSFLAGS) $(call _CPFS,$(1)) $(call _CIFS,$(1))
+
+#
+# Functions to generate linker flags from a list of package names:
+#
+
+# Function to generate linker flags:
+_LFS = $(EXTRALINKLIBFLAGS) $(foreach PN,$(1),$($(PN)_LINKLIBFLAGS))
 ifneq ($(USE_RPATH),0)
   ifneq ($(SYSTEM_HAVE_RPATH),0)
-    ifdef LIBINSTALLDIR
-      LINKLIBFLAGS += -Wl,-rpath=$(LIBINSTALLDIR)
-    endif
-    LINKLIBFLAGS += $(foreach PACKAGENAME,$(PACKAGES_RECEXPAND),$($(PACKAGENAME)_LINKLIBFLAGS))
+    _LFS += $(foreach RP,$(sort $(foreach PN,$(1),$($(PN)_RPATH))),-Wl,-rpath $(RP))
   endif
 endif
 
-# Function to get the build dependencies of a package (depends on function LIBRARYNAME):
-DEPENDENCIES = $(patsubst -l%.$(LDEXT),$(call LIBRARYNAME,lib%),$(foreach PACKAGENAME,$(filter MY%,$($(1)_DEPENDS)),$($(PACKAGENAME)_LIBS)))
+# Function to generate library file search paths:
+_LDIRS = $(EXTRALINKDIRFLAGS) $(sort $(foreach PN,$(1),$($(PN)_LIBDIR)))
 
-# Generate the complete list of compiler flags:
-CCFLAGS = -g$(DEBUGLEVEL) -O$(OPTLEVEL) $(CFLAGS) $(CSYSFLAGS) $(CINCLUDEFLAGS) $(CPACKAGEFLAGS)
-CPPCFLAGS = -g$(DEBUGLEVEL) -O$(OPTLEVEL) $(CFLAGS) $(CPPSYSFLAGS) $(CINCLUDEFLAGS) $(CPACKAGEFLAGS)
+# Function to generate lists of library files:
+_LLIBS = $(foreach PN,$(1),$($(PN)_LIBS))
+
+# Function to generate the full set of linker flags:
+_LLFS = $(call _LFS,$(1)) $(call _LDIRS,$(1)) $(call _LLIBS,$(1))
+
+########################################################################
+# Default compile commands for different source and target file types:
+########################################################################
 
 # Determine the object file directory:
 OBJDIR := $(OBJDIRBASE)/$(COMPILERTYPE).g$(DEBUGLEVEL).O$(OPTLEVEL)
@@ -101,16 +115,18 @@ ifdef OBJDIREXT
   OBJDIR := $(OBJDIR).$(OBJDIREXT)
 endif
 
-# sed commands to process a generated dependency file:
+# Construct the complete set of compiler flags:
+CCFLAGS = $(call _CCFS,$(call _RECPS,$(PACKAGES)))
+CPPCFLAGS = $(call _CPPCFS,$(call _RECPS,$(PACKAGES)))
+
+# sed command to process a generated dependency file:
 define PROCESS_DEPFILE
-sed -e 's!\([^:]*:\)!$$(OBJDIR)/$*.o:!g' -e 's!/usr/[^ ]*!!g' -e '/^[ ]*\\$$/ d' < $(DEPFILETEMPLATE) > $(DEPDIR)/$*.d
+sed -e 's!\([^:]*:\)!$$(OBJDIR)/$*.o $$(OBJDIR)/pic/$*.o:!g' -e 's!/usr/[^ ]* * !!g' -e '/^[ ]*\\$$/ d' < $(DEPFILETEMPLATE) > $(DEPDIR)/$*.d
 endef
 
-define PROCESS_PICDEPFILE
-sed -e 's!\([^:]*:\)!$$(OBJDIR)/pic/$*.o:!g' -e 's!/usr/[^ ]*!!g' -e '/^[ ]*\\$$/ d' < $(DEPFILETEMPLATE) > $(DEPDIR)/$*.d
-endef
-
+#
 # Set default compile command from .c to .o:
+#
 $(OBJDIR)/%.o: %.c
 	@mkdir -p $(abspath $(DEPDIR)/$(*D))
 	@mkdir -p $(abspath $(OBJDIR)/$(*D))
@@ -123,19 +139,9 @@ endif
 	@$(PROCESS_DEPFILE)
 	@rm -f $(DEPFILETEMPLATE)
 
+#
 # Set default compile commands from .cc/.cpp to .o:
-$(OBJDIR)/%.o: %.cpp
-	@mkdir -p $(abspath $(DEPDIR)/$(*D))
-	@mkdir -p $(abspath $(OBJDIR)/$(*D))
-ifdef SHOWCOMMAND
-	$(CCOMP) -MD -c -o $@ $(CPPCFLAGS) $<
-else
-	@echo Compiling $<...
-	@$(CCOMP) -MD -c -o $@ $(CPPCFLAGS) $<
-endif
-	@$(PROCESS_DEPFILE)
-	@rm -f $(DEPFILETEMPLATE)
-
+#
 $(OBJDIR)/%.o: %.cc
 	@mkdir -p $(abspath $(DEPDIR)/$(*D))
 	@mkdir -p $(abspath $(OBJDIR)/$(*D))
@@ -148,32 +154,36 @@ endif
 	@$(PROCESS_DEPFILE)
 	@rm -f $(DEPFILETEMPLATE)
 
-# Set default compile command from .c to position-independent code for plugins:
+$(OBJDIR)/%.o: %.cpp
+	@mkdir -p $(abspath $(DEPDIR)/$(*D))
+	@mkdir -p $(abspath $(OBJDIR)/$(*D))
+ifdef SHOWCOMMAND
+	$(CCOMP) -MD -c -o $@ $(CPPCFLAGS) $<
+else
+	@echo Compiling $<...
+	@$(CCOMP) -MD -c -o $@ $(CPPCFLAGS) $<
+endif
+	@$(PROCESS_DEPFILE)
+	@rm -f $(DEPFILETEMPLATE)
+
+#
+# Set default compile command from .c to position-independent code for shared libraries or plugins:
+#
 $(OBJDIR)/pic/%.o: %.c
 	@mkdir -p $(abspath $(DEPDIR)/$(*D))
 	@mkdir -p $(abspath $(OBJDIR)/pic/$(*D))
 ifdef SHOWCOMMAND
-	$(PLAINCCOMP) -MD -c -o $@ $(CPLUGINFLAGS) $(CPPCFLAGS) $<
+	$(PLAINCCOMP) -MD -c -o $@ $(CPLUGINFLAGS) $(CCFLAGS) $<
 else
 	@echo Compiling $<...
-	@$(PLAINCCOMP) -MD -c -o $@ $(CPLUGINFLAGS) $(CPPCFLAGS) $<
+	@$(PLAINCCOMP) -MD -c -o $@ $(CPLUGINFLAGS) $(CCFLAGS) $<
 endif
 	@$(PROCESS_PICDEPFILE)
 	@rm -f $(DEPFILETEMPLATE)
 
-# Set default compile commands from .cc/.cpp to position-independent code for plugins:
-$(OBJDIR)/pic/%.o: %.cpp
-	@mkdir -p $(abspath $(DEPDIR)/$(*D))
-	@mkdir -p $(abspath $(OBJDIR)/pic/$(*D))
-ifdef SHOWCOMMAND
-	$(CCOMP) -MD -c -o $@ $(CPLUGINFLAGS) $(CPPCFLAGS) $<
-else
-	@echo Compiling $<...
-	@$(CCOMP) -MD -c -o $@ $(CPLUGINFLAGS) $(CPPCFLAGS) $<
-endif
-	@$(PROCESS_PICDEPFILE)
-	@rm -f $(DEPFILETEMPLATE)
-
+#
+# Set default compile command from .cc/.cpp to position-independent code for shared libraries or plugins:
+#
 $(OBJDIR)/pic/%.o: %.cc
 	@mkdir -p $(abspath $(DEPDIR)/$(*D))
 	@mkdir -p $(abspath $(OBJDIR)/pic/$(*D))
@@ -186,27 +196,53 @@ endif
 	@$(PROCESS_PICDEPFILE)
 	@rm -f $(DEPFILETEMPLATE)
 
-#
-# Definitions and commands/rules to link static or shared libraries
-#
+$(OBJDIR)/pic/%.o: %.cpp
+	@mkdir -p $(abspath $(DEPDIR)/$(*D))
+	@mkdir -p $(abspath $(OBJDIR)/pic/$(*D))
+ifdef SHOWCOMMAND
+	$(CCOMP) -MD -c -o $@ $(CPLUGINFLAGS) $(CPPCFLAGS) $<
+else
+	@echo Compiling $<...
+	@$(CCOMP) -MD -c -o $@ $(CPLUGINFLAGS) $(CPPCFLAGS) $<
+endif
+	@$(PROCESS_PICDEPFILE)
+	@rm -f $(DEPFILETEMPLATE)
+
+########################################################################
+# Default link commands for static or dynamic libraries:
+########################################################################
+
+# Function to generate library object file names:
+ifdef STATIC_LINK
+  LIBOBJNAMES =  $(1:%.cpp=$(OBJDIR)/%.o)
+else
+  LIBOBJNAMES =  $(1:%.cpp=$(OBJDIR)/pic/%.o)
+endif
+
+# Function to get the build dependencies of a package (depends on function LIBRARYNAME):
+DEPENDENCIES = $(patsubst -l%.$(LDEXT),$(call LIBRARYNAME,lib%),$(foreach PACKAGENAME,$(filter MY%,$($(1)_DEPENDS)),$($(PACKAGENAME)_LIBS)))
 
 MAJORLIBVERSION ?= 1
 MINORLIBVERSION ?= 0
 
-# Default link command to create dynamic library:
+#
+# Set default link command to create a dynamic library:
+#
 $(LIBDESTDIR)/$(call FULLDSONAME,%):
 	@mkdir -p $(abspath $(LIBDESTDIR)/$(*D))
 ifdef SHOWCOMMAND
-	$(CCOMP) $(call DSOLINKFLAGS,$(*F)) -o $@ $(filter %.o,$^) $(LINKDIRFLAGS) $(LINKLIBFLAGS)
+	$(CCOMP) $(call DSOLINKFLAGS,$(*F)) -o $@ $(filter %.o,$^)
 else
 	@echo Linking $@...
-	@$(CCOMP) $(call DSOLINKFLAGS,$(*F)) -o $@ $(filter %.o,$^) $(LINKDIRFLAGS) $(LINKLIBFLAGS)
+	@$(CCOMP) $(call DSOLINKFLAGS,$(*F)) -o $@ $(filter %.o,$^)
 endif
 	@-rm -f $(LIBDESTDIR)/$(call DSONAME,$*) $(LIBDESTDIR)/$(call LINKDSONAME,$*)
 	@ln -s $@ $(LIBDESTDIR)/$(call DSONAME,$*)
 	@ln -s $@ $(LIBDESTDIR)/$(call LINKDSONAME,$*)
 
-# Default link command to create static library:
+#
+# Set default link command to create a static library:
+#
 $(LIBDESTDIR)/%.$(LDEXT).a:
 	@mkdir -p $(abspath $(LIBDESTDIR)/$(*D))
 	@-rm -f $@
@@ -233,28 +269,64 @@ define DESTROY_SYMLINK
 
 endef
 
-#
-# Definitions and commands/rules to link executable files
-#
+########################################################################
+# Default link commands for dynamically-loaded plug-ins:
+########################################################################
 
+# Function to generate plug-in object file names:
+PLUGINOBJNAMES = $(1:%.cpp=$(OBJDIR)/pic/%.o)
+
+# Construct the complete set of linker flags:
+PLUGINLFLAGS = $(call _LLFS,$(filter-out $(call _RECPS,$(HOSTPACKAGES)),$(call _RECPS,$(PACKAGES))))
+
+########################################################################
+# Default link commands for executable files:
+########################################################################
+
+# Construct the complete set of linker flags:
+EXELFLAGS = $(call _LLFS,$(call _RECPS,$(PACKAGES)))
+
+#
 # Set default link command for executables:
+#
 $(EXEDIR)/%:
 	@mkdir -p $(abspath $(EXEDIR)/$(*D))
 ifdef SHOWCOMMAND
-	$(CCOMP) $(LINKFLAGS) -o $@ $(filter %.o,$^) $(LINKDIRFLAGS) $(LINKLIBFLAGS)
+	$(CCOMP) $(LINKFLAGS) -o $@ $(filter %.o,$^) $(EXELFLAGS)
 else
 	@echo Linking $@...
-	@$(CCOMP) $(LINKFLAGS) -o $@ $(filter %.o,$^) $(LINKDIRFLAGS) $(LINKLIBFLAGS)
+	@$(CCOMP) $(LINKFLAGS) -o $@ $(filter %.o,$^) $(EXELFLAGS)
 endif
 
-# Set default compile+link command for single-source executables:
+########################################################################
+# Default compile+link commands for single-source executables:
+########################################################################
+
+%: %.c
+	@mkdir -p $(abspath $(EXEDIR)/$(*D))
+ifdef SHOWCOMMAND
+	$(CCOMP) -o $(EXEDIR)/$@ $(CCFLAGS) $(filter %.c,$^) $(LINKFLAGS) $(EXELFLAGS)
+else
+	@echo Compiling and linking $<...
+	@$(CCOMP) -o $(EXEDIR)/$@ $(CCFLAGS) $(filter %.c,$^) $(LINKFLAGS) $(EXELFLAGS)
+endif
+
+%: %.cc
+	@mkdir -p $(abspath $(EXEDIR)/$(*D))
+ifdef SHOWCOMMAND
+	$(CCOMP) -o $(EXEDIR)/$@ $(CPPCFLAGS) $(filter %.cc,$^) $(LINKFLAGS) $(EXELFLAGS)
+else
+	@echo Compiling and linking $<...
+	@$(CCOMP) -o $(EXEDIR)/$@ $(CPPCFLAGS) $(filter %.cc,$^) $(LINKFLAGS) $(EXELFLAGS)
+endif
+
 %: %.cpp
 	@mkdir -p $(abspath $(EXEDIR)/$(*D))
 ifdef SHOWCOMMAND
-	$(CCOMP) -o $(EXEDIR)/$@ $(CCFLAGS) $(filter %.cpp,$^) $(LINKFLAGS) $(LINKDIRFLAGS) $(LINKLIBFLAGS)
+	$(CCOMP) -o $(EXEDIR)/$@ $(CPPCFLAGS) $(filter %.cpp,$^) $(LINKFLAGS) $(EXELFLAGS)
 else
 	@echo Compiling and linking $<...
-	@$(CCOMP) -o $(EXEDIR)/$@ $(CCFLAGS) $(filter %.cpp,$^) $(LINKFLAGS) $(LINKDIRFLAGS) $(LINKLIBFLAGS)
+	@$(CCOMP) -o $(EXEDIR)/$@ $(CPPCFLAGS) $(filter %.cpp,$^) $(LINKFLAGS) $(EXELFLAGS)
 endif
 
 #

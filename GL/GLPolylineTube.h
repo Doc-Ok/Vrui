@@ -1,6 +1,6 @@
 /***********************************************************************
 GLPolylineTube - Class to render a polyline as a cylindrical tube.
-Copyright (c) 2006-2013 Oliver Kreylos
+Copyright (c) 2006-2019 Oliver Kreylos
 
 This file is part of the OpenGL Support Library (GLSupport).
 
@@ -76,8 +76,11 @@ class GLPolylineTube:public GLObject
 	public:
 	virtual ~GLPolylineTube(void);
 	
-	/* Methods: */
+	/* Methods from class GLObject: */
 	virtual void initContext(GLContextData& contextData) const;
+	
+	/* New methods: */
+	void clear(void); // Clears the polyline, to add new vertices via addVertex()
 	size_t getNumVertices(void) const // Returns the number of vertices in the polyline
 		{
 		return vertices.size();

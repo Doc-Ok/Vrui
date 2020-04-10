@@ -1,7 +1,7 @@
 /***********************************************************************
 EventDispatcher - Class to dispatch events from a central listener to
 any number of interested clients.
-Copyright (c) 2016-2018 Oliver Kreylos
+Copyright (c) 2016-2019 Oliver Kreylos
 
 This file is part of the Portable Threading Library (Threads).
 
@@ -27,18 +27,110 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <signal.h>
 #include <stdexcept>
 #include <Misc/ThrowStdErr.h>
+#include <Misc/MessageLogger.h>
 
 namespace Threads {
 
 namespace {
 
-/**************
-Helper classes:
-**************/
+/****************
+Helper functions:
+****************/
 
-struct PipeMessage // Type for messages sent on an EventDispatcher's self-pipe
+EventDispatcher* stopDispatcher=0; // Event dispatcher to be stopped when a SIGINT or SIGTERM occur
+
+void stopSignalHandler(int signum)
+	{
+	/* Stop the dispatcher: */
+	if(stopDispatcher!=0&&(signum==SIGINT||signum==SIGTERM))
+		stopDispatcher->stop();
+	}
+
+}
+
+/*****************************************
+Embedded classes of class EventDispatcher:
+*****************************************/
+
+struct EventDispatcher::IOEventListener
+	{
+	/* Elements: */
+	public:
+	ListenerKey key; // Unique key identifying this event
+	int fd; // File descriptor belonging to the event
+	int typeMask; // Mask of event types (read, write, exception) in which the listener is interested
+	IOEventCallback callback; // Function called when an event occurs
+	void* callbackUserData; // Opaque pointer to be passed to callback function
+	
+	/* Constructors and destructors: */
+	IOEventListener(ListenerKey sKey,int sFd,int sTypeMask,IOEventCallback sCallback,void* sCallbackUserData)
+		:key(sKey),fd(sFd),typeMask(sTypeMask),callback(sCallback),callbackUserData(sCallbackUserData)
+		{
+		}
+	};
+
+struct EventDispatcher::TimerEventListener
+	{
+	/* Elements: */
+	public:
+	ListenerKey key; // Unique key identifying this event
+	Time time; // Time point at which to trigger the event
+	Time interval; // Event interval for recurring events; one-shot events need to return true from callback to cancel further events
+	TimerEventCallback callback; // Function called when an event occurs
+	void* callbackUserData; // Opaque pointer to be passed to callback function
+	
+	/* Constructors and destructors: */
+	TimerEventListener(ListenerKey sKey,const Time& sTime,const Time& sInterval,TimerEventCallback sCallback,void* sCallbackUserData)
+		:key(sKey),time(sTime),interval(sInterval),callback(sCallback),callbackUserData(sCallbackUserData)
+		{
+		}
+	};
+
+class EventDispatcher::TimerEventListenerComp
+	{
+	/* Methods: */
+	public:
+	static bool lessEqual(const TimerEventListener* v1,const TimerEventListener* v2)
+		{
+		return v1->time<=v2->time;
+		}
+	};
+
+struct EventDispatcher::ProcessListener
+	{
+	/* Elements: */
+	public:
+	ListenerKey key; // Unique key identifying this event
+	ProcessCallback callback; // Function called when an event occurs
+	void* callbackUserData; // Opaque pointer to be passed to callback function
+	
+	/* Constructors and destructors: */
+	ProcessListener(ListenerKey sKey,ProcessCallback sCallback,void* sCallbackUserData)
+		:key(sKey),callback(sCallback),callbackUserData(sCallbackUserData)
+		{
+		}
+	};
+
+struct EventDispatcher::SignalListener
+	{
+	/* Elements: */
+	public:
+	ListenerKey key; // Unique key for identifying this event
+	SignalCallback callback; // Function called when an event occurs
+	void* callbackUserData; // Opaque pointer to be passed to callback function
+	
+	/* Constructors and destructors: */
+	SignalListener(ListenerKey sKey,SignalCallback sCallback,void* sCallbackUserData)
+		:key(sKey),callback(sCallback),callbackUserData(sCallbackUserData)
+		{
+		}
+	};
+
+struct EventDispatcher::PipeMessage // Type for messages sent on an EventDispatcher's self-pipe
 	{
 	/* Embedded classes: */
 	public:
@@ -47,11 +139,15 @@ struct PipeMessage // Type for messages sent on an EventDispatcher's self-pipe
 		INTERRUPT=0,
 		STOP,
 		ADD_IO_LISTENER,
+		SET_IO_LISTENER_TYPEMASK,
 		REMOVE_IO_LISTENER,
 		ADD_TIMER_LISTENER,
 		REMOVE_TIMER_LISTENER,
 		ADD_PROCESS_LISTENER,
 		REMOVE_PROCESS_LISTENER,
+		ADD_SIGNAL_LISTENER,
+		REMOVE_SIGNAL_LISTENER,
+		SIGNAL,
 		NUM_MESSAGETYPES
 		};
 	
@@ -61,77 +157,48 @@ struct PipeMessage // Type for messages sent on an EventDispatcher's self-pipe
 		{
 		struct
 			{
-			EventDispatcher::ListenerKey key;
+			ListenerKey key;
 			int fd;
 			int typeMask;
-			EventDispatcher::IOEventCallback callback;
+			IOEventCallback callback;
 			void* callbackUserData;
 			} addIOListener; // Message to add a new input/output event listener to the event dispatcher
-		EventDispatcher::ListenerKey removeIOListener; // Message to remove an input/output event listener from the event dispatcher
 		struct
 			{
-			EventDispatcher::ListenerKey key;
+			ListenerKey key;
+			int newTypeMask;
+			} setIOListenerEventTypeMask; // Message to change the event type mask of an input/output event listener
+		ListenerKey removeIOListener; // Message to remove an input/output event listener from the event dispatcher
+		struct
+			{
+			ListenerKey key;
 			struct timeval time;
 			struct timeval interval;
-			EventDispatcher::TimerEventCallback callback;
+			TimerEventCallback callback;
 			void* callbackUserData;
 			} addTimerListener; // Message to add a new timer event listener to the event dispatcher
-		EventDispatcher::ListenerKey removeTimerListener; // Message to remove a timer event listener from the event dispatcher
+		ListenerKey removeTimerListener; // Message to remove a timer event listener from the event dispatcher
 		struct
 			{
-			EventDispatcher::ListenerKey key;
-			EventDispatcher::ProcessCallback callback;
+			ListenerKey key;
+			ProcessCallback callback;
 			void* callbackUserData;
 			} addProcessListener; // Message to add a new process listener to the event dispatcher
-		EventDispatcher::ListenerKey removeProcessListener; // Message to remove a process listener from the event dispatcher
+		ListenerKey removeProcessListener; // Message to remove a process listener from the event dispatcher
+		struct
+			{
+			ListenerKey key;
+			SignalCallback callback;
+			void* callbackUserData;
+			} addSignalListener; // Message to add a new signal listener to the event dispatcher
+		ListenerKey removeSignalListener; // Message to remove a signal listener from the event dispatcher
+		struct
+			{
+			ListenerKey key;
+			void* signalData;
+			} signal; // Message to raise a signal
 		};
 	};
-
-/****************
-Helper functions:
-****************/
-
-bool readPipeMessage(int pipeFd,PipeMessage& pm)
-	{
-	/* Make sure to read the complete message: */
-	unsigned char* readPtr=reinterpret_cast<unsigned char*>(&pm);
-	size_t readSize=sizeof(PipeMessage);
-	while(readSize>0U)
-		{
-		ssize_t readResult=read(pipeFd,readPtr,readSize);
-		if(readResult>0)
-			{
-			readPtr+=readResult;
-			readSize-=size_t(readResult);
-			}
-		else if(errno!=EAGAIN&&errno!=EWOULDBLOCK&&errno!=EINTR)
-			return false;
-		}
-	
-	return true;
-	}
-
-bool writePipeMessage(const PipeMessage& pm,int pipeFd)
-	{
-	/* Make sure to write the complete message: */
-	const unsigned char* writePtr=reinterpret_cast<const unsigned char*>(&pm);
-	size_t writeSize=sizeof(PipeMessage);
-	while(writeSize>0U)
-		{
-		ssize_t writeResult=write(pipeFd,writePtr,writeSize);
-		if(writeResult>0)
-			{
-			writePtr+=writeResult;
-			writeSize-=size_t(writeResult);
-			}
-		else if(errno!=EAGAIN&&errno!=EWOULDBLOCK&&errno!=EINTR)
-			return false;
-		}
-	
-	return true;
-	}
-
-}
 
 /**************************************
 Methods of class EventDispatcher::Time:
@@ -162,14 +229,163 @@ EventDispatcher::Time EventDispatcher::Time::now(void)
 Methods of class EventDispatcher:
 ********************************/
 
+EventDispatcher::ListenerKey EventDispatcher::getNextKey(void)
+	{
+	/* Lock the self-pipe (mutex does double duty for key increment): */
+	Threads::Spinlock::Lock pipeLock(pipeMutex);
+	
+	/* Increment the next key: */
+	do
+		{
+		++nextKey;
+		}
+	while(nextKey==0);
+	
+	/* Return the new key: */
+	return nextKey;
+	}
+
+size_t EventDispatcher::readPipeMessages(void)
+	{
+	/* Check if there was a partial message during the previous call: */
+	char* messageReadPtr=reinterpret_cast<char*>(messages);
+	size_t readSize=numMessages*sizeof(PipeMessage);
+	size_t partialSize=messageReadSize%sizeof(PipeMessage);
+	if(partialSize!=0)
+		{
+		// DEBUGGING
+		Misc::logNote("Threads::EventDispatcher::readPipeMessages: Partial read during last call");
+		
+		/* Move the partial data to the front of the buffer: */
+		memcpy(messageReadPtr,messageReadPtr+messageReadSize-partialSize,partialSize);
+		messageReadPtr+=partialSize;
+		readSize-=partialSize;
+		}
+	
+	/* Read up to the given number of messages: */
+	ssize_t readResult=read(pipeFds[0],messageReadPtr,readSize);
+	
+	/* Check for errors: */
+	if(readResult<=0)
+		{
+		if(readResult<0&&(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR))
+			Misc::logWarning("Threads::EventDispatcher::readPipeMessages: No data to read");
+		else
+			Misc::throwStdErr("Threads::EventDispatcher::readPipeMessages: Fatal error %d (%s) while reading commands",errno,strerror(errno));
+		}
+	
+	/* Calculate the number of complete messages read: */
+	messageReadSize=partialSize+size_t(readResult);
+	return messageReadSize/sizeof(PipeMessage);
+	}
+
+void EventDispatcher::writePipeMessage(const EventDispatcher::PipeMessage& pm,const char* methodName)
+	{
+	/* Lock the self-pipe: */
+	Threads::Spinlock::Lock pipeLock(pipeMutex);
+	
+	/* Make sure to write the complete message: */
+	const unsigned char* writePtr=reinterpret_cast<const unsigned char*>(&pm);
+	size_t writeSize=sizeof(PipeMessage);
+	while(writeSize>0U)
+		{
+		ssize_t writeResult=write(pipeFds[1],writePtr,writeSize);
+		if(writeResult>0)
+			{
+			writePtr+=writeResult;
+			writeSize-=size_t(writeResult);
+			if(writeSize>0U)
+				Misc::formattedLogWarning("Threads::EventDispatcher::%s: Incomplete write",methodName);
+			}
+		else if(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR)
+			{
+			Misc::formattedLogWarning("Threads::EventDispatcher::%s: Error %d (%s) while writing command",methodName,errno,strerror(errno));
+			}
+		else
+			Misc::throwStdErr("Threads::EventDispatcher::%s: Fatal error %d (%s) while writing command",methodName,errno,strerror(errno));
+		}
+	}
+
+void EventDispatcher::updateFdSets(int fd,int oldEventMask,int newEventMask)
+	{
+	/* Check if the read set needs to be updated: */
+	if((oldEventMask^newEventMask)&Read)
+		{
+		/* Add or remove the file descriptor to/from the read set: */
+		if(newEventMask&Read)
+			{
+			FD_SET(fd,&readFds);
+			++numReadFds;
+			}
+		else
+			{
+			FD_CLR(fd,&readFds);
+			--numReadFds;
+			}
+		}
+	
+	/* Check if the write set needs to be updated: */
+	if((oldEventMask^newEventMask)&Write)
+		{
+		/* Add or remove the file descriptor to/from the write set: */
+		if(newEventMask&Write)
+			{
+			FD_SET(fd,&writeFds);
+			++numWriteFds;
+			}
+		else
+			{
+			FD_CLR(fd,&writeFds);
+			--numWriteFds;
+			}
+		}
+	
+	/* Check if the exception set needs to be updated: */
+	if((oldEventMask^newEventMask)&Exception)
+		{
+		/* Add or remove the file descriptor to/from the exception set: */
+		if(newEventMask&Exception)
+			{
+			FD_SET(fd,&exceptionFds);
+			++numExceptionFds;
+			}
+		else
+			{
+			FD_CLR(fd,&exceptionFds);
+			--numExceptionFds;
+			}
+		}
+	
+	/* Check if the maximum file descriptor needs to be updated: */
+	if(newEventMask!=0x0)
+		{
+		if(maxFd<fd)
+			maxFd=fd;
+		}
+	else
+		{
+		if(maxFd==fd)
+			{
+			/* Find the new largest file descriptor: */
+			maxFd=pipeFds[0];
+			for(std::vector<IOEventListener>::iterator it=ioEventListeners.begin();it!=ioEventListeners.end();++it)
+				if(it->typeMask!=0&&maxFd<it->fd)
+					maxFd=it->fd;
+			}
+		}
+	}
+
 EventDispatcher::EventDispatcher(void)
-	:nextKey(0),
+	:numMessages(4096/sizeof(PipeMessage)),messages(new PipeMessage[numMessages]),messageReadSize(0),
+	 nextKey(0),
+	 signalListeners(17),
 	 numReadFds(0),numWriteFds(0),numExceptionFds(0),
 	 hadBadFd(false)
 	{
 	/* Create the self-pipe: */
-	if(pipe(pipeFds)!=0||pipeFds[0]<0||pipeFds[1]<0)
-		throw std::runtime_error("Misc::EventDispatcher: Cannot open event pipe");
+	pipeFds[1]=pipeFds[0]=-1;
+	if(pipe2(pipeFds,O_NONBLOCK)<0)
+		Misc::throwStdErr("Misc::EventDispatcher: Cannot open event pipe due to error %d (%s)",errno,strerror(errno));
 	
 	/* Initialize the three file descriptor sets: */
 	FD_ZERO(&readFds);
@@ -187,6 +403,7 @@ EventDispatcher::~EventDispatcher(void)
 	/* Close the self-pipe: */
 	close(pipeFds[0]);
 	close(pipeFds[1]);
+	delete[] messages;
 	
 	/* Delete all timer event listeners: */
 	for(TimerEventListenerHeap::Iterator telIt=timerEventListeners.begin();telIt!=timerEventListeners.end();++telIt)
@@ -195,6 +412,45 @@ EventDispatcher::~EventDispatcher(void)
 
 bool EventDispatcher::dispatchNextEvent(void)
 	{
+	/* Update the dispatch time point: */
+	dispatchTime=Time::now();
+	
+	/* Handle elapsed timer events and find the time interval to the next unelapsed event: */
+	Time interval;
+	while(!timerEventListeners.isEmpty())
+		{
+		/* Calculate the interval to the next timer event and dispatch elapsed events on-the-fly: */
+		TimerEventListener* tel=timerEventListeners.getSmallest();
+		interval=tel->time;
+		interval-=dispatchTime;
+		
+		/* Bail out if the event is still in the future: */
+		if(interval.tv_sec>=0)
+			break;
+		
+		/* Call the event callback: */
+		if(tel->callback(tel->key,tel->callbackUserData))
+			{
+			/* Remove the event listener from the heap: */
+			delete tel;
+			timerEventListeners.removeSmallest();
+			}
+		else
+			{
+			/* Move the event time to the next iteration that is still in the future and count the number of missed events: */
+			tel->time+=tel->interval;
+			// unsigned int numMissedEvents=0; // Need to figure out how to communicate this to timer event handlers in a meaningful way
+			while(!(dispatchTime<=tel->time))
+				{
+				// ++numMissedEvents;
+				tel->time+=tel->interval;
+				}
+			
+			/* Re-schedule the event at the next time: */
+			timerEventListeners.reinsertSmallest();
+			}
+		}
+	
 	/* Create lists of watched file descriptors: */
 	fd_set rds,wds,eds;
 	int numRfds,numWfds,numEfds,numFds;
@@ -225,46 +481,20 @@ bool EventDispatcher::dispatchNextEvent(void)
 		numFds=maxFd+1;
 		}
 	
-	/* Process the heap of timer event listeners: */
 	int numSetFds=0;
-	while(!timerEventListeners.isEmpty())
+	if(timerEventListeners.isEmpty())
 		{
-		/* Calculate the interval to the next timer event and dispatch elapsed events on-the-fly: */
-		TimerEventListener* tel=timerEventListeners.getSmallest();
-		Time interval=tel->time;
-		interval-=Time::now();
-		
-		/* Check if the event has already elapsed: */
-		if(interval.tv_sec<0)
-			{
-			/* Call the event callback: */
-			if(tel->callback(tel->key,tel->callbackUserData))
-				{
-				/* Remove the event listener from the heap: */
-				delete tel;
-				timerEventListeners.removeSmallest();
-				}
-			else
-				{
-				/* Move the event time to the next iteration: */
-				tel->time+=tel->interval;
-				timerEventListeners.reinsertSmallest();
-				}
-			}
-		else
-			{
-			/* Wait for the next event on any watched file descriptor or until the next timer event elapses: */
-			numSetFds=select(numFds,numRfds>0?&rds:0,numWfds>0?&wds:0,numEfds>0?&eds:0,&interval);
-			
-			/* Done dispatching timer events: */
-			goto doneWithTimerEvents;
-			}
+		/* Wait for the next event on any watched file descriptor: */
+		numSetFds=select(numFds,numRfds>0?&rds:0,numWfds>0?&wds:0,numEfds>0?&eds:0,0);
+		}
+	else
+		{
+		/* Wait for the next event on any watched file descriptor or until the next timer event elapses: */
+		numSetFds=select(numFds,numRfds>0?&rds:0,numWfds>0?&wds:0,numEfds>0?&eds:0,&interval);
 		}
 	
-	/* Wait for the next event on any watched file descriptor (we only get here if there are no active timer events): */
-	numSetFds=select(numFds,numRfds>0?&rds:0,numWfds>0?&wds:0,numEfds>0?&eds:0,0);
-	
-	doneWithTimerEvents:
+	/* Update the dispatch time point: */
+	dispatchTime=Time::now();
 	
 	/* Handle all received events: */
 	if(numSetFds>0)
@@ -272,135 +502,150 @@ bool EventDispatcher::dispatchNextEvent(void)
 		/* Check for a message on the self-pipe: */
 		if(FD_ISSET(pipeFds[0],&rds))
 			{
-			/* Read the pipe message: */
-			PipeMessage pm;
-			if(!readPipeMessage(pipeFds[0],pm))
+			/* Read and handle pipe messages: */
+			size_t numMessages=readPipeMessages();
+			PipeMessage* pmPtr=messages;
+			for(size_t i=0;i<numMessages;++i,++pmPtr)
 				{
-				int error=errno;
-				Misc::throwStdErr("Misc::EventDispatcher::dispatchNextEvent: Fatal error %d (%s) while reading command",error,strerror(error));
-				}
-			switch(pm.messageType)
-				{
-				case PipeMessage::STOP: // Stop dispatching events
-					return false;
-					break;
-				
-				case PipeMessage::ADD_IO_LISTENER: // Add input/output event listener
+				switch(pmPtr->messageType)
 					{
-					/* Add the new input/output event listener to the list: */
-					ioEventListeners.push_back(IOEventListener(pm.addIOListener.key,pm.addIOListener.fd,pm.addIOListener.typeMask,pm.addIOListener.callback,pm.addIOListener.callbackUserData));
-					
-					/* Add the new input/output event listener's file descriptor to all selected descriptor sets: */
-					if(pm.addIOListener.typeMask&Read)
-						{
-						FD_SET(pm.addIOListener.fd,&readFds);
-						++numReadFds;
-						}
-					if(pm.addIOListener.typeMask&Write)
-						{
-						FD_SET(pm.addIOListener.fd,&writeFds);
-						++numWriteFds;
-						}
-					if(pm.addIOListener.typeMask&Exception)
-						{
-						FD_SET(pm.addIOListener.fd,&exceptionFds);
-						++numExceptionFds;
-						}
-					if(maxFd<pm.addIOListener.fd)
-						maxFd=pm.addIOListener.fd;
-					
-					break;
-					}
-				
-				case PipeMessage::REMOVE_IO_LISTENER: // Remove input/output event listener
-					{
-					/* Find the input/output event listener with the given key: */
-					std::vector<IOEventListener>::iterator elIt;
-					for(elIt=ioEventListeners.begin();elIt!=ioEventListeners.end()&&elIt->key!=pm.removeIOListener;++elIt)
-						;
-					if(elIt!=ioEventListeners.end())
-						{
-						/* Remove the input/output event listener from the list: */
-						int eventFd=elIt->fd;
-						int eventTypeMask=elIt->typeMask;
-						*elIt=*(ioEventListeners.end()-1);
-						ioEventListeners.pop_back();
+					case PipeMessage::INTERRUPT: // Interrupt wait
 						
-						/* Remove the input/output event file descriptor from all selected descriptor sets: */
-						if(eventTypeMask&Read)
-							{
-							FD_CLR(eventFd,&readFds);
-							--numReadFds;
-							}
-						if(eventTypeMask&Write)
-							{
-							FD_CLR(eventFd,&writeFds);
-							--numWriteFds;
-							}
-						if(eventTypeMask&Exception)
-							{
-							FD_CLR(eventFd,&exceptionFds);
-							--numExceptionFds;
-							}
-						if(maxFd==eventFd)
-							{
-							/* Find the new largest file descriptor: */
-							maxFd=pipeFds[0];
-							for(elIt=ioEventListeners.begin();elIt!=ioEventListeners.end();++elIt)
-								if(maxFd<elIt->fd)
-									maxFd=elIt->fd;
-							}
-						}
-					break;
-					}
-				
-				case PipeMessage::ADD_TIMER_LISTENER: // Add timer event listener
-					/* Add the new timer event listener to the heap: */
-					timerEventListeners.insert(new TimerEventListener(pm.addTimerListener.key,pm.addTimerListener.time,pm.addTimerListener.interval,pm.addTimerListener.callback,pm.addTimerListener.callbackUserData));
+						/* Do nothing */
+						
+						break;
 					
-					break;
-				
-				case PipeMessage::REMOVE_TIMER_LISTENER: // Remove timer event listener
-					{
-					/* Find the timer event listener with the given key: */
-					TimerEventListenerHeap::Iterator elIt;
-					for(elIt=timerEventListeners.begin();elIt!=timerEventListeners.end()&&(*elIt)->key!=pm.removeTimerListener;++elIt)
-						;
-					if(elIt!=timerEventListeners.end())
+					case PipeMessage::STOP: // Stop dispatching events
+						return false;
+						break;
+					
+					case PipeMessage::ADD_IO_LISTENER: // Add input/output event listener
+						
+						/* Add the new input/output event listener to the list: */
+						ioEventListeners.push_back(IOEventListener(pmPtr->addIOListener.key,pmPtr->addIOListener.fd,pmPtr->addIOListener.typeMask,pmPtr->addIOListener.callback,pmPtr->addIOListener.callbackUserData));
+						
+						/* Update the file descriptor sets: */
+						updateFdSets(pmPtr->addIOListener.fd,0x0,pmPtr->addIOListener.typeMask);
+						
+						break;
+					
+					case PipeMessage::SET_IO_LISTENER_TYPEMASK: // Change the event type mask of an input/output event listener
+						
+						/* Find the input/output event listener with the given key: */
+						for(std::vector<IOEventListener>::iterator elIt=ioEventListeners.begin();elIt!=ioEventListeners.end();++elIt)
+							if(elIt->key==pmPtr->setIOListenerEventTypeMask.key)
+								{
+								/* Update the input/output event listener: */
+								int typeMask=elIt->typeMask;
+								elIt->typeMask=pmPtr->setIOListenerEventTypeMask.newTypeMask;
+								
+								/* Update the file descriptor sets: */
+								updateFdSets(elIt->fd,typeMask,elIt->typeMask);
+								
+								/* Stop looking: */
+								break;
+								}
+						
+						break;
+					
+					case PipeMessage::REMOVE_IO_LISTENER: // Remove input/output event listener
+						
+						/* Find the input/output event listener with the given key: */
+						for(std::vector<IOEventListener>::iterator elIt=ioEventListeners.begin();elIt!=ioEventListeners.end();++elIt)
+							if(elIt->key==pmPtr->removeIOListener)
+								{
+								/* Remove the input/output event listener from the list: */
+								int fd=elIt->fd;
+								int typeMask=elIt->typeMask;
+								*elIt=ioEventListeners.back();
+								ioEventListeners.pop_back();
+								
+								/* Update the file descriptor sets: */
+								updateFdSets(fd,typeMask,0x0);
+								
+								/* Stop looking: */
+								break;
+								}
+						
+						break;
+					
+					case PipeMessage::ADD_TIMER_LISTENER: // Add timer event listener
+						
+						/* Add the new timer event listener to the heap: */
+						timerEventListeners.insert(new TimerEventListener(pmPtr->addTimerListener.key,pmPtr->addTimerListener.time,pmPtr->addTimerListener.interval,pmPtr->addTimerListener.callback,pmPtr->addTimerListener.callbackUserData));
+						
+						break;
+					
+					case PipeMessage::REMOVE_TIMER_LISTENER: // Remove timer event listener
+						
+						/* Find the timer event listener with the given key: */
+						for(TimerEventListenerHeap::Iterator elIt=timerEventListeners.begin();elIt!=timerEventListeners.end();++elIt)
+							if((*elIt)->key==pmPtr->removeTimerListener)
+								{
+								/* Remove the timer event listener from the heap: */
+								delete *elIt;
+								timerEventListeners.remove(elIt);
+								
+								/* Stop looking: */
+								break;
+								}
+						
+						break;
+					
+					case PipeMessage::ADD_PROCESS_LISTENER:
+						
+						/* Add the new process listener to the list: */
+						processListeners.push_back(ProcessListener(pmPtr->addProcessListener.key,pmPtr->addProcessListener.callback,pmPtr->addProcessListener.callbackUserData));
+						
+						break;
+					
+					case PipeMessage::REMOVE_PROCESS_LISTENER:
+						
+						/* Find the process listener with the given key: */
+						for(std::vector<ProcessListener>::iterator plIt=processListeners.begin();plIt!=processListeners.end();++plIt)
+							if(plIt->key==pmPtr->removeProcessListener)
+								{
+								/* Remove the process listener from the list: */
+								*plIt=processListeners.back();
+								processListeners.pop_back();
+								
+								/* Stop looking: */
+								break;
+								}
+						
+						break;
+					
+					case PipeMessage::ADD_SIGNAL_LISTENER:
+						
+						/* Add the new signal listener to the map: */
+						signalListeners.setEntry(SignalListenerMap::Entry(pmPtr->addSignalListener.key,SignalListener(pmPtr->addSignalListener.key,pmPtr->addSignalListener.callback,pmPtr->addSignalListener.callbackUserData)));
+						
+						break;
+					
+					case PipeMessage::REMOVE_SIGNAL_LISTENER:
+						
+						/* Remove the signal listener with the given key from the map: */
+						signalListeners.removeEntry(pmPtr->removeSignalListener);
+						
+						break;
+					
+					case PipeMessage::SIGNAL:
 						{
-						/* Remove the timer event listener from the heap: */
-						delete *elIt;
-						timerEventListeners.remove(elIt);
+						/* Find the signal listener with the given key in the map: */
+						SignalListener& sl=signalListeners.getEntry(pmPtr->signal.key).getDest();
+						
+						/* Call the callback: */
+						sl.callback(sl.key,pmPtr->signal.signalData,sl.callbackUserData);
+						
+						break;
 						}
-					
-					break;
+						
+					default:
+						/* Do nothing: */
+						
+						// DEBUGGING
+						Misc::formattedLogWarning("Threads::EventDispatcher::dispatchNextEvent: Unknown pipe message %d",pmPtr->messageType);
 					}
-				
-				case PipeMessage::ADD_PROCESS_LISTENER:
-					/* Add the new process listener to the list: */
-					processListeners.push_back(ProcessListener(pm.addProcessListener.key,pm.addProcessListener.callback,pm.addProcessListener.callbackUserData));
-					
-					break;
-				
-				case PipeMessage::REMOVE_PROCESS_LISTENER:
-					{
-					/* Find the process listener with the given key: */
-					std::vector<ProcessListener>::iterator plIt;
-					for(plIt=processListeners.begin();plIt!=processListeners.end()&&plIt->key!=pm.removeProcessListener;++plIt)
-						;
-					if(plIt!=processListeners.end())
-						{
-						/* Remove the process listener from the list: */
-						*plIt=*(processListeners.end()-1);
-						processListeners.pop_back();
-						}
-					
-					break;
-					}
-				
-				default:
-					/* Do nothing: */
-					;
 				}
 			
 			--numSetFds;
@@ -409,61 +654,44 @@ bool EventDispatcher::dispatchNextEvent(void)
 		/* Handle all input/output events: */
 		for(std::vector<IOEventListener>::iterator elIt=ioEventListeners.begin();numSetFds>0&&elIt!=ioEventListeners.end();++elIt)
 			{
-			/* Check all event types for which the listener has registered interest: */
-			bool removeListener=false;
-			if((elIt->typeMask&Read)!=0&&FD_ISSET(elIt->fd,&rds))
+			/* Determine all event types on the listener's file descriptor: */
+			int eventTypeMask=0x0;
+			if(numRfds>0&&FD_ISSET(elIt->fd,&rds))
 				{
-				/* Call the event callback: */
-				removeListener=elIt->callback(elIt->key,Read,elIt->callbackUserData);
+				/* Signal a read event: */
+				eventTypeMask|=Read;
 				--numSetFds;
 				}
-			if(!removeListener&&(elIt->typeMask&Write)!=0&&FD_ISSET(elIt->fd,&wds))
+			if(numWfds>0&&FD_ISSET(elIt->fd,&wds))
 				{
-				/* Call the event callback: */
-				removeListener=elIt->callback(elIt->key,Write,elIt->callbackUserData);
+				/* Signal a write event: */
+				eventTypeMask|=Write;
 				--numSetFds;
 				}
-			if(!removeListener&&(elIt->typeMask&Exception)!=0&&FD_ISSET(elIt->fd,&eds))
+			if(numEfds>0&&FD_ISSET(elIt->fd,&eds))
 				{
-				/* Call the event callback: */
-				removeListener=elIt->callback(elIt->key,Exception,elIt->callbackUserData);
+				/* Signal an exception event: */
+				eventTypeMask|=Exception;
 				--numSetFds;
 				}
 			
-			/* Check if the listener wants to be removed: */
-			if(removeListener)
+			/* Limit to events in which the listener is interested: */
+			int interestEventTypeMask=eventTypeMask&elIt->typeMask;
+			
+			/* Check for spurious events: */
+			if(interestEventTypeMask!=eventTypeMask)
+				Misc::logWarning("Threads::EventDispatcher::dispatchNextEvent: Spurious event");
+			
+			/* Call the listener's event callback and check whether the listener wants to be removed: */
+			if(interestEventTypeMask!=0x0&&elIt->callback(elIt->key,interestEventTypeMask,elIt->callbackUserData))
 				{
+				/* Update the file descriptor sets: */
+				updateFdSets(elIt->fd,elIt->typeMask,0x0);
+				
 				/* Remove the event listener from the list: */
-				int eventFd=elIt->fd;
-				int eventTypeMask=elIt->typeMask;
 				*elIt=ioEventListeners.back();
 				ioEventListeners.pop_back();
 				--elIt;
-				
-				/* Remove the event file descriptor from all selected descriptor sets: */
-				if(eventTypeMask&Read)
-					{
-					FD_CLR(eventFd,&readFds);
-					--numReadFds;
-					}
-				if(eventTypeMask&Write)
-					{
-					FD_CLR(eventFd,&writeFds);
-					--numWriteFds;
-					}
-				if(eventTypeMask&Exception)
-					{
-					FD_CLR(eventFd,&exceptionFds);
-					--numExceptionFds;
-					}
-				if(maxFd==eventFd)
-					{
-					/* Find the new largest file descriptor: */
-					maxFd=pipeFds[0];
-					for(std::vector<IOEventListener>::iterator it=ioEventListeners.begin();it!=ioEventListeners.end();++it)
-						if(maxFd<it->fd)
-							maxFd=it->fd;
-					}
 				}
 			}
 		}
@@ -471,13 +699,16 @@ bool EventDispatcher::dispatchNextEvent(void)
 		{
 		if(errno==EBADF)
 			{
+			// DEBUGGING
+			Misc::logWarning("Threads::EventDispatcher::dispatchNextEvent: Bad file descriptor in select");
+			
 			/* Set error flag; only wait on self-pipe on next iteration to hopefully receive a "remove listener" message for the bad descriptor: */
 			hadBadFd=true;
 			}
 		else
 			{
 			int error=errno;
-			Misc::throwStdErr("Misc::EventDispatcher::dispatchNextEvent: Error %d (%s) during select",error,strerror(error));
+			Misc::throwStdErr("Threads::EventDispatcher::dispatchNextEvent: Error %d (%s) during select",error,strerror(error));
 			}
 		}
 	
@@ -506,161 +737,181 @@ void EventDispatcher::dispatchEvents(void)
 
 void EventDispatcher::interrupt(void)
 	{
-	/* Lock the self-pipe: */
-	Threads::Spinlock::Lock pipeLock(pipeMutex);
-	
 	/* Write a pipe message to the self pipe: */
 	PipeMessage pm;
 	memset(&pm,0,sizeof(PipeMessage));
 	pm.messageType=PipeMessage::INTERRUPT;
-	if(!writePipeMessage(pm,pipeFds[1]))
-		{
-		int error=errno;
-		Misc::throwStdErr("EventDispatcher::interrupt: Fatal error %d (%s) while writing command",error,strerror(error));
-		}
+	writePipeMessage(pm,"interrupt");
 	}
 
 void EventDispatcher::stop(void)
 	{
-	/* Lock the self-pipe: */
-	Threads::Spinlock::Lock pipeLock(pipeMutex);
-	
 	/* Write a pipe message to the self pipe: */
 	PipeMessage pm;
 	memset(&pm,0,sizeof(PipeMessage));
 	pm.messageType=PipeMessage::STOP;
-	if(!writePipeMessage(pm,pipeFds[1]))
-		{
-		int error=errno;
-		Misc::throwStdErr("EventDispatcher::stop: Fatal error %d (%s) while writing command",error,strerror(error));
-		}
+	writePipeMessage(pm,"stop");
+	}
+
+void EventDispatcher::stopOnSignals(void)
+	{
+	/* Check if there is already a signal-stopped event dispatcher: */
+	if(stopDispatcher!=0)
+		throw std::runtime_error("Threads::EventDispatcher::stopOnSignals: Already registered another dispatcher");
+	
+	/* Register this dispatcher: */
+	stopDispatcher=this;
+	
+	/* Intercept SIGINT and SIGTERM: */
+	struct sigaction sigIntAction;
+	memset(&sigIntAction,0,sizeof(struct sigaction));
+	sigIntAction.sa_handler=stopSignalHandler;
+	if(sigaction(SIGINT,&sigIntAction,0)<0)
+		throw std::runtime_error("Threads::EventDispatcher::stopOnSignals: Unable to intercept SIGINT");
+	struct sigaction sigTermAction;
+	memset(&sigTermAction,0,sizeof(struct sigaction));
+	sigTermAction.sa_handler=stopSignalHandler;
+	if(sigaction(SIGTERM,&sigTermAction,0)<0)
+		throw std::runtime_error("Threads::EventDispatcher::stopOnSignals: Unable to intercept SIGTERM");
 	}
 
 EventDispatcher::ListenerKey EventDispatcher::addIOEventListener(int eventFd,int eventTypeMask,EventDispatcher::IOEventCallback eventCallback,void* eventCallbackUserData)
 	{
-	/* Lock the self-pipe: */
-	Threads::Spinlock::Lock pipeLock(pipeMutex);
-	
 	/* Write a pipe message to the self pipe: */
 	PipeMessage pm;
 	memset(&pm,0,sizeof(PipeMessage));
 	pm.messageType=PipeMessage::ADD_IO_LISTENER;
-	pm.addIOListener.key=nextKey;
+	pm.addIOListener.key=getNextKey();
 	pm.addIOListener.fd=eventFd;
 	pm.addIOListener.typeMask=eventTypeMask;
 	pm.addIOListener.callback=eventCallback;
 	pm.addIOListener.callbackUserData=eventCallbackUserData;
-	if(!writePipeMessage(pm,pipeFds[1]))
-		{
-		int error=errno;
-		Misc::throwStdErr("EventDispatcher::addIOEventListener: Fatal error %d (%s) while writing command",error,strerror(error));
-		}
-	
-	/* Increment the next listener key: */
-	++nextKey;
+	writePipeMessage(pm,"addIOEventListener");
 	
 	return pm.addIOListener.key;
 	}
 
+void EventDispatcher::setIOEventListenerEventTypeMask(EventDispatcher::ListenerKey listenerKey,int newEventTypeMask)
+	{
+	/* Write a pipe message to the self pipe: */
+	PipeMessage pm;
+	memset(&pm,0,sizeof(PipeMessage));
+	pm.messageType=PipeMessage::SET_IO_LISTENER_TYPEMASK;
+	pm.setIOListenerEventTypeMask.key=listenerKey;
+	pm.setIOListenerEventTypeMask.newTypeMask=newEventTypeMask;
+	writePipeMessage(pm,"setIOEventListenerEventTypeMask");
+	}
+
+void EventDispatcher::setIOEventListenerEventTypeMaskFromCallback(EventDispatcher::ListenerKey listenerKey,int newEventTypeMask)
+	{
+	/* Find the input/output event listener with the given key: */
+	for(std::vector<IOEventListener>::iterator elIt=ioEventListeners.begin();elIt!=ioEventListeners.end();++elIt)
+		if(elIt->key==listenerKey)
+			{
+			/* Update the file descriptor sets: */
+			updateFdSets(elIt->fd,elIt->typeMask,newEventTypeMask);
+			
+			/* Update the input/output event listener: */
+			elIt->typeMask=newEventTypeMask;
+			
+			/* Stop looking: */
+			break;
+			}
+	}
+
 void EventDispatcher::removeIOEventListener(EventDispatcher::ListenerKey listenerKey)
 	{
-	/* Lock the self-pipe: */
-	Threads::Spinlock::Lock pipeLock(pipeMutex);
-	
 	/* Write a pipe message to the self pipe: */
 	PipeMessage pm;
 	memset(&pm,0,sizeof(PipeMessage));
 	pm.messageType=PipeMessage::REMOVE_IO_LISTENER;
 	pm.removeIOListener=listenerKey;
-	if(!writePipeMessage(pm,pipeFds[1]))
-		{
-		int error=errno;
-		Misc::throwStdErr("EventDispatcher::removeIOEventListener: Fatal error %d (%s) while writing command",error,strerror(error));
-		}
+	writePipeMessage(pm,"removeIOEventListener");
 	}
 
 EventDispatcher::ListenerKey EventDispatcher::addTimerEventListener(const EventDispatcher::Time& eventTime,const EventDispatcher::Time& eventInterval,EventDispatcher::TimerEventCallback eventCallback,void* eventCallbackUserData)
 	{
-	/* Lock the self-pipe: */
-	Threads::Spinlock::Lock pipeLock(pipeMutex);
-	
 	/* Write a pipe message to the self pipe: */
 	PipeMessage pm;
 	memset(&pm,0,sizeof(PipeMessage));
 	pm.messageType=PipeMessage::ADD_TIMER_LISTENER;
-	pm.addTimerListener.key=nextKey;
+	pm.addTimerListener.key=getNextKey();
 	pm.addTimerListener.time=eventTime;
 	pm.addTimerListener.interval=eventInterval;
 	pm.addTimerListener.callback=eventCallback;
 	pm.addTimerListener.callbackUserData=eventCallbackUserData;
-	if(!writePipeMessage(pm,pipeFds[1]))
-		{
-		int error=errno;
-		Misc::throwStdErr("EventDispatcher::addTimerListener: Fatal error %d (%s) while writing command",error,strerror(error));
-		}
-	
-	/* Increment the next listener key: */
-	++nextKey;
+	writePipeMessage(pm,"addTimerEventListener");
 	
 	return pm.addTimerListener.key;
 	}
 
 void EventDispatcher::removeTimerEventListener(EventDispatcher::ListenerKey listenerKey)
 	{
-	/* Lock the self-pipe: */
-	Threads::Spinlock::Lock pipeLock(pipeMutex);
-	
 	/* Write a pipe message to the self pipe: */
 	PipeMessage pm;
 	memset(&pm,0,sizeof(PipeMessage));
 	pm.messageType=PipeMessage::REMOVE_TIMER_LISTENER;
 	pm.removeTimerListener=listenerKey;
-	if(!writePipeMessage(pm,pipeFds[1]))
-		{
-		int error=errno;
-		Misc::throwStdErr("EventDispatcher::removeTimerEventListener: Fatal error %d (%s) while writing command",error,strerror(error));
-		}
+	writePipeMessage(pm,"removeTimerEventListener");
 	}
 
 EventDispatcher::ListenerKey EventDispatcher::addProcessListener(EventDispatcher::ProcessCallback eventCallback,void* eventCallbackUserData)
 	{
-	/* Lock the self-pipe: */
-	Threads::Spinlock::Lock pipeLock(pipeMutex);
-	
 	/* Write a pipe message to the self pipe: */
 	PipeMessage pm;
 	memset(&pm,0,sizeof(PipeMessage));
 	pm.messageType=PipeMessage::ADD_PROCESS_LISTENER;
-	pm.addProcessListener.key=nextKey;
+	pm.addProcessListener.key=getNextKey();
 	pm.addProcessListener.callback=eventCallback;
 	pm.addProcessListener.callbackUserData=eventCallbackUserData;
-	if(!writePipeMessage(pm,pipeFds[1]))
-		{
-		int error=errno;
-		Misc::throwStdErr("EventDispatcher::addProcessListener: Fatal error %d (%s) while writing command",error,strerror(error));
-		}
-	
-	/* Increment the next listener key: */
-	++nextKey;
+	writePipeMessage(pm,"addProcessListener");
 	
 	return pm.addProcessListener.key;
 	}
 
 void EventDispatcher::removeProcessListener(EventDispatcher::ListenerKey listenerKey)
 	{
-	/* Lock the self-pipe: */
-	Threads::Spinlock::Lock pipeLock(pipeMutex);
-	
 	/* Write a pipe message to the self pipe: */
 	PipeMessage pm;
 	memset(&pm,0,sizeof(PipeMessage));
 	pm.messageType=PipeMessage::REMOVE_PROCESS_LISTENER;
 	pm.removeProcessListener=listenerKey;
-	if(!writePipeMessage(pm,pipeFds[1]))
-		{
-		int error=errno;
-		Misc::throwStdErr("EventDispatcher::removeProcessListener: Fatal error %d (%s) while writing command",error,strerror(error));
-		}
+	writePipeMessage(pm,"removeProcessListener");
+	}
+
+EventDispatcher::ListenerKey EventDispatcher::addSignalListener(EventDispatcher::SignalCallback eventCallback,void* eventCallbackUserData)
+	{
+	/* Write a pipe message to the self pipe: */
+	PipeMessage pm;
+	memset(&pm,0,sizeof(PipeMessage));
+	pm.messageType=PipeMessage::ADD_SIGNAL_LISTENER;
+	pm.addSignalListener.key=getNextKey();
+	pm.addSignalListener.callback=eventCallback;
+	pm.addSignalListener.callbackUserData=eventCallbackUserData;
+	writePipeMessage(pm,"addSignalListener");
+	
+	return pm.addSignalListener.key;
+	}
+
+void EventDispatcher::removeSignalListener(EventDispatcher::ListenerKey listenerKey)
+	{
+	/* Write a pipe message to the self pipe: */
+	PipeMessage pm;
+	memset(&pm,0,sizeof(PipeMessage));
+	pm.messageType=PipeMessage::REMOVE_SIGNAL_LISTENER;
+	pm.removeSignalListener=listenerKey;
+	writePipeMessage(pm,"removeSignalListener");
+	}
+
+void EventDispatcher::signal(EventDispatcher::ListenerKey listenerKey,void* signalData)
+	{
+	/* Write a pipe message to the self pipe: */
+	PipeMessage pm;
+	memset(&pm,0,sizeof(PipeMessage));
+	pm.messageType=PipeMessage::SIGNAL;
+	pm.signal.key=listenerKey;
+	pm.signal.signalData=signalData;
+	writePipeMessage(pm,"signal");
 	}
 
 }

@@ -1,7 +1,7 @@
 /***********************************************************************
 VRDeviceServer - Class encapsulating the VR device protocol's server
 side.
-Copyright (c) 2002-2017 Oliver Kreylos
+Copyright (c) 2002-2018 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -27,6 +27,8 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Comm/ListeningTCPSocket.h>
 #include <Vrui/Internal/VRDevicePipe.h>
 
+#include <VRDeviceDaemon/VRDeviceManager.h>
+
 /* Forward declarations: */
 namespace Misc {
 class ConfigurationFile;
@@ -35,9 +37,8 @@ namespace Vrui {
 class BatteryState;
 class HMDConfiguration;
 }
-class VRDeviceManager;
 
-class VRDeviceServer
+class VRDeviceServer:public VRDeviceManager::VRStreamer
 	{
 	/* Embedded classes: */
 	private:
@@ -95,12 +96,15 @@ class VRDeviceServer
 	
 	/* Elements: */
 	private:
-	VRDeviceManager* deviceManager; // Pointer to device manager running in server
 	Threads::EventDispatcher dispatcher; // Event dispatcher to handle communication with multiple clients in parallel
 	Comm::ListeningTCPSocket listenSocket; // Main socket the server listens on for incoming connections
 	ClientStateList clientStates; // List of currently connected clients
 	int numActiveClients; // Number of clients that are currently active
 	int numStreamingClients; // Number of clients that are currently streaming
+	bool haveUpdates; // Flag if any device state components have been updated since last status update was sent
+	std::vector<int> updatedTrackers; // List of trackers that have been updated since last status update was sent
+	std::vector<int> updatedButtons; // List of buttons that have been updated since last status update was sent
+	std::vector<int> updatedValuators; // List of valuators that have been updated since last status update was sent
 	unsigned int managerTrackerStateVersion; // Version number of tracker states in device manager
 	unsigned int streamingTrackerStateVersion; // Version number of tracker states most recently sent to streaming clients
 	unsigned int managerBatteryStateVersion; // Version number of device battery states in device manager
@@ -115,10 +119,8 @@ class VRDeviceServer
 	static bool newConnectionCallback(Threads::EventDispatcher::ListenerKey eventKey,int eventType,void* userData); // Callback called when a connection attempt is made at the listening socket
 	void disconnectClient(ClientState* client,bool removeListener,bool removeFromList); // Disconnects the given client due to a communication error; removes listener and/or dead client from list if respective flags are true
 	static bool clientMessageCallback(Threads::EventDispatcher::ListenerKey eventKey,int eventType,void* userData); // Callback called when a message from a client arrives
-	static void trackerUpdateNotificationCallback(VRDeviceManager* manager,void* userData); // Callback called when tracking device states are updated
-	static void batteryStateUpdatedCallback(VRDeviceManager* manager,unsigned int deviceIndex,const Vrui::BatteryState& batteryState,void* userData); // Callback called when a virtual device's battery state has been updated
-	static void hmdConfigurationUpdatedCallback(VRDeviceManager* manager,const Vrui::HMDConfiguration* hmdConfiguration,void* userData); // Callback called when the given HMD configuration has been updated
 	void disconnectClientOnError(ClientStateList::iterator csIt,const std::runtime_error& err); // Forcefully disconnects a client after a communication error
+	bool writeStateUpdates(ClientStateList::iterator csIt); // Writes changes in the device manager's device state to the given client; returns false on error
 	bool writeServerState(ClientStateList::iterator csIt); // Writes the device manager's current (locked) state to the given client; returns false on error
 	bool writeBatteryState(ClientStateList::iterator csIt,unsigned int deviceIndex); // Writes the device manager's given battery state to the given client; returns false on error
 	bool writeHmdConfiguration(ClientStateList::iterator csIt,HMDConfigurationVersions& hmdConfigurationVersions); // Writes the given HMD configuration to the given client; returns false on error
@@ -126,9 +128,17 @@ class VRDeviceServer
 	/* Constructors and destructors: */
 	public:
 	VRDeviceServer(VRDeviceManager* sDeviceManager,const Misc::ConfigurationFile& configFile); // Creates server associated with device manager
-	~VRDeviceServer(void);
+	virtual ~VRDeviceServer(void);
 	
-	/* Methods: */
+	/* Methods from VRDeviceManager::VRStreamer: */
+	virtual void trackerUpdated(int trackerIndex);
+	virtual void buttonUpdated(int buttonIndex);
+	virtual void valuatorUpdated(int valuatorIndex);
+	virtual void updateCompleted(void);
+	virtual void batteryStateUpdated(unsigned int deviceIndex);
+	virtual void hmdConfigurationUpdated(const Vrui::HMDConfiguration* hmdConfiguration);
+	
+	/* New methods: */
 	void run(void); // Runs the server state machine
 	void stop(void) // Stops the server state machine; can be called asynchronously
 		{

@@ -2,7 +2,7 @@
 LensCorrector - Helper class to render imagery into an off-screen buffer
 and then warp the buffer to the final drawable to correct subsequent
 lens distortion.
-Copyright (c) 2014-2018 Oliver Kreylos
+Copyright (c) 2014-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -645,8 +645,8 @@ bool LensCorrector::frameCallback(void* userData)
 		
 		if(thisPtr->ipdDisplayDialog!=0)
 			{
-			/* Let the dialog stay up for two seconds: */
-			thisPtr->ipdDisplayDialogTakedownTime=getApplicationTime()+2.0;
+			/* Let the dialog stay up for the requested time: */
+			thisPtr->ipdDisplayDialogTakedownTime=getApplicationTime()+thisPtr->ipdDisplayDialogTimeout;
 			
 			/* Pop up the dialog in the viewer's sight line: */
 			Point hotspot=thisPtr->viewer->getHeadPosition()+thisPtr->viewer->getViewDirection()*(Scalar(24)*getInchFactor());
@@ -708,7 +708,7 @@ LensCorrector::LensCorrector(VRWindow& sWindow,const WindowProperties& windowPro
 	:window(&sWindow),
 	 displayRotation(0),viewer(0),hmdAdapter(0),hmdTrackerIndex(-1),hmdConfiguration(0),precomputed(false),
 	 eyePosVersion(0U),eyeVersion(0U),distortionMeshVersion(0U),
-	 ipdDisplayDialog(0),
+	 ipdDisplayDialog(0),ipdDisplayDialogTimeout(configFileSection.retrieveValue<double>("./ipdDisplayTimeout",2.0)),
 	 predistortionMultisamplingLevel(multisamplingLevel),
 	 predistortionStencilBufferSize(windowProperties.stencilBufferSize),
 	 warpReproject(false),warpCubicLookup(false),correctOledResponse(false),fixContrast(true)
@@ -1415,10 +1415,15 @@ void LensCorrector::finish(int eye) const
 		}
 	}
 
+void LensCorrector::cleanup(void) const
+	{
+	/* Unbind the pre-warp frame buffer: */
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,0);
+	}
+
 void LensCorrector::warp(void) const
 	{
-	/* Bind the final drawable's frame buffer: */
-	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,0);
+	/* Prepare the final drawable's frame buffer for warping: */
 	glViewport(finalViewport[0],finalViewport[1],finalViewport[2],finalViewport[3]);
 	
 	/* Set up the warping mesh buffer structure: */

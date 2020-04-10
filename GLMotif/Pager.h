@@ -1,7 +1,7 @@
 /***********************************************************************
 Pager - Container class to arrange children as individual pages in a
 "flipbook" of sorts.
-Copyright (c) 2013-2014 Oliver Kreylos
+Copyright (c) 2013-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -80,6 +80,7 @@ class Pager:public Container
 	virtual Vector calcNaturalSize(void) const;
 	virtual ZRange calcZRange(void) const;
 	virtual void resize(const Box& newExterior);
+	virtual void updateVariables(void);
 	virtual void draw(GLContextData& contextData) const;
 	virtual bool findRecipient(Event& event);
 	

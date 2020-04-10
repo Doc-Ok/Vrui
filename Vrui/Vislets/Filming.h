@@ -2,7 +2,7 @@
 Filming - Vislet class to assist shooting of video inside an immersive
 environment by providing run-time control over viewers and environment
 settings.
-Copyright (c) 2012-2017 Oliver Kreylos
+Copyright (c) 2012-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -204,6 +204,7 @@ class Filming:public Vrui::Vislet
 	GLMotif::HSVColorSelector* backgroundColorSelector; // Color selector to change the background color
 	GLMotif::ToggleButton* drawGridToggle;
 	GLMotif::ToggleButton* drawDevicesToggle;
+	GLMotif::Button* showDialogWindowButton; // Button to show the filming controls dialog window
 	
 	/* Private methods: */
 	void changeViewerMode(void); // Updates the GUI after a viewer mode change
@@ -219,6 +220,7 @@ class Filming:public Vrui::Vislet
 	void loadSettingsCallback(GLMotif::FileSelectionDialog::OKCallbackData* cbData);
 	void saveSettingsCallback(GLMotif::FileSelectionDialog::OKCallbackData* cbData);
 	void buildFilmingControls(void); // Creates the filming controls dialog window
+	void showDialogWindowCallback(Misc::CallbackData* cbData);
 	void toolCreationCallback(ToolManager::ToolCreationCallbackData* cbData); // Callback called when a new tool is created
 	
 	/* Constructors and destructors: */
@@ -229,8 +231,8 @@ class Filming:public Vrui::Vislet
 	/* Methods from Vislet: */
 	public:
 	virtual VisletFactory* getFactory(void) const;
-	virtual void disable(void);
-	virtual void enable(void);
+	virtual void enable(bool startup);
+	virtual void disable(bool shutdown);
 	virtual void frame(void);
 	virtual void display(GLContextData& contextData) const;
 	};

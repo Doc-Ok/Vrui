@@ -1,6 +1,6 @@
 /***********************************************************************
 GeometryNode - Base class for nodes that define renderable geometry.
-Copyright (c) 2009 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -46,6 +46,12 @@ class GeometryNode:public Node
 	public:
 	SFPointTransformNode pointTransform;
 	
+	/* Derived state: */
+	protected:
+	bool needTexCoords; // Flag whether the geometry node needs to provide per-vertex texture coordinates for rendering
+	bool needColors; // Flag whether the geometry node needs to provide per-vertex colors for rendering
+	bool needNormals; // Flag whether the geometry node needs to provide per-vertex normal vectors for rendering
+	
 	/* Constructors and destructors: */
 	public:
 	GeometryNode(void); // Creates an empty geometry node
@@ -57,6 +63,9 @@ class GeometryNode:public Node
 	
 	/* New methods: */
 	public:
+	void mustProvideTexCoords(void); // Flags the geometry node as requiring per-vertex texture coordinates
+	void mustProvideColors(void); // Flags the geometry node as requiring per-vertex colors
+	void mustProvideNormals(void); // Flags the geometry node as requiring per-vertex normal vectors
 	virtual Box calcBoundingBox(void) const =0; // Returns the bounding box of the geometry defined by the node
 	virtual void glRenderAction(GLRenderState& renderState) const =0; // Renders the geometry defined by the node into the current OpenGL context
 	};

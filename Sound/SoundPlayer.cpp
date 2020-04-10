@@ -2,7 +2,7 @@
 SoundPlayer - Simple class to play sound from a sound file on the local
 file system to a playback device. Uses ALSA under Linux, and the Core
 Audio frameworks under Mac OS X.
-Copyright (c) 2008-2011 Oliver Kreylos
+Copyright (c) 2008-2018 Oliver Kreylos
 
 This file is part of the Basic Sound Library (Sound).
 
@@ -357,7 +357,7 @@ bool SoundPlayer::readWAVHeader(void)
 			chunkSize=(chunkSize+1)&~0x1; // Pad to two-byte boundary
 			inputFile->skip<unsigned char>(chunkSize);
 			}
-		catch(IO::File::ReadError)
+		catch(const IO::File::ReadError&)
 			{
 			/* Signal error to caller: */
 			return false;

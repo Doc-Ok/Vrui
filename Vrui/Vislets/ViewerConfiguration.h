@@ -1,7 +1,7 @@
 /***********************************************************************
 ViewerConfiguration - Vislet class to configure the settings of a Vrui
 Viewer object from inside a running Vrui application.
-Copyright (c) 2013-2015 Oliver Kreylos
+Copyright (c) 2013-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -35,9 +35,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 /* Forward declarations: */
 namespace GLMotif {
-class PopupWindow;
 class RowColumn;
-class Button;
 }
 namespace Vrui {
 class Viewer;
@@ -77,12 +75,11 @@ class ViewerConfiguration:public Vrui::Vislet
 	private:
 	static ViewerConfigurationFactory* factory; // Pointer to the factory object for this class
 	Scalar unitScale; // Scale factor between configuration units and Vrui units
-	bool firstEnable; // Flag to indicate the first time the vislet is enabled (and ignore it)
 	Viewer* viewer; // The viewer currently selected for configuration
 	Point eyePos[3]; // The current positions of the current viewer's mono, left, and right eyes
 	Scalar eyeDist; // The current viewer's current eye separation distance
 	
-	GLMotif::PopupWindow* dialogWindow; // ViewerConfiguration controls dialog window
+	GLMotif::RowColumn* viewerConfiguration; // ViewerConfiguration control panel inserted in the Vrui settings dialog
 	GLMotif::DropdownBox* viewerMenu; // Drop-down menu to select the viewer to be configured
 	GLMotif::TextFieldSlider* eyePosSliders[3][3]; // Array of sliders controlling the (x, y, z) coordinates of the viewer's mono, left, and right eye positions
 	GLMotif::TextFieldSlider* eyeDistanceSlider; // Slider to directly adjust the viewer's eye distance
@@ -93,7 +90,7 @@ class ViewerConfiguration:public Vrui::Vislet
 	void viewerMenuCallback(GLMotif::DropdownBox::ValueChangedCallbackData* cbData);
 	void eyePosSliderCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData,const int& sliderIndex);
 	void eyeDistanceSliderCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
-	void buildViewerConfigurationControls(void); // Creates the filming controls dialog window
+	void buildViewerConfigurationControls(void); // Creates the viewer configuration control panel
 	
 	/* Constructors and destructors: */
 	public:
@@ -103,8 +100,7 @@ class ViewerConfiguration:public Vrui::Vislet
 	/* Methods from Vislet: */
 	public:
 	virtual VisletFactory* getFactory(void) const;
-	virtual void disable(void);
-	virtual void enable(void);
+	virtual void enable(bool startup);
 	};
 
 }

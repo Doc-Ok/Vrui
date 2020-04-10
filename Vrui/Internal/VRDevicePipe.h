@@ -1,7 +1,7 @@
 /***********************************************************************
 VRDevicePipe - Class defining the client-server protocol for remote VR
 devices and VR applications.
-Copyright (c) 2002-2017 Oliver Kreylos
+Copyright (c) 2002-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -51,7 +51,10 @@ class VRDevicePipe:public Comm::TCPPipe
 		BATTERYSTATE_UPDATE, // Battery status of a virtual input device has changed
 		HMDCONFIG_UPDATE=16, // Server has an updated HMD configuration; lowest three bits of message ID define which components are updated
 		POWEROFF_REQUEST=24, // Requests to power off a virtual input device
-		HAPTICTICK_REQUEST // Requests a haptic tick on a virtual input device
+		HAPTICTICK_REQUEST, // Requests a haptic tick on a virtual input device
+		TRACKER_UPDATE, // Sends new state for a single tracker
+		BUTTON_UPDATE, // Sends new state for a single button
+		VALUATOR_UPDATE // Sends new state for a single valuator
 		};
 	
 	/* Constructors and destructors: */

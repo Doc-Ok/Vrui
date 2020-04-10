@@ -1,6 +1,6 @@
 /***********************************************************************
 ColorNode - Class for nodes defining colors.
-Copyright (c) 2009-2010 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -25,15 +25,21 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <Misc/Autopointer.h>
 #include <SceneGraph/FieldTypes.h>
 #include <SceneGraph/Node.h>
+#include <SceneGraph/ColorMapNode.h>
 
 namespace SceneGraph {
 
 class ColorNode:public Node
 	{
+	/* Embedded classes: */
+	public:
+	typedef SF<ColorMapNodePointer> SFColorMapNode;
+	
 	/* Elements: */
 	
 	/* Fields: */
-	public:
+	SFColorMapNode colorMap;
+	MFFloat colorScalar;
 	MFColor color;
 	
 	/* Constructors and destructors: */

@@ -1,0 +1,34 @@
+#VRML V2.0 utf8
+
+Shape
+	{
+	appearance DEF Grey Appearance
+		{
+		material Material
+			{
+			diffuseColor 0.5 0.5 0.5
+			}
+		}
+	geometry Sphere
+		{
+		radius 0.035
+		}
+	}
+
+Transform
+	{
+	translation -0.0825 0.0 0.0
+	rotation 0.0 0.0 1.0 1.570796
+	children
+		[
+		Shape
+			{
+			appearance USE Grey
+			geometry Cylinder
+				{
+				height 0.125
+				radius 0.025
+				}
+			}
+		]
+	}

@@ -1,6 +1,6 @@
 /***********************************************************************
 Viewer - Class for viewers/observers in VR environments.
-Copyright (c) 2004-2018 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -24,6 +24,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 #include <string.h>
 #include <Misc/ThrowStdErr.h>
+#include <Misc/CommandDispatcher.h>
 #include <Misc/StandardValueCoders.h>
 #include <Misc/ConfigurationFile.h>
 #include <Geometry/GeometryValueCoders.h>
@@ -42,6 +43,76 @@ namespace Vrui {
 /***********************
 Methods of class Viewer:
 ***********************/
+
+void Viewer::setHeadDeviceCallback(const char* argumentsBegin,const char* argumentsEnd,void* userData)
+	{
+	Viewer* thisPtr=static_cast<Viewer*>(userData);
+	
+	/* Parse the new head device name: */
+	std::string newHeadDeviceName(argumentsBegin,argumentsEnd);
+	
+	/* Attach the viewer to the new device, or disable head tracking if device name is empty: */
+	if(newHeadDeviceName.empty())
+		thisPtr->attachToDevice(0);
+	else
+		{
+		Vrui::InputDevice* newHeadDevice=findInputDevice(newHeadDeviceName.c_str());
+		if(newHeadDevice==0)
+			Misc::throwStdErr("Viewer::setHeadDeviceCallback: Head device \"%s\" not found",newHeadDeviceName.c_str());
+		thisPtr->attachToDevice(newHeadDevice);
+		}
+	}
+
+void Viewer::setHeadTransformCallback(const char* argumentsBegin,const char* argumentsEnd,void* userData)
+	{
+	Viewer* thisPtr=static_cast<Viewer*>(userData);
+	
+	if(thisPtr->headTracked)
+		throw std::runtime_error("Viewer::setHeadTransformCallback: Viewer is head-tracked");
+	
+	/* Parse the new head transformation: */
+	TrackerState newHeadTransform=Misc::ValueCoder<TrackerState>::decode(argumentsBegin,argumentsEnd);
+	
+	/* Override the head transformation: */
+	thisPtr->headDeviceTransformation=newHeadTransform;
+	
+	/* Call the configuration change callbacks: */
+	{
+	ConfigChangedCallbackData cbData(thisPtr,ConfigChangedCallbackData::HeadDevice);
+	thisPtr->configChangedCallbacks.call(&cbData);
+	}
+	}
+
+void Viewer::setMonoEyePosCallback(const char* argumentsBegin,const char* argumentsEnd,void* userData)
+	{
+	Viewer* thisPtr=static_cast<Viewer*>(userData);
+	
+	/* Parse the new mono eye position: */
+	Point newMonoEyePos=Misc::ValueCoder<Point>::decode(argumentsBegin,argumentsEnd);
+	
+	/* Override the eye positions: */
+	Vector offset=newMonoEyePos-thisPtr->deviceMonoEyePosition;
+	thisPtr->deviceMonoEyePosition=newMonoEyePos;
+	thisPtr->deviceLeftEyePosition+=offset;
+	thisPtr->deviceRightEyePosition+=offset;
+	
+	/* Call the configuration change callbacks: */
+	{
+	ConfigChangedCallbackData cbData(thisPtr,ConfigChangedCallbackData::EyePositions);
+	thisPtr->configChangedCallbacks.call(&cbData);
+	}
+	}
+
+void Viewer::setIPDCallback(const char* argumentsBegin,const char* argumentsEnd,void* userData)
+	{
+	Viewer* thisPtr=static_cast<Viewer*>(userData);
+	
+	/* Parse the new inter-pupillary distance: */
+	Scalar newIPD=Misc::ValueCoder<Scalar>::decode(argumentsBegin,argumentsEnd);
+	
+	/* Set the new IPD: */
+	thisPtr->setIPD(newIPD);
+	}
 
 void Viewer::inputDeviceStateChangeCallback(InputGraphManager::InputDeviceStateChangeCallbackData* cbData)
 	{
@@ -137,28 +208,61 @@ void Viewer::initialize(const Misc::ConfigurationFileSection& configFileSection)
 		hld.normalize();
 		lightsource->getLight().spotDirection=GLLight::SpotDirection(GLfloat(hld[0]),GLfloat(hld[1]),GLfloat(hld[2]));
 		}
+	
+	/* Register pipe command callbacks: */
+	getCommandDispatcher().addCommandCallback(("Viewer("+name+").setHeadDevice").c_str(),&Viewer::setHeadDeviceCallback,this,"<head device name>","Attaches the viewer to the tracked input device of the given name");
+	getCommandDispatcher().addCommandCallback(("Viewer("+name+").setHeadTransform").c_str(),&Viewer::setHeadTransformCallback,this,"<head transformation string>","Sets the viewer's fixed head transformation in physical space");
+	getCommandDispatcher().addCommandCallback(("Viewer("+name+").setMonoEyePos").c_str(),&Viewer::setMonoEyePosCallback,this,"(<eye X>, <eye Y>, <eye Z>)","Sets the position of the viewer's monoscopic eye in head space");
+	getCommandDispatcher().addCommandCallback(("Viewer("+name+").setIPD").c_str(),&Viewer::setIPDCallback,this,"<IPD>","Sets viewer's inter-pupillary distance in physical coordinate units");
 	}
 
-void Viewer::attachToDevice(InputDevice* newHeadDevice)
+InputDevice* Viewer::attachToDevice(InputDevice* newHeadDevice)
 	{
-	/* Do nothing if new head device is invalid: */
-	if(newHeadDevice!=0)
+	/* Return the previous head device: */
+	InputDevice* result=headTracked?headDevice:0;
+	
+	/* Set the new head device and update the head tracked flag: */
+	headTracked=newHeadDevice!=0;
+	headDevice=newHeadDevice;
+	
+	/* Update the viewer's state: */
+	if(headTracked)
 		{
-		/* Set the new head device and update the head tracked flag: */
-		headTracked=true;
-		headDevice=newHeadDevice;
-		
-		/* Get the head device's adapter and device index: */
+		/* Get the new head device's adapter and device index: */
 		headDeviceAdapter=getInputDeviceManager()->findInputDeviceAdapter(headDevice);
 		headDeviceIndex=headDeviceAdapter->findInputDevice(headDevice);
 		
 		/* Check if the head device is currently enabled: */
 		enabled=getInputGraphManager()->isEnabled(headDevice);
 		}
+	else
+		{
+		/* If the viewer was previously head tracked, initialize its static transformation with the previous head device's current transformation: */
+		if(result!=0)
+			headDeviceTransformation=result->getTransformation();
+		
+		/* Reset device adapter and index: */
+		headDeviceAdapter=0;
+		headDeviceIndex=-1;
+		
+		/* Enable the viewer: */
+		enabled=true;
+		}
+	
+	/* Call the configuration change callbacks: */
+	{
+	ConfigChangedCallbackData cbData(this,ConfigChangedCallbackData::HeadDevice);
+	configChangedCallbacks.call(&cbData);
+	}
+	
+	return result;
 	}
 
-void Viewer::detachFromDevice(const TrackerState& newHeadDeviceTransformation)
+InputDevice* Viewer::detachFromDevice(const TrackerState& newHeadDeviceTransformation)
 	{
+	/* Return the previous head device: */
+	InputDevice* result=headTracked?headDevice:0;
+	
 	/* Disable head tracking and set the static head device transformation: */
 	headTracked=false;
 	headDeviceTransformation=newHeadDeviceTransformation;
@@ -174,17 +278,32 @@ void Viewer::detachFromDevice(const TrackerState& newHeadDeviceTransformation)
 	
 	/* Enable the viewer: */
 	enabled=true;
+	
+	/* Call the configuration change callbacks: */
+	{
+	ConfigChangedCallbackData cbData(this,ConfigChangedCallbackData::HeadDevice);
+	configChangedCallbacks.call(&cbData);
+	}
+	
+	return result;
 	}
 
 void Viewer::setIPD(Scalar newIPD)
 	{
 	/* Calculate the new eye displacement vector: */
-	Vector newEyeOffset=deviceRightEyePosition-deviceLeftEyePosition;
-	newEyeOffset=newEyeOffset*(newIPD*Scalar(0.5)/newEyeOffset.mag());
+	Point eyeMid=Geometry::mid(deviceLeftEyePosition,deviceRightEyePosition);
+	Vector eyeDist=deviceRightEyePosition-deviceLeftEyePosition;
+	eyeDist*=newIPD/(Scalar(2)*eyeDist.mag());
 	
 	/* Set the left and right eye positions: */
-	deviceLeftEyePosition=deviceMonoEyePosition-newEyeOffset;
-	deviceRightEyePosition=deviceMonoEyePosition+newEyeOffset;
+	deviceLeftEyePosition=eyeMid-eyeDist;
+	deviceRightEyePosition=eyeMid+eyeDist;
+	
+	/* Call the configuration change callbacks: */
+	{
+	ConfigChangedCallbackData cbData(this,ConfigChangedCallbackData::EyePositions);
+	configChangedCallbacks.call(&cbData);
+	}
 	}
 
 void Viewer::setEyes(const Vector& newViewDirection,const Point& newMonoEyePosition,const Vector& newEyeOffset)
@@ -198,6 +317,12 @@ void Viewer::setEyes(const Vector& newViewDirection,const Point& newMonoEyePosit
 	/* Set the left and right eye positions: */
 	deviceLeftEyePosition=deviceMonoEyePosition-newEyeOffset;
 	deviceRightEyePosition=deviceMonoEyePosition+newEyeOffset;
+	
+	/* Call the configuration change callbacks: */
+	{
+	ConfigChangedCallbackData cbData(this,ConfigChangedCallbackData::EyePositions);
+	configChangedCallbacks.call(&cbData);
+	}
 	}
 
 void Viewer::setHeadlightState(bool newHeadlightState)
@@ -206,6 +331,12 @@ void Viewer::setHeadlightState(bool newHeadlightState)
 		lightsource->enable();
 	else
 		lightsource->disable();
+	
+	/* Call the configuration change callbacks: */
+	{
+	ConfigChangedCallbackData cbData(this,ConfigChangedCallbackData::HeadlightState);
+	configChangedCallbacks.call(&cbData);
+	}
 	}
 
 void Viewer::update(void)

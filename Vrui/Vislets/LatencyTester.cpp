@@ -1,7 +1,7 @@
 /***********************************************************************
 LatencyTester - Vislet class to measure the frame-to-display latency of
 arbitrary Vrui applications using an Oculus latency tester.
-Copyright (c) 2016 Oliver Kreylos
+Copyright (c) 2016-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -365,7 +365,7 @@ LatencyTester::LatencyTester(int numArguments,const char* const arguments[])
 		/* Start the communication thread: */
 		communicationThread.start(this,&LatencyTester::communicationThreadMethod);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		Misc::formattedConsoleError("Vrui::LatencyTester: Unable to connect to Oculus Rift latency tester due to exception %s",err.what());
 		}

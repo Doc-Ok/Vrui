@@ -1,7 +1,7 @@
 /***********************************************************************
 Jello - VR program to interact with "virtual Jell-O" using a simplified
 force interaction model based on the Nanotech Construction Kit.
-Copyright (c) 2006-2016 Oliver Kreylos
+Copyright (c) 2006-2019 Oliver Kreylos
 
 This file is part of the Virtual Jell-O interactive VR demonstration.
 
@@ -28,7 +28,6 @@ Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <Geometry/Plane.h>
 #include <GL/gl.h>
 #include <GLMotif/StyleSheet.h>
-#include <GLMotif/WidgetManager.h>
 #include <GLMotif/PopupMenu.h>
 #include <GLMotif/PopupWindow.h>
 #include <GLMotif/RowColumn.h>
@@ -107,7 +106,7 @@ GLMotif::PopupMenu* Jello::createMainMenu(void)
 
 GLMotif::PopupWindow* Jello::createSettingsDialog(void)
 	{
-	const GLMotif::StyleSheet& ss=*Vrui::getWidgetManager()->getStyleSheet();
+	const GLMotif::StyleSheet& ss=*Vrui::getUiStyleSheet();
 	
 	settingsDialog=new GLMotif::PopupWindow("SettingsDialog",Vrui::getWidgetManager(),"Settings Dialog");
 	settingsDialog->setCloseButton(true);

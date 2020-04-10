@@ -1,6 +1,6 @@
 /***********************************************************************
 SphereNode - Class for spheres as renderable geometry.
-Copyright (c) 2013 Oliver Kreylos
+Copyright (c) 2013-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -42,6 +42,7 @@ class SphereNode:public GeometryNode,public DisplayList
 	SFInt numSegments;
 	SFBool latLong;
 	SFBool texCoords;
+	SFBool ccw; // Flag whether to show the outside or inside of the sphere
 	
 	/* Derived state: */
 	protected:

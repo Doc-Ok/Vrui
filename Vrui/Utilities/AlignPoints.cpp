@@ -25,7 +25,9 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <vector>
 #include <iostream>
 #include <Misc/FunctionCalls.h>
+#include <Misc/ValueCoder.h>
 #include <IO/ValueSource.h>
+#include <IO/OpenFile.h>
 #include <Math/Math.h>
 #include <Math/LevenbergMarquardtMinimizer.h>
 #include <Math/RanSaC.h>
@@ -47,7 +49,6 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/UIManager.h>
 #include <Vrui/ObjectSnapperTool.h>
 #include <Vrui/DisplayState.h>
-#include <Vrui/OpenFile.h>
 
 /******************************************
 Abstract base class for point set aligners:
@@ -61,6 +62,7 @@ class AlignerBase
 	typedef Geometry::Point<Scalar,3> Point; // Point type
 	typedef Geometry::ValuedPoint<Point,bool> VPoint; // Type for points with a "valid" flag
 	typedef std::vector<VPoint> PointList; // Type for lists of points
+	typedef Geometry::OrthogonalTransformation<Scalar,3> Transformation; // Type for point set transformations
 	
 	/* Elements: */
 	protected:
@@ -78,6 +80,7 @@ class AlignerBase
 	
 	/* Methods: */
 	virtual void readPointSets(const char* fromFileName,const char* toFileName); // Loads "from" and "to" point sets from the files of the given names
+	virtual void transformPoints(int which,const Transformation& transform); // Transforms one of the point sets (0: froms, 1: tos) with the given transformation
 	virtual void align(void) =0; // Calculates an alignment transformation between the two point sets
 	Scalar getRms(void) const // Returns the L-2 norm alignment residual
 		{
@@ -99,7 +102,7 @@ Methods of class AlignerBase:
 void AlignerBase::readPointFile(const char* fileName,AlignerBase::PointList& points)
 	{
 	/* Open the input file: */
-	IO::ValueSource reader(Vrui::openFile(fileName));
+	IO::ValueSource reader(IO::openFile(fileName));
 	reader.setWhitespace(',',true);
 	reader.setPunctuation('\n',true);
 	
@@ -116,7 +119,7 @@ void AlignerBase::readPointFile(const char* fileName,AlignerBase::PointList& poi
 			for(int i=0;i<3;++i)
 				p[i]=Scalar(reader.readNumber());
 			}
-		catch(IO::ValueSource::NumberError)
+		catch(const IO::ValueSource::NumberError&)
 			{
 			/* Invalidate the point: */
 			p.value=false;
@@ -144,6 +147,14 @@ void AlignerBase::readPointSets(const char* fromFileName,const char* toFileName)
 	/* Read "from" and "to" point sets from the two given files: */
 	readPointFile(fromFileName,froms);
 	readPointFile(toFileName,tos);
+	}
+
+void AlignerBase::transformPoints(int which,const AlignerBase::Transformation& transform)
+	{
+	/* Transform the "from" or "to" point set: */
+	PointList& points=which==0?froms:tos;
+	for(PointList::iterator pIt=points.begin();pIt!=points.end();++pIt)
+		*pIt=transform.transform(*pIt);
 	}
 
 /***********************************************************************
@@ -351,9 +362,9 @@ class Aligner:public AlignerTransformBase<typename PointAlignerParam::Transform>
 	virtual void align(void);
 	};
 
-/***************************************
-Methods of class Aligner<ArlignerParam>:
-***************************************/
+/**************************************
+Methods of class Aligner<AlignerParam>:
+**************************************/
 
 template <class PointAlignerParam>
 inline
@@ -487,6 +498,7 @@ AlignPoints::AlignPoints(int& argc,char**& argv)
 	{
 	/* Parse the command line: */
 	const char* fileNames[2]={0,0};
+	AlignerBase::Transformation fromTransform,toTransform;
 	int transformMode=0;
 	unsigned int ransacNumIterations=0;
 	AlignerBase::Scalar ransacMaxInlierDist(0);
@@ -514,6 +526,28 @@ AlignPoints::AlignPoints(int& argc,char**& argv)
 				else
 					std::cerr<<"AlignPoints: Ignoring dangling "<<arg<<" parameter"<<std::endl;
 				}
+			else if(strcasecmp(arg+1,"FROMT")==0)
+				{
+				++argi;
+				if(argi<argc)
+					{
+					/* Read a transformation for the "from" points: */
+					fromTransform=Misc::ValueCoder<AlignerBase::Transformation>::decode(argv[argi],argv[argi]+strlen(argv[argi]));
+					}
+				else
+					std::cerr<<"AlignPoints: Ignoring dangling "<<arg<<" parameter"<<std::endl;
+				}
+			else if(strcasecmp(arg+1,"TOT")==0)
+				{
+				++argi;
+				if(argi<argc)
+					{
+					/* Read a transformation for the "to" points: */
+					toTransform=Misc::ValueCoder<AlignerBase::Transformation>::decode(argv[argi],argv[argi]+strlen(argv[argi]));
+					}
+				else
+					std::cerr<<"AlignPoints: Ignoring dangling "<<arg<<" parameter"<<std::endl;
+				}
 			else
 				std::cerr<<"AlignPoints: Ignoring unrecognized "<<arg<<" parameter"<<std::endl;
 			}
@@ -527,7 +561,7 @@ AlignPoints::AlignPoints(int& argc,char**& argv)
 	if(fileNames[0]==0||fileNames[1]==0)
 		{
 		std::cerr<<"AlignPoints: No point file name(s) provided; exiting"<<std::endl;
-		std::cerr<<"Usage: "<<argv[0]<<" [ -ON | -OG | -A | -P ] [ -RANSAC <max number of iterations> <max inlier distance> ] <source point file name> <target point file name>"<<std::endl;
+		std::cerr<<"Usage: "<<argv[0]<<" [ -ON | -OG | -A | -P ] [ -RANSAC <max number of iterations> <max inlier distance> ] [ -fromT <source point transformation> ] <source point file name> [ -toT <target point transformation> ] <target point file name>"<<std::endl;
 		Vrui::shutdown();
 		return;
 		}
@@ -578,6 +612,12 @@ AlignPoints::AlignPoints(int& argc,char**& argv)
 	
 	/* Load the point set files: */
 	aligner->readPointSets(fileNames[0],fileNames[1]);
+	
+	/* Pre-transform the point sets if requested: */
+	if(fromTransform!=AlignerBase::Transformation::identity)
+		aligner->transformPoints(0,fromTransform);
+	if(toTransform!=AlignerBase::Transformation::identity)
+		aligner->transformPoints(1,toTransform);
 	
 	/* Align the point sets: */
 	aligner->align();

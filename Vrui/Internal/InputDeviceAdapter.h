@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDeviceAdapter - Base class to convert from diverse "raw" input
 device representations to Vrui's internal input device representation.
-Copyright (c) 2004-2016 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -75,9 +75,11 @@ class InputDeviceAdapter
 	int findInputDevice(const InputDevice* device) const; // Returns the index of the given input device inside this adapter, or -1
 	virtual std::string getFeatureName(const InputDeviceFeature& feature) const; // Returns the name of a button or valuator on the given input device, which is owned by this adapter
 	virtual int getFeatureIndex(InputDevice* device,const char* featureName) const; // Returns the index of a feature of the given name on the given input device, or -1 if feature does not exist
+	virtual void prepareMainLoop(void); // Notifies input device adapter that Vrui main loop is about to start
 	virtual void updateInputDevices(void) =0; // Updates state of all Vrui input devices owned by this adapter
 	virtual TrackerState peekTrackerState(int deviceIndex); // Returns the most up-to-date tracker state of the input device of the given index
 	virtual void glRenderAction(GLContextData& contextData) const; // Hook to allow an input device adapter to render something
+	virtual void hapticTick(unsigned int hapticFeatureIndex,unsigned int duration,unsigned int frequency,unsigned int amplitude); // Requests a haptic tick of the given duration in milliseconds, frequency in Hertz, and relative amplitude in [0, 256) on the haptic feature of the given index
 	};
 
 }

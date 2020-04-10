@@ -1,7 +1,7 @@
 /***********************************************************************
 GeometryMarshallers - Marshaller classes for templatized geometry
 objects.
-Copyright (c) 2010 Oliver Kreylos
+Copyright (c) 2010-2020 Oliver Kreylos
 
 This file is part of the Templatized Geometry Library (TGL).
 
@@ -72,6 +72,8 @@ class Marshaller<Geometry::ComponentArray<ScalarParam,dimensionParam> >
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
 
@@ -88,6 +90,8 @@ class Marshaller<Geometry::Vector<ScalarParam,dimensionParam> >
 	static size_t getSize(const Value& value);
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
+	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
 	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
@@ -106,6 +110,8 @@ class Marshaller<Geometry::Point<ScalarParam,dimensionParam> >
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
 
@@ -122,6 +128,8 @@ class Marshaller<Geometry::HVector<ScalarParam,dimensionParam> >
 	static size_t getSize(const Value& value);
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
+	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
 	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
@@ -140,6 +148,8 @@ class Marshaller<Geometry::Box<ScalarParam,dimensionParam> >
 	static size_t getSize(const Value& value);
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
+	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
 	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
@@ -160,6 +170,8 @@ class Marshaller<Geometry::Ray<ScalarParam,dimensionParam> >
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
 
@@ -177,6 +189,8 @@ class Marshaller<Geometry::Plane<ScalarParam,dimensionParam> >
 	static size_t getSize(const Value& value);
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
+	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
 	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
@@ -196,6 +210,8 @@ class Marshaller<Geometry::Matrix<ScalarParam,numRowsParam,numColumnsParam> >
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
 
@@ -213,6 +229,8 @@ class Marshaller<Geometry::Rotation<ScalarParam,2> >
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
 
@@ -229,6 +247,8 @@ class Marshaller<Geometry::Rotation<ScalarParam,3> >
 	static size_t getSize(const Value& value);
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
+	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
 	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
@@ -249,6 +269,8 @@ class Marshaller<Geometry::OrthonormalTransformation<ScalarParam,dimensionParam>
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
 
@@ -268,6 +290,8 @@ class Marshaller<Geometry::OrthogonalTransformation<ScalarParam,dimensionParam> 
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
 
@@ -286,6 +310,8 @@ class Marshaller<Geometry::AffineTransformation<ScalarParam,dimensionParam> >
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
 	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
+	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};
 
@@ -303,6 +329,8 @@ class Marshaller<Geometry::ProjectiveTransformation<ScalarParam,dimensionParam> 
 	static size_t getSize(const Value& value);
 	template <class DataSinkParam>
 	static void write(const Value& value,DataSinkParam& sink);
+	template <class DataSourceParam>
+	static Value& read(DataSourceParam& source,Value& value);
 	template <class DataSourceParam>
 	static Value read(DataSourceParam& source);
 	};

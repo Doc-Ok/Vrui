@@ -1,7 +1,7 @@
 /***********************************************************************
 StyleSheet - Structure providing defaults for the look and feel of user
 interface widgets.
-Copyright (c) 2001-2010 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -69,6 +69,7 @@ void StyleSheet::setSize(GLfloat newSize)
 	buttonMarginWidth=size*0.5f;
 	decoratedButtonSpacing=size*0.5f;
 	decoratedButtonDecorationSize=size*0.5f;
+	popupThickness=size*0.5f;
 	popupMarginWidth=size;
 	popupTitleSpacing=size;
 	titlebarBorderWidth=size*0.5f;

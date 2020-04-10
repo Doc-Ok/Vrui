@@ -1,6 +1,6 @@
 /***********************************************************************
 Viewer - Class for viewers/observers in VR environments.
-Copyright (c) 2004-2018 Oliver Kreylos
+Copyright (c) 2004-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -23,6 +23,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #ifndef VRUI_VIEWER_INCLUDED
 #define VRUI_VIEWER_INCLUDED
 
+#include <Misc/CallbackList.h>
 #include <Geometry/Point.h>
 #include <Geometry/Vector.h>
 #include <Geometry/OrthonormalTransformation.h>
@@ -52,6 +53,29 @@ class Viewer
 		MONO,LEFT,RIGHT
 		};
 	
+	struct ConfigChangedCallbackData:public Misc::CallbackData
+		{
+		/* Embedded classes: */
+		public:
+		enum ChangeReasons // Enumerated type for bit flags for reasons for configuration change
+			{
+			HeadDevice=0x1,
+			EyePositions=0x2,
+			HeadlightState=0x4
+			};
+		
+		/* Elements: */
+		public:
+		Viewer* viewer; // Pointer to viewer whose configuration changed
+		int changeReasons; // Bit mask of configuration change reasons
+		
+		/* Constructors and destructors: */
+		ConfigChangedCallbackData(Viewer* sViewer,int sChangeReasons)
+			:viewer(sViewer),changeReasons(sChangeReasons)
+			{
+			}
+		};
+	
 	/* Elements: */
 	private:
 	char* viewerName; // Viewer name
@@ -68,11 +92,16 @@ class Viewer
 	Lightsource* lightsource; // Pointer to the viewer's head light source
 	Point headLightDevicePosition; // Position of head light source in head device coordinates
 	Vector headLightDeviceDirection; // Direction of head light source in head device coordinates
+	Misc::CallbackList configChangedCallbacks; // List of callbacks to be called when the viewer's configuration changed
 	
 	/* Transient state data: */
 	bool enabled; // Flag if the viewer is enabled, i.e., can be used for rendering
 	
 	/* Private methods: */
+	static void setHeadDeviceCallback(const char* argumentsBegin,const char* argumentsEnd,void* userData); // Handles a "setHeadDevice" command on the command pipe
+	static void setHeadTransformCallback(const char* argumentsBegin,const char* argumentsEnd,void* userData); // Handles a "setHeadTransform" command on the command pipe
+	static void setMonoEyePosCallback(const char* argumentsBegin,const char* argumentsEnd,void* userData); // Handles a "setMonoEyePos" command on the command pipe
+	static void setIPDCallback(const char* argumentsBegin,const char* argumentsEnd,void* userData); // Handles a "setIPD" command on the command pipe
 	void inputDeviceStateChangeCallback(InputGraphManager::InputDeviceStateChangeCallbackData* cbData); // Callback called when an input device changes state
 	
 	/* Constructors and destructors: */
@@ -93,8 +122,8 @@ class Viewer
 		else
 			return 0;
 		}
-	void attachToDevice(InputDevice* newHeadDevice); // Attaches the viewer to a head device
-	void detachFromDevice(const TrackerState& newHeadDeviceTransformation); // Turns viewer into a static viewer
+	InputDevice* attachToDevice(InputDevice* newHeadDevice); // Attaches the viewer to a head device if !=0, otherwise creates a static viewer; returns previous head device or 0
+	InputDevice* detachFromDevice(const TrackerState& newHeadDeviceTransformation); // Turns viewer into a static viewer; returns previous head device or 0
 	void setIPD(Scalar newIPD); // Overrides the viewer's inter-pupillary distance by sliding eyes along their connecting line
 	void setEyes(const Vector& newViewDirection,const Point& newMonoEyePosition,const Vector& newEyeOffset); // Sets view direction and eye positions in head device coordinates
 	const char* getName(void) const // Returns viewer's name
@@ -152,6 +181,10 @@ class Viewer
 	Point getEyePosition(Eye eye) const // Returns eye position in physical coordinates
 		{
 		return getHeadTransformation().transform(getDeviceEyePosition(eye));
+		}
+	Misc::CallbackList& getConfigChangedCallbacks(void) // Returns the list of configuration change callbacks
+		{
+		return configChangedCallbacks;
 		}
 	};
 

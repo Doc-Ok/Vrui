@@ -1,7 +1,7 @@
 /***********************************************************************
 EarthquakeQueryTool - Vrui tool class to query and display meta data
 about earthquake events.
-Copyright (c) 2013-2014 Oliver Kreylos
+Copyright (c) 2013-2018 Oliver Kreylos
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -205,7 +205,7 @@ void EarthquakeQueryTool::frame(void)
 			time_t tT=time_t(selectedEvent->time);
 			struct tm tTm;
 			localtime_r(&tT,&tTm);
-			char tBuffer[20];
+			char tBuffer[72];
 			snprintf(tBuffer,sizeof(tBuffer),"%04d/%02d/%02d %02d:%02d:%02d",tTm.tm_year+1900,tTm.tm_mon+1,tTm.tm_mday,tTm.tm_hour,tTm.tm_min,tTm.tm_sec);
 			timeTextField->setString(tBuffer);
 			

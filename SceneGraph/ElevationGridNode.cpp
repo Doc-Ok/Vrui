@@ -1,7 +1,7 @@
 /***********************************************************************
 ElevationGridNode - Class for quad-based height fields as renderable
 geometry.
-Copyright (c) 2009-2015 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -31,6 +31,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <GL/GLContextData.h>
 #include <GL/GLExtensionManager.h>
 #include <GL/Extensions/GLARBVertexBufferObject.h>
+#include <GL/Extensions/GLNVPrimitiveRestart.h>
 #include <GL/GLGeometryWrappers.h>
 #include <GL/GLGeometryVertex.h>
 #include <SceneGraph/VRMLFile.h>
@@ -45,7 +46,8 @@ Methods of class ElevationGridNode::DataItem:
 ********************************************/
 
 ElevationGridNode::DataItem::DataItem(void)
-	:vertexBufferObjectId(0),indexBufferObjectId(0),
+	:havePrimitiveRestart(GLNVPrimitiveRestart::isSupported()),
+	 vertexBufferObjectId(0),indexBufferObjectId(0),
 	 numQuads(0),numTriangles(0),
 	 version(0)
 	{
@@ -60,6 +62,9 @@ ElevationGridNode::DataItem::DataItem(void)
 		/* Create the index buffer object: */
 		glGenBuffersARB(1,&indexBufferObjectId);
 		}
+	
+	if(havePrimitiveRestart)
+		GLNVPrimitiveRestart::initExtension();
 	}
 
 ElevationGridNode::DataItem::~DataItem(void)
@@ -338,7 +343,7 @@ Vector* ElevationGridNode::calcHoleyQuadNormals(const int* quadCases) const
 	return normals;
 	}
 
-void ElevationGridNode::uploadIndexedQuadStripSet(void) const
+void ElevationGridNode::uploadIndexedQuadStripSet(bool havePrimitiveRestart) const
 	{
 	/* Define the vertex type used in the vertex array: */
 	typedef GLGeometry::Vertex<Scalar,2,GLubyte,4,Scalar,Scalar,3> Vertex;
@@ -448,28 +453,72 @@ void ElevationGridNode::uploadIndexedQuadStripSet(void) const
 	/* Delete the per-quad normals: */
 	delete[] quadNormals;
 	
-	/* Initialize the index buffer object: */
-	glBufferDataARB(GL_ELEMENT_ARRAY_BUFFER_ARB,(zDim-1)*xDim*2*sizeof(GLuint),0,GL_STATIC_DRAW_ARB);
-	
 	/* Store all vertex indices: */
-	GLuint* iPtr=static_cast<GLuint*>(glMapBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,GL_WRITE_ONLY_ARB));
-	if(ccw.getValue())
+	if(havePrimitiveRestart)
 		{
-		for(int z=0;z<zDim-1;++z)
-			for(int x=0;x<xDim;++x,iPtr+=2)
+		/* Create an index array to render the elevation grid as a single quad strip with restart: */
+		glBufferDataARB(GL_ELEMENT_ARRAY_BUFFER_ARB,((zDim-1)*(xDim*2+1)-1)*sizeof(GLuint),0,GL_STATIC_DRAW_ARB);
+		GLuint* iPtr=static_cast<GLuint*>(glMapBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,GL_WRITE_ONLY_ARB));
+		if(ccw.getValue())
+			{
+			for(int z=1;z<zDim;++z)
 				{
-				iPtr[0]=GLuint(z*xDim+x);
-				iPtr[1]=GLuint((z+1)*xDim+x);
+				/* Upload the partial quad strip indices: */
+				for(int x=0;x<xDim;++x,iPtr+=2)
+					{
+					iPtr[0]=GLuint((z-1)*xDim+x);
+					iPtr[1]=GLuint(z*xDim+x);
+					}
+				
+				if(z<zDim-1)
+					{
+					/* Insert the restart index: */
+					*(iPtr++)=GLuint(-1);
+					}
 				}
+			}
+		else
+			{
+			for(int z=1;z<zDim;++z)
+				{
+				/* Upload the partial quad strip indices: */
+				for(int x=0;x<xDim;++x,iPtr+=2)
+					{
+					iPtr[0]=GLuint(z*xDim+x);
+					iPtr[1]=GLuint((z-1)*xDim+x);
+					}
+				
+				if(z<zDim-1)
+					{
+					/* Insert the restart index: */
+					*(iPtr++)=GLuint(-1);
+					}
+				}
+			}
 		}
 	else
 		{
-		for(int z=0;z<zDim-1;++z)
-			for(int x=0;x<xDim;++x,iPtr+=2)
-				{
-				iPtr[0]=GLuint((z+1)*xDim+x);
-				iPtr[1]=GLuint(z*xDim+x);
-				}
+		/* Create an index array to render the elevation grid as a series of quad strips: */
+		glBufferDataARB(GL_ELEMENT_ARRAY_BUFFER_ARB,(zDim-1)*xDim*2*sizeof(GLuint),0,GL_STATIC_DRAW_ARB);
+		GLuint* iPtr=static_cast<GLuint*>(glMapBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,GL_WRITE_ONLY_ARB));
+		if(ccw.getValue())
+			{
+			for(int z=1;z<zDim;++z)
+				for(int x=0;x<xDim;++x,iPtr+=2)
+					{
+					iPtr[0]=GLuint((z-1)*xDim+x);
+					iPtr[1]=GLuint(z*xDim+x);
+					}
+			}
+		else
+			{
+			for(int z=1;z<zDim;++z)
+				for(int x=0;x<xDim;++x,iPtr+=2)
+					{
+					iPtr[0]=GLuint(z*xDim+x);
+					iPtr[1]=GLuint((z-1)*xDim+x);
+					}
+			}
 		}
 	
 	glUnmapBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB);
@@ -1202,7 +1251,8 @@ ElevationGridNode::ElevationGridNode(void)
 	 heightIsY(true),
 	 removeInvalids(false),invalidHeight(0),
 	 ccw(true),solid(true),
-	 multiplexer(0),valid(false),indexed(false),version(0)
+	 propMask(0U),
+	 valid(false),indexed(false),version(0)
 	{
 	}
 
@@ -1235,27 +1285,32 @@ void ElevationGridNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 	else if(strcmp(fieldName,"creaseAngle")==0)
 		vrmlFile.parseField(creaseAngle);
 	else if(strcmp(fieldName,"origin")==0)
+		{
 		vrmlFile.parseField(origin);
+		propMask|=0x1U;
+		}
 	else if(strcmp(fieldName,"xDimension")==0)
 		vrmlFile.parseField(xDimension);
 	else if(strcmp(fieldName,"xSpacing")==0)
+		{
 		vrmlFile.parseField(xSpacing);
+		propMask|=0x2U;
+		}
 	else if(strcmp(fieldName,"zDimension")==0)
 		vrmlFile.parseField(zDimension);
 	else if(strcmp(fieldName,"zSpacing")==0)
+		{
 		vrmlFile.parseField(zSpacing);
+		propMask|=0x4U;
+		}
 	else if(strcmp(fieldName,"height")==0)
 		vrmlFile.parseField(height);
 	else if(strcmp(fieldName,"heightUrl")==0)
 		{
 		vrmlFile.parseField(heightUrl);
 		
-		/* Fully qualify all URLs: */
-		for(size_t i=0;i<heightUrl.getNumValues();++i)
-			heightUrl.setValue(i,vrmlFile.getFullUrl(heightUrl.getValue(i)));
-		
-		/* Store the VRML file's multicast pipe multiplexer: */
-		multiplexer=vrmlFile.getMultiplexer();
+		/* Remember the VRML file's base directory: */
+		baseDirectory=&vrmlFile.getBaseDirectory();
 		}
 	else if(strcmp(fieldName,"heightUrlFormat")==0)
 		vrmlFile.parseField(heightUrlFormat);
@@ -1266,7 +1321,10 @@ void ElevationGridNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 	else if(strcmp(fieldName,"removeInvalids")==0)
 		vrmlFile.parseField(removeInvalids);
 	else if(strcmp(fieldName,"invalidHeight")==0)
+		{
 		vrmlFile.parseField(invalidHeight);
+		propMask|=0x8U;
+		}
 	else if(strcmp(fieldName,"ccw")==0)
 		vrmlFile.parseField(ccw);
 	else if(strcmp(fieldName,"solid")==0)
@@ -1281,7 +1339,7 @@ void ElevationGridNode::update(void)
 	if(heightUrl.getNumValues()>0)
 		{
 		/* Load the elevation grid's height values: */
-		loadElevationGrid(*this,multiplexer);
+		loadElevationGrid(*this);
 		}
 	
 	/* Check whether the elevation grid is valid: */
@@ -1445,6 +1503,7 @@ void ElevationGridNode::glRenderAction(GLRenderState& renderState) const
 		return;
 	
 	/* Set up OpenGL state: */
+	renderState.setFrontFace(GL_CCW);
 	if(solid.getValue())
 		renderState.enableCulling(GL_BACK);
 	else
@@ -1456,7 +1515,7 @@ void ElevationGridNode::glRenderAction(GLRenderState& renderState) const
 	typedef GLGeometry::Vertex<Scalar,2,GLubyte,4,Scalar,Scalar,3> Vertex;
 	
 	/* Bind the vertex buffer object: */
-	glBindBufferARB(GL_ARRAY_BUFFER_ARB,dataItem->vertexBufferObjectId);
+	renderState.bindVertexBuffer(dataItem->vertexBufferObjectId);
 	
 	/* Set up the vertex arrays: */
 	int vertexArrayParts=Vertex::getPartsMask();
@@ -1465,31 +1524,39 @@ void ElevationGridNode::glRenderAction(GLRenderState& renderState) const
 		/* Disable the color vertex array: */
 		vertexArrayParts&=~GLVertexArrayParts::Color;
 		}
-	GLVertexArrayParts::enable(vertexArrayParts);
+	renderState.enableVertexArrays(vertexArrayParts);
 	glVertexPointer(static_cast<Vertex*>(0));
 	
 	if(indexed)
 		{
 		/* Bind the index buffer object: */
-		glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,dataItem->indexBufferObjectId);
+		renderState.bindIndexBuffer(dataItem->indexBufferObjectId);
 		
 		/* Check if the buffers are current: */
 		if(dataItem->version!=version)
 			{
 			/* Upload the set of indexed quad strips: */
-			uploadIndexedQuadStripSet();
+			uploadIndexedQuadStripSet(dataItem->havePrimitiveRestart);
 			
 			/* Mark the buffers as up-to-date: */
 			dataItem->version=version;
 			}
 		
-		/* Draw the elevation grid as a set of indexed quad strips: */
-		const GLuint* iPtr=0;
-		for(int z=0;z<zDimension.getValue()-1;++z,iPtr+=xDimension.getValue()*2)
-			glDrawElements(GL_QUAD_STRIP,xDimension.getValue()*2,GL_UNSIGNED_INT,iPtr);
-		
-		/* Protect the index buffer object: */
-		glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,0);
+		if(dataItem->havePrimitiveRestart)
+			{
+			/* Draw the elevation grid as a single indexed quad strip with restart: */
+			glEnableClientState(GL_PRIMITIVE_RESTART_NV);
+			glPrimitiveRestartIndexNV(GLuint(-1));
+			glDrawElements(GL_QUAD_STRIP,(zDimension.getValue()-1)*(xDimension.getValue()*2+1)-1,GL_UNSIGNED_INT,0);
+			glDisableClientState(GL_PRIMITIVE_RESTART_NV);
+			}
+		else
+			{
+			/* Draw the elevation grid as a set of indexed quad strips: */
+			const GLuint* iPtr=0;
+			for(int z=0;z<zDimension.getValue()-1;++z,iPtr+=xDimension.getValue()*2)
+				glDrawElements(GL_QUAD_STRIP,xDimension.getValue()*2,GL_UNSIGNED_INT,iPtr);
+			}
 		}
 	else
 		{
@@ -1520,12 +1587,6 @@ void ElevationGridNode::glRenderAction(GLRenderState& renderState) const
 		if(dataItem->numTriangles!=0)
 			glDrawArrays(GL_TRIANGLES,dataItem->numQuads*4,dataItem->numTriangles*3);
 		}
-	
-	/* Reset the vertex arrays: */
-	GLVertexArrayParts::disable(vertexArrayParts);
-	
-	/* Protect the vertex buffer object: */
-	glBindBufferARB(GL_ARRAY_BUFFER_ARB,0);
 	}
 
 void ElevationGridNode::initContext(GLContextData& contextData) const

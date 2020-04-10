@@ -2,7 +2,7 @@
 ZipArchive - Class to represent ZIP archive files, with functionality to
 traverse contained directory hierarchies and extract files using a File
 interface.
-Copyright (c) 2011-2015 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -354,7 +354,10 @@ FilePtr ZipArchiveDirectory::openFile(const char* fileName,File::AccessMode acce
 	{
 	/* Check the requested access mode: */
 	if(accessMode==IO::File::WriteOnly||accessMode==IO::File::ReadWrite)
-		throw IO::File::OpenError(Misc::printStdErrMsg("IO::ZipArchiveDirectory::openFile: Cannot write to file %s",fileName));
+		{
+		char buffer[1024];
+		throw IO::File::OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::ZipArchiveDirectory::openFile: Cannot write to file %s",fileName));
+		}
 	
 	/* Find the file name in the ZIP archive's directory tree: */
 	std::pair<ZipArchive::Directory*,unsigned int> entry=directory->findPath(fileName);
@@ -372,12 +375,21 @@ FilePtr ZipArchiveDirectory::openFile(const char* fileName,File::AccessMode acce
 			return archive->openFile(fileId);
 			}
 		else
-			throw File::OpenError(Misc::printStdErrMsg("IO::ZipArchiveDirectory::openFile: File %s is a directory",fileName));
+			{
+			char buffer[1024];
+			throw File::OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::ZipArchiveDirectory::openFile: File %s is a directory",fileName));
+			}
 		}
 	else if(entry.second==1)
-		throw File::OpenError(Misc::printStdErrMsg("IO::ZipArchiveDirectory::openFile: File %s is a directory",fileName));
+		{
+		char buffer[1024];
+		throw File::OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::ZipArchiveDirectory::openFile: File %s is a directory",fileName));
+		}
 	else
-		throw File::OpenError(Misc::printStdErrMsg("IO::ZipArchiveDirectory::openFile: File %s does not exist",fileName));
+		{
+		char buffer[1024];
+		throw File::OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::ZipArchiveDirectory::openFile: File %s does not exist",fileName));
+		}
 	}
 
 DirectoryPtr ZipArchiveDirectory::openDirectory(const char* directoryName) const

@@ -1,7 +1,7 @@
 /***********************************************************************
 StyleSheet - Structure providing defaults for the look and feel of user
 interface widgets.
-Copyright (c) 2001-2010 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -56,6 +56,7 @@ struct StyleSheet
 	GLfloat decoratedButtonSpacing; // Spacing between button text and decoration in decorated buttons and derived widgets
 	GLfloat decoratedButtonDecorationSize; // Size of button decoration for decorated buttons and derived widgets
 	Color toggleButtonToggleColor; // Color to indicate selected toggle buttons or derived widgets
+	GLfloat popupThickness; // Minimum thickness for popups/popup windows and derived classes
 	GLfloat popupMarginWidth; // Margin width for popups and derived classes
 	GLfloat popupTitleSpacing; // Spacing between title and child in popups and derived classes
 	GLfloat titlebarBorderWidth; // Width of border around title bars

@@ -1,7 +1,7 @@
 /***********************************************************************
 ViewpointSaverTool - Class for tools to save environment-independent
 viewing parameters.
-Copyright (c) 2007-2010 Oliver Kreylos
+Copyright (c) 2007-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -28,8 +28,8 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/UtilityTool.h>
 
 /* Forward declarations: */
-namespace Misc {
-class File;
+namespace IO {
+class OStream;
 }
 
 namespace Vrui {
@@ -45,7 +45,7 @@ class ViewpointSaverToolFactory:public ToolFactory
 	std::string viewpointFileName; // Name of file into which viewpoint data is saved
 	Scalar axisLength; // Length of displayed axis markers in physical units
 	float axisLineWidth; // Cosmetic line width for axis markers
-	Misc::File* viewpointFile; // File into which viewpoint data is saved; opened on demand and shared by all viewpoint saver tools during an application's lifetime
+	IO::OStream* viewpointFile; // File into which viewpoint data is saved; opened on demand and shared by all viewpoint saver tools during an application's lifetime
 	
 	/* Constructors and destructors: */
 	public:

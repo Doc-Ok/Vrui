@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <Misc/FileTests.h>
 #include <Threads/RefCounted.h>
 #include <IO/File.h>
+#include <IO/SeekableFile.h>
 
 /* Forward declarations: */
 namespace IO {
@@ -87,6 +88,7 @@ class Directory:public Threads::RefCounted
 	
 	/* File and directory opening methods: */
 	virtual FilePtr openFile(const char* fileName,File::AccessMode accessMode =File::ReadOnly) const =0; // Opens the file of the given directory-relative name with the given access mode
+	virtual SeekableFilePtr openSeekableFile(const char* fileName,File::AccessMode accessMode =File::ReadOnly) const; // Opens the file of the given directory-relative name with the given access mode as a seekable file
 	virtual DirectoryPtr openDirectory(const char* directoryName) const =0; // Opens the subdirectory of the given directory-relative name
 	virtual DirectoryPtr openFileDirectory(const char* fileName) const; // Opens the subdirectory containing the file of the given directory-relative name
 	};

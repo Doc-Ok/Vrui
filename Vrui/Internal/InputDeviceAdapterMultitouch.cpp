@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDeviceAdapterMultitouch - Class to convert a direct-mode
 multitouch-capable screen into a set of Vrui input devices.
-Copyright (c) 2015-2017 Oliver Kreylos
+Copyright (c) 2015-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -184,32 +184,42 @@ void InputDeviceAdapterMultitouch::updateInputDevices(void)
 			
 			DeviceMapper& dm=deviceMappers[i];
 			
-			/* Check if the device mapping is done activating: */
-			if(dm.state==DeviceMapper::Activating&&dm.activationTimeout<=getApplicationTime())
+			/* Check if the device mapping is activating: */
+			if(dm.state==DeviceMapper::Activating)
 				{
-				/* Activate this device mapping: */
-				dm.state=DeviceMapper::Active;
-				
-				/* Press the selected device button if this is a primary: */
-				if(dm.pred==0)
+				/* Check if it's done activating: */
+				if(dm.activationTimeout<=getApplicationTime())
 					{
-					/* Limit the button index to the valid range: */
-					if(dm.buttonIndex>numDeviceButtons-1)
-						dm.buttonIndex=numDeviceButtons-1;
+					/* Activate this device mapping: */
+					dm.state=DeviceMapper::Active;
 					
-					/* Map the button index into the currently active modifier plane: */
-					dm.buttonIndex+=modifierPlane*numDeviceButtons;
-					
-					/* Press the button: */
-					dm.device->setButtonState(dm.buttonIndex,true);
-					
-					// DEBUGGING
-					// std::cout<<"Marking primary mapper "<<i<<" as active"<<std::endl;
+					/* Press the selected device button if this is a primary: */
+					if(dm.pred==0)
+						{
+						/* Limit the button index to the valid range: */
+						if(dm.buttonIndex>numDeviceButtons-1)
+							dm.buttonIndex=numDeviceButtons-1;
+						
+						/* Map the button index into the currently active modifier plane: */
+						dm.buttonIndex+=modifierPlane*numDeviceButtons;
+						
+						/* Press the button: */
+						dm.device->setButtonState(dm.buttonIndex,true);
+						
+						// DEBUGGING
+						// std::cout<<"Marking primary mapper "<<i<<" as active"<<std::endl;
+						}
+					else
+						{
+						// DEBUGGING
+						// std::cout<<"Marking secondary mapper "<<i<<" as active"<<std::endl;
+						}
 					}
 				else
 					{
-					// DEBUGGING
-					// std::cout<<"Marking secondary mapper "<<i<<" as active"<<std::endl;
+					/* Schedule the next frame: */
+					if(nextTimeout>dm.activationTimeout)
+						nextTimeout=dm.activationTimeout;
 					}
 				}
 			
@@ -275,7 +285,11 @@ void InputDeviceAdapterMultitouch::updateInputDevices(void)
 	
 	/* Schedule another frame if there are pending activation events: */
 	if(nextTimeout<Math::Constants<double>::max)
+		{
+		// DEBUGGING
+		// std::cout<<"Multitouch: Scheduling frame for "<<nextTimeout<<std::endl;
 		scheduleUpdate(nextTimeout);
+		}
 	
 	/* Schedule another frame if the modifier button panel is still being shown: */
 	if(getApplicationTime()<modifierPanelTimeout)
@@ -460,7 +474,7 @@ void InputDeviceAdapterMultitouch::touchBegin(VRWindow* newWindow,const InputDev
 					newDm->offset[1]=newDm->offset[0]=Scalar(0);
 					
 					// DEBUGGING
-					// std::cout<<"Activating mapper "<<(newDm-deviceMappers)<<" as primary"<<std::endl;
+					// std::cout<<"Activating mapper "<<(newDm-deviceMappers)<<" as primary with timeout "<<newDm->activationTimeout<<std::endl;
 					}
 				}
 			

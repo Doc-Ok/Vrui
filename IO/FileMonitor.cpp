@@ -2,7 +2,7 @@
 FileMonitor - Class to monitor a set of files and/or directories and
 send callbacks on any changes to any of the monitored files or
 directories.
-Copyright (c) 2012 Oliver Kreylos
+Copyright (c) 2012-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <IO/FileMonitor.h>
 
+#include <string.h>
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -62,8 +63,9 @@ FileMonitor::FileMonitor(void)
 	if(fd<0)
 		{
 		int error=errno;
-		Misc::throwStdErr("IO::FileMonitor::FileMonitor: Cannot create FileMonitor object due to error %d",error);
+		Misc::throwStdErr("IO::FileMonitor::FileMonitor: Cannot create FileMonitor object due to error %d (%s)",error,strerror(error));
 		}
+	
 	#else
 	
 	/* Initialize the dummy cookie: */
@@ -85,8 +87,10 @@ FileMonitor::~FileMonitor(void)
 		delete ecIt->getDest();
 	
 	#ifdef __linux__
+	
 	/* Close the inotify instance: */
 	close(fd);
+	
 	#endif
 	}
 
@@ -116,19 +120,21 @@ void FileMonitor::startPolling(void)
 	if(eventHandlingThread.isJoined())
 		{
 		#ifdef __linux__
+		
 		/* Set the file descriptor to non-blocking: */
 		int fileFlags=fcntl(fd,F_GETFL);
 		if(fileFlags<0)
 			{
 			int error=errno;
-			Misc::throwStdErr("IO::FileMonitor::startPolling: Caught error %d",error);
+			Misc::throwStdErr("IO::FileMonitor::startPolling: Caught error %d (%s)",error,strerror(error));
 			}
 		fileFlags|=O_NONBLOCK;
 		if(fcntl(fd,F_SETFL,fileFlags)<0)
 			{
 			int error=errno;
-			Misc::throwStdErr("IO::FileMonitor::startPolling: Caught error %d",error);
+			Misc::throwStdErr("IO::FileMonitor::startPolling: Caught error %d (%s)",error,strerror(error));
 			}
+		
 		#endif
 		}
 	}
@@ -139,19 +145,21 @@ void FileMonitor::stopPolling(void)
 	if(eventHandlingThread.isJoined())
 		{
 		#ifdef __linux__
+		
 		/* Set the file descriptor to blocking: */
 		int fileFlags=fcntl(fd,F_GETFL);
 		if(fileFlags<0)
 			{
 			int error=errno;
-			Misc::throwStdErr("IO::FileMonitor::stopPolling: Caught error %d",error);
+			Misc::throwStdErr("IO::FileMonitor::stopPolling: Caught error %d (%s)",error,strerror(error));
 			}
 		fileFlags&=~O_NONBLOCK;
 		if(fcntl(fd,F_SETFL,fileFlags)<0)
 			{
 			int error=errno;
-			Misc::throwStdErr("IO::FileMonitor::stopPolling: Caught error %d",error);
+			Misc::throwStdErr("IO::FileMonitor::stopPolling: Caught error %d (%s)",error,strerror(error));
 			}
+		
 		#endif
 		}
 	}
@@ -311,7 +319,7 @@ FileMonitor::Cookie FileMonitor::addPath(const char* pathName,int eventMask,File
 	if(cookie<0)
 		{
 		int error=errno;
-		Misc::throwStdErr("IO::FileMonitor::addPath: Could not monitor path %s due to error %d",pathName,error);
+		Misc::throwStdErr("IO::FileMonitor::addPath: Could not monitor path %s due to error %d (%s)",pathName,error,strerror(error));
 		}
 	
 	/* Enter the cookie and event callback into the callback list: */
@@ -367,8 +375,10 @@ void FileMonitor::removePath(FileMonitor::Cookie pathCookie)
 		eventCallbacks.removeEntry(ecIt);
 		
 		#ifdef __linux__
+		
 		/* Remove the watch from inotify's watch list: */
 		inotify_rm_watch(fd,pathCookie);
+		
 		#endif
 		}
 	}

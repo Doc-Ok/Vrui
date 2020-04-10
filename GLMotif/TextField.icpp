@@ -1,0 +1,153 @@
+/***********************************************************************
+TextField - Class for labels displaying values as text.
+Copyright (c) 2006-2019 Oliver Kreylos
+
+This file is part of the GLMotif Widget Library (GLMotif).
+
+The GLMotif Widget Library is free software; you can redistribute it
+and/or modify it under the terms of the GNU General Public License as
+published by the Free Software Foundation; either version 2 of the
+License, or (at your option) any later version.
+
+The GLMotif Widget Library is distributed in the hope that it will be
+useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with the GLMotif Widget Library; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+***********************************************************************/
+
+#ifndef GLMOTIF_TEXTFIELD_IMPLEMENTATION
+#define GLMOTIF_TEXTFIELD_IMPLEMENTATION
+
+#include <GLMotif/TextField.h>
+
+#include <stdio.h>
+#include <Misc/PrintInteger.h>
+
+namespace GLMotif {
+
+/**************************
+Methods of class TextField:
+**************************/
+
+template <>
+void TextField::setValue(const int& value,bool updateTracked)
+	{
+	/* Update the label string: */
+	char valueString[81];
+	if(fieldWidth>=0)
+		{
+		char* vsPtr=Misc::print(value,valueString+80);
+		for(int width=(valueString+80)-vsPtr;width<fieldWidth&&width<80;++width)
+			*(--vsPtr)=' ';
+		setString(vsPtr,valueString+80);
+		}
+	else
+		setString(Misc::print(value,valueString+11),valueString+11);
+	
+	if(updateTracked)
+		{
+		/* Update a potential tracked variable: */
+		setTrackedSInt(value);
+		}
+	}
+
+template <>
+void TextField::setValue(const unsigned int& value,bool updateTracked)
+	{
+	/* Update the label string: */
+	char valueString[81];
+	if(fieldWidth>=0)
+		{
+		char* vsPtr=Misc::print(value,valueString+80);
+		for(int width=(valueString+80)-vsPtr;width<fieldWidth&&width<80;++width)
+			*(--vsPtr)=' ';
+		setString(vsPtr,valueString+80);
+		}
+	else
+		setString(Misc::print(value,valueString+10),valueString+10);
+	
+	if(updateTracked)
+		{
+		/* Update a potential tracked variable: */
+		setTrackedUInt(value);
+		}
+	}
+
+template <>
+void TextField::setValue(const float& value,bool updateTracked)
+	{
+	/* Update the label string: */
+	char format[10],valueString[80];
+	int length;
+	if(fieldWidth>=0)
+		{
+		if(precision>=0)
+			length=snprintf(valueString,sizeof(valueString),createFormatString(format),fieldWidth,precision,value);
+		else
+			length=snprintf(valueString,sizeof(valueString),createFormatString(format),fieldWidth,value);
+		}
+	else
+		{
+		if(precision>=0)
+			length=snprintf(valueString,sizeof(valueString),createFormatString(format),precision,value);
+		else
+			length=snprintf(valueString,sizeof(valueString),createFormatString(format),value);
+		}
+	setString(valueString,valueString+length);
+	
+	if(updateTracked)
+		{
+		/* Update a potential tracked variable: */
+		setTrackedFloat(value);
+		}
+	}
+
+template <>
+void TextField::setValue(const double& value,bool updateTracked)
+	{
+	/* Update the label string: */
+	char format[10],valueString[80];
+	int length;
+	if(fieldWidth>=0)
+		{
+		if(precision>=0)
+			length=snprintf(valueString,sizeof(valueString),createFormatString(format),fieldWidth,precision,value);
+		else
+			length=snprintf(valueString,sizeof(valueString),createFormatString(format),fieldWidth,value);
+		}
+	else
+		{
+		if(precision>=0)
+			length=snprintf(valueString,sizeof(valueString),createFormatString(format),precision,value);
+		else
+			length=snprintf(valueString,sizeof(valueString),createFormatString(format),value);
+		}
+	setString(valueString,valueString+length);
+	
+	if(updateTracked)
+		{
+		/* Update a potential tracked variable: */
+		setTrackedFloat(value);
+		}
+	}
+
+template <>
+void TextField::setValue(const std::string& value,bool updateTracked)
+	{
+	/* Update the label string: */
+	setString(value.c_str(),value.c_str()+value.size());
+	
+	if(updateTracked)
+		{
+		/* Update a potential tracked variable: */
+		setTrackedString(value);
+		}
+	}
+
+}
+
+#endif

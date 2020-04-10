@@ -37,6 +37,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #endif
 #include <Misc/ThrowStdErr.h>
 #include <Misc/File.h>
+#include <Images/ImageFileFormats.h>
 
 namespace Images {
 
@@ -256,34 +257,37 @@ Function to extract image sizes from image files in several supported formats:
 
 void getImageFileSize(const char* imageFileName,unsigned int& width,unsigned int& height)
 	{
-	/* Try to determine image file format from file name extension: */
+	/* Determine the type of the given image file: */
+	ImageFileFormat imageFileFormat=getImageFileFormat(imageFileName);
 	
-	/* Find position of last dot in image file name: */
-	const char* extStart=0;
-	const char* cPtr;
-	for(cPtr=imageFileName;*cPtr!='\0';++cPtr)
-		if(*cPtr=='.')
-			extStart=cPtr+1;
-	if(extStart==0)
-		Misc::throwStdErr("Images::getImageFileSize: no extension in image file name \"%s\"",imageFileName);
-	
-	if(cPtr-extStart==3&&tolower(extStart[0])=='p'&&tolower(extStart[2])=='m'&&
-	   (tolower(extStart[1])=='b'||tolower(extStart[1])=='g'||tolower(extStart[1])=='n'||tolower(extStart[1])=='p'))
-		getPnmFileSize(imageFileName,width,height);
-	#if IMAGES_CONFIG_HAVE_PNG
-	else if(strcasecmp(extStart,"png")==0)
-		getPngFileSize(imageFileName,width,height);
-	#endif
-	#if IMAGES_CONFIG_HAVE_JPEG
-	else if(strcasecmp(extStart,"jpg")==0||strcasecmp(extStart,"jpeg")==0)
-		getJpegFileSize(imageFileName,width,height);
-	#endif
-	#if IMAGES_CONFIG_HAVE_TIFF
-	else if(strcasecmp(extStart,"tif")==0||strcasecmp(extStart,"tiff")==0)
-		getTiffFileSize(imageFileName,width,height);
-	#endif
-	else
-		Misc::throwStdErr("Images::getImageFileSize: unknown extension in image file name \"%s\"",imageFileName);
+	/* Delegate to specific readers based on the given format: */
+	switch(imageFileFormat)
+		{
+		case IFF_PNM:
+			getPnmFileSize(imageFileName,width,height);
+			break;
+		
+		#if IMAGES_CONFIG_HAVE_PNG
+		case IFF_PNG:
+			getPngFileSize(imageFileName,width,height);
+			break;
+		#endif
+		
+		#if IMAGES_CONFIG_HAVE_JPEG
+		case IFF_JPEG:
+			getJpegFileSize(imageFileName,width,height);
+			break;
+		#endif
+		
+		#if IMAGES_CONFIG_HAVE_TIFF
+		case IFF_TIFF:
+			getTiffFileSize(imageFileName,width,height);
+			break;
+		#endif
+		
+		default:
+			Misc::throwStdErr("Images::getImageFileSize: Image file \"%s\" has unsupported format",imageFileName);
+		}
 	}
 
 }

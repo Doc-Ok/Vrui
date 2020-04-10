@@ -1,7 +1,7 @@
 /***********************************************************************
 EditableGrid - Data structure to represent 3D grids with editable data
 values and interactive isosurface extraction.
-Copyright (c) 2006-2013 Oliver Kreylos
+Copyright (c) 2006-2018 Oliver Kreylos
 
 This file is part of the Virtual Clay Editing Package.
 
@@ -30,6 +30,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Geometry/ComponentArray.h>
 #include <Geometry/Point.h>
 #include <Geometry/Vector.h>
+#include <Geometry/Box.h>
 #include <GL/gl.h>
 #include <GL/GLVertex.h>
 #include <GL/GLObject.h>
@@ -47,6 +48,7 @@ class EditableGrid:public GLObject
 	typedef Misc::ArrayIndex<3> Index; // Type for array indices
 	typedef Geometry::ComponentArray<float,3> Size; // Type for sizes
 	typedef Geometry::Point<float,3> Point; // Type for points in data set's domain
+	typedef Geometry::Box<float,3> Box; // Type for bounding boxes
 	private:
 	typedef float VertexValue; // Data type for vertex values
 	typedef Geometry::Vector<float,3> VertexGradient; // Data type for vertex gradients
@@ -95,6 +97,7 @@ class EditableGrid:public GLObject
 	static const int triangleEdgeIndices[256][16]; // Indices of edges defining a cell's isosurface fragment for each cell case
 	
 	/* Grid definition: */
+	Point origin; // Origin point of grid
 	Index numVertices; // Number of grid vertices
 	Index numCells; // Number of grid cells
 	Size cellSize; // Size of grid cell in each dimension
@@ -111,10 +114,14 @@ class EditableGrid:public GLObject
 	
 	/* Constructors and destructors: */
 	public:
-	EditableGrid(const Index& sNumVertices,const Size& sCellSize); // Creates an empty editable grid
+	EditableGrid(const Point& sOrigin,const Index& sNumVertices,const Size& sCellSize); // Creates an empty editable grid
 	virtual ~EditableGrid(void); // Destroys an editable grid
 	
 	/* Methods: */
+	const Point& getOrigin(void) const
+		{
+		return origin;
+		}
 	const Index& getNumVertices(void) const
 		{
 		return numVertices;
@@ -131,6 +138,14 @@ class EditableGrid:public GLObject
 		{
 		return cellSize[dimension];
 		};
+	Box getBox(void) const // Returns a bounding box for the grid
+		{
+		Point min=origin;
+		Point max=origin;
+		for(int i=0;i<3;++i)
+			max[i]+=numCells[i]*cellSize[i];
+		return Box(min,max);
+		}
 	float getValue(const Index& vertexIndex) const // Returns vertex value for given vertex index
 		{
 		return vertices(vertexIndex).value;

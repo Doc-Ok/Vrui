@@ -1,7 +1,7 @@
 /***********************************************************************
 QuadSetNode - Class for sets of quadrilaterals as renderable
 geometry.
-Copyright (c) 2011-2013 Oliver Kreylos
+Copyright (c) 2011-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -63,7 +63,6 @@ class QuadSetNode:public GeometryNode,public GLObject
 	
 	/* Derived state: */
 	private:
-	bool inited; // Flag whether GLObject::init() has already been called
 	unsigned int numQuads; // Number of quads defined in the quad set
 	unsigned int version; // Version of quad se defined by fields
 	

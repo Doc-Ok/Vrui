@@ -60,6 +60,7 @@ void ImageSequenceMovieSaver::frameWritingThreadMethod(void)
 			std::cerr<<"ImageSequenceMovieSaver: Skipped frames "<<frameIndex<<" to "<<frameIndex+numSkippedFrames-1<<std::endl;
 			frameIndex+=numSkippedFrames;
 			}
+		++frameIndex;
 		}
 	}
 
@@ -103,11 +104,11 @@ void* ImageSequenceMovieSaver::frameSavingThreadMethod(void)
 
 ImageSequenceMovieSaver::ImageSequenceMovieSaver(const Misc::ConfigurationFileSection& configFileSection)
 	:MovieSaver(configFileSection),
-	 frameNameTemplate(configFileSection.retrieveString("./movieFrameNameTemplate")),
+	 frameNameTemplate(baseDirectory->getPath(configFileSection.retrieveString("./movieFrameNameTemplate").c_str())),
 	 done(false)
 	{
 	/* Check if the frame name template has the correct format: */
-	if(!Misc::isValidUintTemplate(frameNameTemplate,1024))
+	if(!Misc::isValidTemplate(frameNameTemplate,'u',1024))
 		Misc::throwStdErr("MovieSaver::MovieSaver: movie frame name template \"%s\" does not have exactly one %%u conversion",frameNameTemplate.c_str());
 	
 	/* Start the image writing thread: */
@@ -116,6 +117,9 @@ ImageSequenceMovieSaver::ImageSequenceMovieSaver(const Misc::ConfigurationFileSe
 
 ImageSequenceMovieSaver::~ImageSequenceMovieSaver(void)
 	{
+	/* Stop sound recording at this moment: */
+	stopSound();
+	
 	/* Signal the frame capturing and saving threads to shut down: */
 	done=true;
 	captureCond.signal();

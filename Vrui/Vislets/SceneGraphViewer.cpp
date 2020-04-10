@@ -1,7 +1,7 @@
 /***********************************************************************
 SceneGraphViewer - Vislet class to render a scene graph loaded from one
 or more VRML 2.0 files.
-Copyright (c) 2009-2017 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -24,13 +24,13 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/Vislets/SceneGraphViewer.h>
 
 #include <string.h>
+#include <IO/OpenFile.h>
 #include <GL/gl.h>
 #include <GL/GLTransformationWrappers.h>
 #include <SceneGraph/NodeCreator.h>
 #include <SceneGraph/VRMLFile.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/Viewer.h>
-#include <Vrui/OpenFile.h>
 #include <Vrui/VisletManager.h>
 #include <Vrui/SceneGraphSupport.h>
 
@@ -126,7 +126,7 @@ SceneGraphViewer::SceneGraphViewer(int numArguments,const char* const arguments[
 			}
 		else
 			{
-			SceneGraph::VRMLFile vrmlFile(arguments[i],Vrui::openFile(arguments[i]),nodeCreator,getClusterMultiplexer());
+			SceneGraph::VRMLFile vrmlFile(arguments[i],nodeCreator);
 			vrmlFile.parse(root);
 			}
 		}

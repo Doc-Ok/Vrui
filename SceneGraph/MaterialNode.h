@@ -1,7 +1,7 @@
 /***********************************************************************
 MaterialNode - Class for attribute nodes defining Phong material
 properties.
-Copyright (c) 2009 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -66,6 +66,7 @@ class MaterialNode:public AttributeNode
 	virtual void resetGLState(GLRenderState& renderState) const;
 	
 	/* New methods: */
+	bool requiresNormals(void) const; // Returns true if the material defined in this node requires per-vertex normal vectors for rendering
 	const GLMaterial& getMaterial(void) const // Returns the current derived material properties
 		{
 		return material;

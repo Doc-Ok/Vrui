@@ -1,7 +1,7 @@
 /***********************************************************************
 InterSense - Class for InterSense IS-900 hybrid inertial/sonic 6-DOF
 tracking devices.
-Copyright (c) 2004-2011 Oliver Kreylos
+Copyright (c) 2004-2018 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -675,7 +675,7 @@ InterSense::InterSense(VRDevice::Factory* sFactory,VRDeviceManager* sDeviceManag
 			writeCommand(*devicePort,"MCe\r\n");
 			Misc::sleep(0.1);
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			printf("InterSense: Ignoring constellation configuration %s due to exception %s\n",constellationName.c_str(),err.what());
 			}

@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDeviceAdapterMouse - Class to convert mouse and keyboard into a
 Vrui input device.
-Copyright (c) 2004-2017 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -24,6 +24,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/Internal/InputDeviceAdapterMouse.h>
 
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <X11/keysym.h>
 #include <X11/Xutil.h>
@@ -270,6 +271,7 @@ InputDeviceAdapterMouse::InputDeviceAdapterMouse(InputDeviceManager* sInputDevic
 	 keyboardMode(false),
 	 numMouseWheelTicks(0),
 	 window(0),
+	 mousePosChanged(false),mousePosChangedLastFrame(false),
 	 grabPointer(true),grabWindow(0),
 	 mouseLocked(false),
 	 fakeMouseCursor(false),
@@ -445,7 +447,7 @@ int InputDeviceAdapterMouse::getFeatureIndex(InputDevice* device,const char* fea
 			{
 			prefixKeysym=KeyMapper::getKeysym(std::string(fPtr,pref));
 			}
-		catch(std::runtime_error)
+		catch(const std::runtime_error&)
 			{
 			return -1;
 			}
@@ -490,7 +492,7 @@ int InputDeviceAdapterMouse::getFeatureIndex(InputDevice* device,const char* fea
 			{
 			suffixKeysym=KeyMapper::getKeysym(fPtr);
 			}
-		catch(std::runtime_error)
+		catch(const std::runtime_error&)
 			{
 			return -1;
 			}
@@ -516,28 +518,43 @@ void InputDeviceAdapterMouse::updateInputDevices(void)
 	{
 	if(window!=0)
 		{
-		/* Set mouse device's transformation and device ray: */
-		Point lastMousePos=inputDevices[0]->getPosition();
-		window->updateScreenDevice(mousePos,inputDevices[0]);
-		
-		/* Calculate the mouse device's linear velocity: */
-		inputDevices[0]->setLinearVelocity((inputDevices[0]->getPosition()-lastMousePos)/Vrui::getFrameTime());
-		
-		if(mouseLocked)
+		if(mousePosChanged)
 			{
-			/* Move the mouse cursor back to the window center: */
-			int windowCenter[2];
-			window->getWindowCenterPos(windowCenter);
-			if(mousePos[0]!=Scalar(windowCenter[0])+Scalar(0.5)||mousePos[1]!=Scalar(windowCenter[1])+Scalar(0.5))
+			/* Set mouse device's transformation and device ray: */
+			Point lastMousePos=inputDevices[0]->getPosition();
+			window->updateScreenDevice(mousePos,inputDevices[0]);
+			
+			/* Calculate the mouse device's linear velocity: */
+			inputDevices[0]->setLinearVelocity((inputDevices[0]->getPosition()-lastMousePos)/Vrui::getFrameTime());
+			
+			if(mouseLocked)
 				{
-				for(int i=0;i<2;++i)
-					mousePos[i]=Scalar(windowCenter[i])+Scalar(0.5);
-				window->setCursorPos(windowCenter[0],windowCenter[1]);
-				
-				/* Reset the mouse device's ray and transformation to the locked values: */
-				inputDevices[0]->setDeviceRay(lockedRayDirection,lockedRayStart);
-				inputDevices[0]->setTransformation(lockedTransformation);
+				/* Move the mouse cursor back to the window center: */
+				int windowCenter[2];
+				window->getWindowCenterPos(windowCenter);
+				if(mousePos[0]!=Scalar(windowCenter[0])+Scalar(0.5)||mousePos[1]!=Scalar(windowCenter[1])+Scalar(0.5))
+					{
+					for(int i=0;i<2;++i)
+						mousePos[i]=Scalar(windowCenter[i])+Scalar(0.5);
+					window->setCursorPos(windowCenter[0],windowCenter[1]);
+					
+					/* Reset the mouse device's ray and transformation to the locked values: */
+					inputDevices[0]->setDeviceRay(lockedRayDirection,lockedRayStart);
+					inputDevices[0]->setTransformation(lockedTransformation);
+					}
 				}
+			
+			/* Reset the mouse change tracking flags: */
+			mousePosChangedLastFrame=true;
+			mousePosChanged=false;
+			}
+		else if(mousePosChangedLastFrame)
+			{
+			/* Reset the mouse device's linear velocity to zero: */
+			inputDevices[0]->setLinearVelocity(Vector::zero);
+			
+			/* Reset the mouse change tracking flags: */
+			mousePosChangedLastFrame=false;
 			}
 		
 		/* Set mouse device button states: */
@@ -558,7 +575,7 @@ void InputDeviceAdapterMouse::updateInputDevices(void)
 			
 			/* If there were mouse ticks, request another Vrui frame in a short while because there will be no "no mouse ticks" message: */
 			if(numMouseWheelTicks[i]!=0)
-				scheduleUpdate(getApplicationTime()+0.1);
+				scheduleUpdate(getNextAnimationTime());
 			numMouseWheelTicks[i]=0;
 			}
 		
@@ -596,6 +613,12 @@ void InputDeviceAdapterMouse::updateInputDevices(void)
 		}
 	}
 
+void InputDeviceAdapterMouse::invalidateMousePosition(void)
+	{
+	/* Mark the mouse position as changed: */
+	mousePosChanged=true;
+	}
+
 void InputDeviceAdapterMouse::setMousePosition(VRWindow* newWindow,int newMouseX,int newMouseY)
 	{
 	/* Remember the window that created the mouse event: */
@@ -610,6 +633,7 @@ void InputDeviceAdapterMouse::setMousePosition(VRWindow* newWindow,int newMouseX
 		/* Set current mouse position: */
 		for(int i=0;i<2;++i)
 			mousePos[i]=newMousePos[i];
+		mousePosChanged=true;
 		
 		/* Remember event time for idle time-out processing: */
 		lastMouseEventTime=getApplicationTime();
@@ -618,41 +642,51 @@ void InputDeviceAdapterMouse::setMousePosition(VRWindow* newWindow,int newMouseX
 	// requestUpdate();
 	}
 
+void InputDeviceAdapterMouse::setKeyboardMode(bool newKeyboardMode)
+	{
+	/* Set the keyboard mode flag: */
+	keyboardMode=newKeyboardMode;
+	
+	/* Indicate the current keyboard mode visually: */
+	if(fakeMouseCursor)
+		{
+		/* Change the glyph renderer's cursor type to a text cursor: */
+		// TODO
+		}
+	else if(keyboardMode)
+		{
+		/* Change the cursor in all windows to a text cursor: */
+		for(int i=0;i<getNumWindows();++i)
+			{
+			VRWindow* win=Vrui::getWindow(i);
+			if(win!=0)
+				{
+				Cursor cursor=XCreateFontCursor(win->getContext().getDisplay(),XC_xterm);
+				XDefineCursor(win->getContext().getDisplay(),win->getWindow(),cursor);
+				XFreeCursor(win->getContext().getDisplay(),cursor);
+				}
+			}
+		}
+	else
+		{
+		/* Change the cursor in all windows back to the regular: */
+		for(int i=0;i<getNumWindows();++i)
+			{
+			VRWindow* win=Vrui::getWindow(i);
+			if(win!=0)
+				XUndefineCursor(win->getContext().getDisplay(),win->getWindow());
+			}
+		}
+	}
+
 bool InputDeviceAdapterMouse::keyPressed(int keysym,int modifierMask,const char* string)
 	{
 	bool stateChanged=false;
 	
 	if(keyboardModeToggleKey.matches(keysym,modifierMask))
 		{
-		keyboardMode=!keyboardMode;
-		if(fakeMouseCursor)
-			{
-			/* Change the glyph renderer's cursor type to a text cursor: */
-			}
-		else if(keyboardMode)
-			{
-			/* Change the cursor in all windows to a text cursor: */
-			for(int i=0;i<getNumWindows();++i)
-				{
-				VRWindow* win=Vrui::getWindow(i);
-				if(win!=0)
-					{
-					Cursor cursor=XCreateFontCursor(win->getContext().getDisplay(),XC_xterm);
-					XDefineCursor(win->getContext().getDisplay(),win->getWindow(),cursor);
-					XFreeCursor(win->getContext().getDisplay(),cursor);
-					}
-				}
-			}
-		else
-			{
-			/* Change the cursor in all windows back to the regular: */
-			for(int i=0;i<getNumWindows();++i)
-				{
-				VRWindow* win=Vrui::getWindow(i);
-				if(win!=0)
-					XUndefineCursor(win->getContext().getDisplay(),win->getWindow());
-				}
-			}
+		/* Toggle the current keyboard mode: */
+		setKeyboardMode(!keyboardMode);
 		}
 	else if(keyboardMode)
 		{

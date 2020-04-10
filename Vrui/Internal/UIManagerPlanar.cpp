@@ -1,7 +1,7 @@
 /***********************************************************************
 UIManagerPlanar - UI manager class that aligns user interface components
 on a fixed plane.
-Copyright (c) 2015-2018 Oliver Kreylos
+Copyright (c) 2015-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -137,25 +137,26 @@ Point UIManagerPlanar::projectRay(const Ray& ray) const
 		}
 	}
 
-void UIManagerPlanar::projectDevice(InputDevice* device) const
+void UIManagerPlanar::projectDevice(InputDevice* device,const TrackerState& proposedTransform) const
 	{
-	/* Get the device's ray: */
-	Ray ray=device->getRay();
+	/* Get the device's ray according to the proposed transformation: */
+	Vector deviceRayDir=proposedTransform.transform(device->getDeviceRayDirection());
+	Point deviceRayOrigin=proposedTransform.getOrigin()+deviceRayDir*device->getDeviceRayStart();
 	
 	/* Check if the device ray intersects the UI plane: */
-	Scalar divisor=plane.getNormal()*ray.getDirection();
+	Scalar divisor=plane.getNormal()*deviceRayDir;
 	Scalar lambda(0);
 	Point devicePos;
 	if(divisor!=Scalar(0))
 		{
 		/* Intersect the device ray with the UI plane: */
-		lambda=(plane.getOffset()-plane.getNormal()*ray.getOrigin())/divisor;
-		devicePos=ray(lambda);
+		lambda=(plane.getOffset()-plane.getNormal()*deviceRayOrigin)/divisor;
+		devicePos=deviceRayOrigin+deviceRayDir*lambda;
 		}
 	else
 		{
 		/* Project the device's position onto the plane: */
-		devicePos=plane.project(device->getPosition());
+		devicePos=plane.project(proposedTransform.getOrigin());
 		}
 	
 	/* Move the device to the intersection point (rotate by 90 degrees to have y axis point into screen): */
@@ -165,7 +166,7 @@ void UIManagerPlanar::projectDevice(InputDevice* device) const
 	device->setTransformation(TrackerState(devicePos-Point::origin,newOrientation));
 	
 	/* Update the device's ray: */
-	device->setDeviceRay(newOrientation.inverseTransform(ray.getDirection()),-lambda);
+	device->setDeviceRay(newOrientation.inverseTransform(deviceRayDir),-lambda);
 	}
 
 ONTransform UIManagerPlanar::calcUITransform(const Point& point) const

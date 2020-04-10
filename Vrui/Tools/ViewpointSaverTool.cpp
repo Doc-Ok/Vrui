@@ -1,7 +1,7 @@
 /***********************************************************************
 ViewpointSaverTool - Class for tools to save environment-independent
 viewing parameters.
-Copyright (c) 2007-2010 Oliver Kreylos
+Copyright (c) 2007-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -24,12 +24,15 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/Tools/ViewpointSaverTool.h>
 
 #include <stdio.h>
-#include <Misc/File.h>
+#include <Misc/MessageLogger.h>
 #include <Misc/StandardValueCoders.h>
 #include <Misc/ConfigurationFile.h>
+#include <IO/OpenFile.h>
+#include <IO/OStream.h>
 #include <Geometry/Point.h>
 #include <Geometry/Vector.h>
 #include <Geometry/OrthogonalTransformation.h>
+#include <Geometry/OutputOperators.h>
 #include <GL/gl.h>
 #include <GL/GLGeometryWrappers.h>
 #include <Vrui/Vrui.h>
@@ -147,34 +150,36 @@ void ViewpointSaverTool::buttonCallback(int,InputDevice::ButtonCallbackData* cbD
 			{
 			try
 				{
-				factory->viewpointFile=new Misc::File(factory->viewpointFileName.c_str(),"wt");
+				/* Open a viewpoint file: */
+				factory->viewpointFile=new IO::OStream(IO::openFile(factory->viewpointFileName.c_str(),IO::File::WriteOnly));
 				}
-			catch(Misc::File::OpenError)
+			catch(const std::runtime_error& err)
 				{
 				/* Just don't open the file, then! */
+				Misc::formattedUserError("Vrui::ViewpointSaverTool: Error %s while opening viewpoint file %s",err.what(),factory->viewpointFileName.c_str());
 				}
 			}
 		
 		if(factory->viewpointFile!=0)
 			{
 			/* Write a time interval: */
-			fprintf(factory->viewpointFile->getFilePtr(),"%f",1.0);
+			(*factory->viewpointFile)<<1.0;
 			
 			/* Write the environment's center point in navigational coordinates: */
 			Point center=getInverseNavigationTransformation().transform(getDisplayCenter());
-			fprintf(factory->viewpointFile->getFilePtr()," (%f, %f, %f)",center[0],center[1],center[2]);
+			(*factory->viewpointFile)<<' '<<center;
 			
 			/* Write the environment's size in navigational coordinates: */
 			Scalar size=getDisplaySize()*getInverseNavigationTransformation().getScaling();
-			fprintf(factory->viewpointFile->getFilePtr()," %f",size);
+			(*factory->viewpointFile)<<' '<<size;
 			
 			/* Write the environment's forward direction in navigational coordinates: */
 			Vector forward=getInverseNavigationTransformation().transform(getForwardDirection());
-			fprintf(factory->viewpointFile->getFilePtr()," (%f, %f, %f)",forward[0],forward[1],forward[2]);
+			(*factory->viewpointFile)<<' '<<forward;
 			
 			/* Write the environment's up direction in navigational coordinates: */
 			Vector up=getInverseNavigationTransformation().transform(getUpDirection());
-			fprintf(factory->viewpointFile->getFilePtr()," (%f, %f, %f)\n",up[0],up[1],up[2]);
+			(*factory->viewpointFile)<<' '<<up<<std::endl;
 			}
 		}
 	}

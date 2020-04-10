@@ -1,7 +1,7 @@
 /***********************************************************************
 Doom3MD5MeshNode - Class for nodes to render Doom3 MD5Mesh animated
 models.
-Copyright (c) 2010 Oliver Kreylos
+Copyright (c) 2010-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -81,7 +81,7 @@ void Doom3MD5MeshNode::update(void)
 		/* Tell the material manager to load all requested materials: */
 		dataContext.getValue()->getMaterialManager()->loadMaterials(*dataContext.getValue()->getFileManager());
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error&)
 		{
 		/* Just delete the mesh again: */
 		delete mesh;

@@ -1,6 +1,6 @@
 /***********************************************************************
 TSurfFileNode - Class for triangle meshes read from GoCAD TSurf files.
-Copyright (c) 2009-2011 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -24,7 +24,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <string.h>
 #include <Misc/ThrowStdErr.h>
 #include <IO/ValueSource.h>
-#include <Cluster/OpenFile.h>
+#include <IO/OpenFile.h>
 #include <Geometry/Box.h>
 #include <GL/gl.h>
 #include <GL/GLColorTemplates.h>
@@ -71,7 +71,7 @@ Methods of class TSurfFileNode:
 ******************************/
 
 TSurfFileNode::TSurfFileNode(void)
-	:multiplexer(0),version(0)
+	:version(0)
 	{
 	}
 
@@ -91,11 +91,8 @@ void TSurfFileNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 		{
 		vrmlFile.parseField(url);
 		
-		/* Fully qualify all URLs: */
-		for(size_t i=0;i<url.getNumValues();++i)
-			url.setValue(i,vrmlFile.getFullUrl(url.getValue(i)));
-		
-		multiplexer=vrmlFile.getMultiplexer();
+		/* Remember the VRML file's base directory: */
+		baseDirectory=&vrmlFile.getBaseDirectory();
 		}
 	else
 		GeometryNode::parseField(fieldName,vrmlFile);
@@ -111,7 +108,7 @@ void TSurfFileNode::update(void)
 		return;
 	
 	/* Read the TSurf file: */
-	IO::ValueSource tSurf(Cluster::openFile(multiplexer,url.getValue(0).c_str()));
+	IO::ValueSource tSurf(baseDirectory->openFile(url.getValue(0).c_str()));
 	tSurf.setPunctuation("{}");
 	tSurf.skipWs();
 	
@@ -188,8 +185,8 @@ void TSurfFileNode::glRenderAction(GLRenderState& renderState) const
 	if(dataItem->vertexBufferObjectId!=0&&dataItem->indexBufferObjectId!=0)
 		{
 		/* Bind the vertex and index buffer objects: */
-		glBindBufferARB(GL_ARRAY_BUFFER_ARB,dataItem->vertexBufferObjectId);
-		glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,dataItem->indexBufferObjectId);
+		renderState.bindVertexBuffer(dataItem->vertexBufferObjectId);
+		renderState.bindIndexBuffer(dataItem->indexBufferObjectId);
 		
 		/* Check if the buffers need to be updated: */
 		if(dataItem->version!=version)
@@ -211,21 +208,11 @@ void TSurfFileNode::glRenderAction(GLRenderState& renderState) const
 		}
 	
 	/* Set up the vertex arrays: */
-	GLVertexArrayParts::enable(Vertex::getPartsMask());
+	renderState.enableVertexArrays(Vertex::getPartsMask());
 	glVertexPointer(vertexPtr);
 	
 	/* Draw all triangles: */
 	glDrawElements(GL_TRIANGLES,indices.size(),GL_UNSIGNED_INT,indexPtr);
-	
-	/* Reset the vertex arrays: */
-	GLVertexArrayParts::disable(Vertex::getPartsMask());
-	
-	if(dataItem->vertexBufferObjectId!=0&&dataItem->indexBufferObjectId!=0)
-		{
-		/* Protect the buffer objects: */
-		glBindBufferARB(GL_ARRAY_BUFFER_ARB,0);
-		glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,0);
-		}
 	}
 
 void TSurfFileNode::initContext(GLContextData& contextData) const

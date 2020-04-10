@@ -1,6 +1,6 @@
 /***********************************************************************
 Application - Base class for Vrui application objects.
-Copyright (c) 2004-2018 Oliver Kreylos
+Copyright (c) 2004-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -181,6 +181,7 @@ class Application
 	static void displayWrapper(GLContextData& contextData,void* userData);
 	static void soundWrapper(ALContextData& contextData,void* userData);
 	static void resetNavigationWrapper(void* userData);
+	static void finishMainLoopWrapper(void* userData);
 	char* createEventToolClassName(void);
 	
 	/* Protected methods: */
@@ -206,6 +207,7 @@ class Application
 	virtual void display(GLContextData& contextData) const; // Rendering method called at least once per window per frame, potentially concurrently from background thread(s)
 	virtual void sound(ALContextData& contextData) const; // Sound rendering method called at least once per sound context per frame, potentially concurrently from background thread(s)
 	virtual void resetNavigation(void); // Called when the system menu's "Reset View" button is pressed
+	virtual void finishMainLoop(void); // Called immediately after Vrui's main application loop stops running
 	virtual void eventToolCreationCallback(EventID eventId,ToolManager::ToolCreationCallbackData* cbData); // Called when the tool manager creates a new event tool
 	virtual void eventToolDestructionCallback(EventID eventId,ToolManager::ToolDestructionCallbackData* cbData); // Called when the tool manager destroys an event tool
 	virtual void eventCallback(EventID eventId,InputDevice::ButtonCallbackData* cbData); // Default callback method for simple event tools
@@ -243,7 +245,7 @@ it, and catch any exceptions:
 			AppClass app(argc,argv); \
 			app.run(); \
 			} \
-		catch(std::runtime_error err) \
+		catch(const std::runtime_error& err) \
 			{ \
 			std::cerr<<"Terminated "<<#AppClass<<" due to exception: "<<err.what()<<std::endl; \
 			return 1; \

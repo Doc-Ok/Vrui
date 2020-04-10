@@ -1,7 +1,7 @@
 ########################################################################
 # Packages.System - List of system packages that can be included/linked
 # into projects.
-# Copyright (c) 1999-2013 Oliver Kreylos
+# Copyright (c) 1999-2020 Oliver Kreylos
 # Mac OS X adaptation copyright (c) 2006 Braden Pellett
 #
 # This file is part of the WhyTools Build Environment.
@@ -22,19 +22,26 @@
 # 02111-1307 USA
 ########################################################################
 
+# The Mac OS X system framework
+OSX_SYSTEM_BASEDIR = 
+OSX_SYSTEM_DEPENDS = 
+OSX_SYSTEM_INCLUDE = -F/System/Library/Frameworks/System
+OSX_SYSTEM_LIBDIR  = 
+OSX_SYSTEM_LIBS    = -framework System
+
 # The Mac OS X core foundation framework
-COREFOUNDATION_BASEDIR = 
-COREFOUNDATION_DEPENDS = 
-COREFOUNDATION_INCLUDE = -F/System/Library/Frameworks/CoreFoundation
-COREFOUNDATION_LIBDIR  = 
-COREFOUNDATION_LIBS    = -framework CoreFoundation
+OSX_COREFOUNDATION_BASEDIR = 
+OSX_COREFOUNDATION_DEPENDS = 
+OSX_COREFOUNDATION_INCLUDE = -F/System/Library/Frameworks/CoreFoundation
+OSX_COREFOUNDATION_LIBDIR  = 
+OSX_COREFOUNDATION_LIBS    = -framework CoreFoundation
 
 # The Mac OS X I/O kit framework
-IOKIT_BASEDIR = 
-IOKIT_DEPENDS = COREFOUNDATION
-IOKIT_INCLUDE = -F/System/Library/Frameworks/IOKit
-IOKIT_LIBDIR  = 
-IOKIT_LIBS    = -framework IOKit
+OSX_IOKIT_BASEDIR = 
+OSX_IOKIT_DEPENDS = OSX_COREFOUNDATION
+OSX_IOKIT_INCLUDE = -F/System/Library/Frameworks/IOKit
+OSX_IOKIT_LIBDIR  = 
+OSX_IOKIT_LIBS    = -framework IOKit
 
 # The dynamic linker package
 DL_BASEDIR = /usr
@@ -87,6 +94,14 @@ LIBUSB1_LIBDIR  = -L$(LIBUSB1_BASEDIR)/$(LIBEXT)
 LIBUSB1_LIBS    = -lusb-1.0
 LIBUSB1_HAS_TOPOLOGY_CALLS = $(shell $(VRUI_MAKEDIR)/FindInHeader.sh $(LIBUSB1_BASEDIR)/$(INCLUDEEXT)/libusb-1.0/libusb.h libusb_get_parent)
 LIBUSB1_HAS_STRERROR = $(shell $(VRUI_MAKEDIR)/FindInHeader.sh $(LIBUSB1_BASEDIR)/$(INCLUDEEXT)/libusb-1.0/libusb.h libusb_strerror)
+LIBUSB1_HAS_SET_OPTION = $(shell $(VRUI_MAKEDIR)/FindInHeader.sh $(LIBUSB1_BASEDIR)/$(INCLUDEEXT)/libusb-1.0/libusb.h libusb_set_option)
+
+# The OpenSSL cryptography library
+OPENSSL_BASEDIR = $(shell $(VRUI_MAKEDIR)/FindLibrary.sh openssl/ssl.h libssl.$(DSOFILEEXT) $(INCLUDEEXT) $(LIBEXT) $(SYSTEM_PACKAGE_SEARCH_PATHS))
+OPENSSL_DEPENDS = 
+OPENSSL_INCLUDE = -I$(OPENSSL_BASEDIR)/$(INCLUDEEXT)
+OPENSSL_LIBDIR  = -L$(OPENSSL_BASEDIR)/$(LIBEXT)
+OPENSSL_LIBS    = -lssl -lcrypto
 
 # The user-level Bluetooth library
 BLUETOOTH_BASEDIR = $(shell $(VRUI_MAKEDIR)/FindLibrary.sh bluetooth/bluetooth.h libbluetooth.$(DSOFILEEXT) $(INCLUDEEXT) $(LIBEXT) $(SYSTEM_PACKAGE_SEARCH_PATHS))
@@ -131,18 +146,18 @@ ALSA_LIBDIR  = -L$(ALSA_BASEDIR)/$(LIBEXT)
 ALSA_LIBS    = -lasound
 
 # The Mac OS X core audio framework
-COREAUDIO_BASEDIR = 
-COREAUDIO_DEPENDS = COREFOUNDATION
-COREAUDIO_INCLUDE = -F/System/Library/Frameworks/CoreAudio
-COREAUDIO_LIBDIR  = 
-COREAUDIO_LIBS    = -framework CoreAudio
+OSX_COREAUDIO_BASEDIR = 
+OSX_COREAUDIO_DEPENDS = OSX_COREFOUNDATION
+OSX_COREAUDIO_INCLUDE = -F/System/Library/Frameworks/CoreAudio
+OSX_COREAUDIO_LIBDIR  = 
+OSX_COREAUDIO_LIBS    = -framework CoreAudio
 
 # The Mac OS X audio toolbox framework
-AUDIOTOOLBOX_BASEDIR = 
-AUDIOTOOLBOX_DEPENDS = COREAUDIO COREFOUNDATION
-AUDIOTOOLBOX_INCLUDE = -F/System/Library/Frameworks/AudioToolbox
-AUDIOTOOLBOX_LIBDIR  = 
-AUDIOTOOLBOX_LIBS    = -framework AudioToolbox
+OSX_AUDIOTOOLBOX_BASEDIR = 
+OSX_AUDIOTOOLBOX_DEPENDS = OSX_COREAUDIO OSX_COREFOUNDATION
+OSX_AUDIOTOOLBOX_INCLUDE = -F/System/Library/Frameworks/AudioToolbox
+OSX_AUDIOTOOLBOX_LIBDIR  = 
+OSX_AUDIOTOOLBOX_LIBS    = -framework AudioToolbox
 
 # The Video4Linux2 video library
 V4L2_BASEDIR = $(shell $(VRUI_MAKEDIR)/FindLibrary.sh linux/videodev2.h None $(INCLUDEEXT) $(LIBEXT) $(SYSTEM_PACKAGE_SEARCH_PATHS))
@@ -178,6 +193,13 @@ THEORA_DEPENDS = OGG
 THEORA_INCLUDE = -I$(THEORA_BASEDIR)/$(INCLUDEEXT)
 THEORA_LIBDIR  = -L$(THEORA_BASEDIR)/$(LIBEXT)
 THEORA_LIBS    = -ltheoraenc -ltheoradec
+
+# The FreeType2 font rendering package
+FREETYPE_BASEDIR = $(shell $(VRUI_MAKEDIR)/FindLibrary.sh freetype2/ft2build.h libtfreetype.$(DSOFILEEXT) $(INCLUDEEXT) $(LIBEXT) $(SYSTEM_PACKAGE_SEARCH_PATHS))
+FREETYPE_DEPENDS = 
+FREETYPE_INCLUDE = -I$(FREETYPE_BASEDIR)/$(INCLUDEEXT)/freetype2
+FREETYPE_LIBDIR  = -L$(FREETYPE_BASEDIR)/$(LIBEXT)
+FREETYPE_LIBS    = -lfreetype
 
 # The basic X11 package without any toolkits/widget sets
 X11_BASEDIR = $(SYSTEM_X11_BASEDIR)
@@ -264,6 +286,12 @@ else
   SYSTEM_HAVE_LIBUSB1 = 0
 endif
 
+ifneq ($(strip $(OPENSSL_BASEDIR)),)
+  SYSTEM_HAVE_OPENSSL = 1
+else
+  SYSTEM_HAVE_OPENSSL = 0
+endif
+
 ifneq ($(strip $(PNG_BASEDIR)),)
   SYSTEM_HAVE_LIBPNG = 1
 else
@@ -316,18 +344,6 @@ else
   SYSTEM_HAVE_DC1394 = 0
 endif
 
-ifneq ($(strip $(XRANDR_BASEDIR)),)
-  SYSTEM_HAVE_XRANDR = 1
-else
-  SYSTEM_HAVE_XRANDR = 0
-endif
-
-ifneq ($(strip $(XINPUT2_BASEDIR)),)
-  SYSTEM_HAVE_XINPUT2 = 1
-else
-  SYSTEM_HAVE_XINPUT2 = 0
-endif
-
 ifneq ($(strip $(SPEEX_BASEDIR)),)
   SYSTEM_HAVE_SPEEX = 1
 else
@@ -338,4 +354,22 @@ ifneq ($(strip $(THEORA_BASEDIR)),)
   SYSTEM_HAVE_THEORA = 1
 else
   SYSTEM_HAVE_THEORA = 0
+endif
+
+ifneq ($(strip $(FREETYPE_BASEDIR)),)
+  SYSTEM_HAVE_FREETYPE = 1
+else
+  SYSTEM_HAVE_FREETYPE = 0
+endif
+
+ifneq ($(strip $(XINPUT2_BASEDIR)),)
+  SYSTEM_HAVE_XINPUT2 = 1
+else
+  SYSTEM_HAVE_XINPUT2 = 0
+endif
+
+ifneq ($(strip $(XRANDR_BASEDIR)),)
+  SYSTEM_HAVE_XRANDR = 1
+else
+  SYSTEM_HAVE_XRANDR = 0
 endif

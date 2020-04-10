@@ -1,7 +1,7 @@
 /***********************************************************************
 VRDevice - Abstract base class for hardware devices delivering
 position, orientation, button events and valuator values.
-Copyright (c) 2002-2017 Oliver Kreylos
+Copyright (c) 2002-2020 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -275,6 +275,6 @@ void VRDevice::powerOff(int devicePowerFeatureIndex)
 	{
 	}
 
-void VRDevice::hapticTick(int deviceHapticFeatureIndex,unsigned int duration)
+void VRDevice::hapticTick(int deviceHapticFeatureIndex,unsigned int duration,unsigned int frequency,unsigned int amplitude)
 	{
 	}

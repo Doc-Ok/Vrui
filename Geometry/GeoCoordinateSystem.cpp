@@ -1,7 +1,7 @@
 /***********************************************************************
 GeoCoordinateSystem - Abstract base class for projected, geographic, or
 geocentric coordinate systems used in geodesy.
-Copyright (c) 2013-2015 Oliver Kreylos
+Copyright (c) 2013-2018 Oliver Kreylos
 
 This file is part of the Templatized Geometry Library (TGL).
 
@@ -1241,7 +1241,7 @@ GeoCoordinateSystemPtr parseProjectionFile(IO::DirectoryPtr directory,const char
 		/* Parse the file: */
 		result=parser.parse();
 		}
-	catch(WktFileParser::ParseError err)
+	catch(const WktFileParser::ParseError& err)
 		{
 		/* Construct the projection file's fully-qualified name: */
 		std::string name=directory->getPath();

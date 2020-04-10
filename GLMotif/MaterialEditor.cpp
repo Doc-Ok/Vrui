@@ -1,7 +1,7 @@
 /***********************************************************************
 MaterialEditor - Class for composite widgets to display and edit OpenGL
 material properties.
-Copyright (c) 2013 Oliver Kreylos
+Copyright (c) 2013-2020 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -23,6 +23,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <GLMotif/MaterialEditor.h>
 
 #include <GLMotif/StyleSheet.h>
+#include <GLMotif/HSVColorSelector.h>
+#include <GLMotif/TextFieldSlider.h>
 
 namespace GLMotif {
 
@@ -30,27 +32,13 @@ namespace GLMotif {
 Methods of class MaterialEditor:
 *******************************/
 
-void MaterialEditor::colorSelectorCallback(HSVColorSelector::ValueChangedCallbackData* cbData)
+void MaterialEditor::componentChangedCallback(Misc::CallbackData* cbData)
 	{
-	/* Update the material component managed by the color selector reporting the event: */
-	if(cbData->colorSelector==ambient)
-		material.ambient=cbData->newColor;
-	else if(cbData->colorSelector==diffuse)
-		material.diffuse=cbData->newColor;
-	else if(cbData->colorSelector==specular)
-		material.specular=cbData->newColor;
-	else if(cbData->colorSelector==emissive)
-		material.emission=cbData->newColor;
-	
-	/* Call the value changed callbacks: */
-	ValueChangedCallbackData myCbData(this,material);
-	valueChangedCallbacks.call(&myCbData);
-	}
-
-void MaterialEditor::sliderCallback(TextFieldSlider::ValueChangedCallbackData* cbData)
-	{
-	/* Update the material's shininess: */
-	material.shininess=cbData->value;
+	if(trackedMaterial!=0)
+		{
+		/* Update the tracked material: */
+		*trackedMaterial=material;
+		}
 	
 	/* Call the value changed callbacks: */
 	ValueChangedCallbackData myCbData(this,material);
@@ -60,7 +48,7 @@ void MaterialEditor::sliderCallback(TextFieldSlider::ValueChangedCallbackData* c
 MaterialEditor::MaterialEditor(const char* sName,Container* sParent,bool sManageChild)
 	:RowColumn(sName,sParent,false),
 	 material(GLMaterial::Color(0.8f,0.8f,0.8f),GLMaterial::Color(0.5f,0.5f,0.5f),16.0f),
-	 ambient(0),diffuse(0),emissive(0),specular(0),shininess(0)
+	 trackedMaterial(0)
 	{
 	/* Create the composite widget layout: */
 	setOrientation(VERTICAL);
@@ -73,21 +61,21 @@ MaterialEditor::MaterialEditor(const char* sName,Container* sParent,bool sManage
 	row1->setPacking(PACK_TIGHT);
 	row1->setNumMinorWidgets(2);
 	
-	ambient=new HSVColorSelector("AmbientColorSelector",row1);
-	ambient->setCurrentColor(material.ambient);
-	ambient->getValueChangedCallbacks().add(this,&MaterialEditor::colorSelectorCallback);
+	HSVColorSelector* ambient=new HSVColorSelector("AmbientColorSelector",row1);
+	ambient->track(material.ambient);
+	ambient->getValueChangedCallbacks().add(this,&MaterialEditor::componentChangedCallback);
 	
 	new Label("AmbientLabel",row1,"Ambient");
 	
-	diffuse=new HSVColorSelector("DiffuseColorSelector",row1);
-	diffuse->setCurrentColor(material.diffuse);
-	diffuse->getValueChangedCallbacks().add(this,&MaterialEditor::colorSelectorCallback);
+	HSVColorSelector*diffuse=new HSVColorSelector("DiffuseColorSelector",row1);
+	diffuse->track(material.diffuse);
+	diffuse->getValueChangedCallbacks().add(this,&MaterialEditor::componentChangedCallback);
 	
 	new Label("DiffuseLabel",row1,"Diffuse");
 	
-	emissive=new HSVColorSelector("EmissiveColorSelector",row1);
-	emissive->setCurrentColor(material.emission);
-	emissive->getValueChangedCallbacks().add(this,&MaterialEditor::colorSelectorCallback);
+	HSVColorSelector*emissive=new HSVColorSelector("EmissiveColorSelector",row1);
+	emissive->track(material.emission);
+	emissive->getValueChangedCallbacks().add(this,&MaterialEditor::componentChangedCallback);
 	
 	new Label("EmissiveLabel",row1,"Emissive");
 	
@@ -98,21 +86,21 @@ MaterialEditor::MaterialEditor(const char* sName,Container* sParent,bool sManage
 	row2->setPacking(PACK_TIGHT);
 	row2->setNumMinorWidgets(2);
 	
-	specular=new HSVColorSelector("SpecularColorSelector",row2);
-	specular->setCurrentColor(material.specular);
-	specular->getValueChangedCallbacks().add(this,&MaterialEditor::colorSelectorCallback);
+	HSVColorSelector*specular=new HSVColorSelector("SpecularColorSelector",row2);
+	specular->track(material.specular);
+	specular->getValueChangedCallbacks().add(this,&MaterialEditor::componentChangedCallback);
 	
 	new Label("SpecularLabel",row2,"Specular");
 	
-	shininess=new TextFieldSlider("ShininessSlider",row2,4,getStyleSheet()->fontHeight*5.0f);
+	TextFieldSlider* shininess=new TextFieldSlider("ShininessSlider",row2,4,getStyleSheet()->fontHeight*5.0f);
 	shininess->getTextField()->setFieldWidth(3);
 	shininess->getTextField()->setPrecision(0);
 	shininess->getTextField()->setFloatFormat(TextField::FIXED);
 	shininess->setSliderMapping(TextFieldSlider::LINEAR);
 	shininess->setValueType(TextFieldSlider::FLOAT);
 	shininess->setValueRange(0.0,128.0,1.0);
-	shininess->setValue(material.shininess);
-	shininess->getValueChangedCallbacks().add(this,&MaterialEditor::sliderCallback);
+	shininess->track(material.shininess);
+	shininess->getValueChangedCallbacks().add(this,&MaterialEditor::componentChangedCallback);
 	
 	new Label("ShininessLabel",row2,"Shininess");
 	
@@ -122,17 +110,43 @@ MaterialEditor::MaterialEditor(const char* sName,Container* sParent,bool sManage
 		manageChild();
 	}
 
+void MaterialEditor::updateVariables(void)
+	{
+	if(trackedMaterial!=0)
+		{
+		/* Update the displayed material: */
+		material=*trackedMaterial;
+		}
+	
+	/* Update all component widgets: */
+	RowColumn::updateVariables();
+	}
+
 void MaterialEditor::setMaterial(const GLMaterial& newMaterial)
 	{
 	/* Update the current material properties: */
 	material=newMaterial;
 	
-	/* Update the component widgets: */
-	ambient->setCurrentColor(material.ambient);
-	diffuse->setCurrentColor(material.diffuse);
-	emissive->setCurrentColor(material.emission);
-	specular->setCurrentColor(material.specular);
-	shininess->setValue(material.shininess);
+	if(trackedMaterial!=0)
+		{
+		/* Update the tracked material: */
+		*trackedMaterial=newMaterial;
+		}
+	
+	/* Update all component widgets: */
+	RowColumn::updateVariables();
+	}
+
+void MaterialEditor::track(GLMaterial& newTrackedMaterial)
+	{
+	/* Change the tracked material variable: */
+	trackedMaterial=&newTrackedMaterial;
+	
+	/* Update the displayed material: */
+	material=*trackedMaterial;
+	
+	/* Update all component widgets: */
+	RowColumn::updateVariables();
 	}
 
 }

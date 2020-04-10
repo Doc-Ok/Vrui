@@ -1,6 +1,6 @@
 /***********************************************************************
 ValueSource - Class to read strings or numbers from files.
-Copyright (c) 2009-2016 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -77,11 +77,16 @@ class ValueSource
 	void setPunctuation(const char* punctuation); // Sets the punctuation character set to the contents of the given string
 	void setQuote(int character,bool quote); // Sets the given character's quote flag
 	void setQuotes(const char* quotes); // Sets the quote character set to the contents of the given string
+	void setQuotedString(int character,bool quotedString); // Sets whether the given character is allowed inside a quoted string
 	void setEscape(int newEscapeChar); // Sets the escape character for strings; escapes are ignored if equal to -1
 	
 	bool eof(void) const // Returns true if the entire character source has been read
 		{
 		return lastChar<0;
+		}
+	bool isWs(int c) const // Returns true if the given character is whitespace
+		{
+		return cc[c]&WHITESPACE;
 		}
 	void skipWs(void) // Skips whitespace in the character source
 		{
@@ -99,6 +104,11 @@ class ValueSource
 		int result=lastChar;
 		lastChar=source->getChar();
 		return result;
+		}
+	int getCharAndPeekc(void) // Reads the next character and returns the next character that will be read afterwards, without reading it
+		{
+		lastChar=source->getChar();
+		return lastChar;
 		}
 	void ungetChar(int character) // Puts the given character back into the character source
 		{

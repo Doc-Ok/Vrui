@@ -1,7 +1,7 @@
 /***********************************************************************
 Container - Base class for GLMotif UI components that contain other
 components.
-Copyright (c) 2001-2015 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -43,6 +43,9 @@ class Container:public Widget
 	/* Constructors and destructors: */
 	public:
 	Container(const char* sName,Container* sParent,bool manageChild =true);
+	
+	/* Methods from class Widget: */
+	virtual void updateVariables(void);
 	
 	/* New methods: */
 	virtual void addChild(Widget* newChild) =0; // Adds a new child to the container

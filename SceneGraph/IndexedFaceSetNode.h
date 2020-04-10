@@ -1,7 +1,7 @@
 /***********************************************************************
 IndexedFaceSetNode - Class for sets of polygonal faces as renderable
 geometry.
-Copyright (c) 2009-2013 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -50,8 +50,14 @@ class IndexedFaceSetNode:public GeometryNode,public GLObject
 		public:
 		GLuint vertexBufferObjectId; // ID of vertex buffer object containing the face set's vertices, if supported
 		GLuint indexBufferObjectId; // ID of index buffer object containing the face set's triangle vertex indices, if supported
+		ptrdiff_t texCoordOffset; // Offset of texture coordinate in interleaved vertex buffer
+		ptrdiff_t colorOffset; // Offset of color in interleaved vertex buffer
+		ptrdiff_t normalOffset; // Offset of normal vector in interleaved vertex buffer
+		ptrdiff_t coordOffset; // Offset of vertex position in interleaved vertex buffer
+		size_t vertexSize; // Total vertex size in interleaved vertex buffer
+		int vertexArrayPartsMask; // Bit mask of use vertex properties in vertex buffer
 		GLsizei numVertexIndices; // Number of vertex indices in the index buffer
-		unsigned int version; // Version of face set stored in vertex buffer object
+		unsigned int version; // Version of face set stored in the buffer objects
 		
 		/* Constructors and destructors: */
 		DataItem(void);
@@ -79,13 +85,18 @@ class IndexedFaceSetNode:public GeometryNode,public GLObject
 	
 	/* Derived state: */
 	protected:
-	bool inited; // Flag whether GLObject::init() has already been called
+	bool haveColors; // Flag if the face set's vertices have per-vertex color values
+	size_t numTriangles; // Total number of triangles defined by the indexed face set
 	unsigned int version; // Version number of face set
+	
+	#if 0
+	/* Private methods: */
+	NormalNode* calcNormals(size_t numFaces,int viMin,int viMax) const; // Returns a temporary normal node if normal vectors are needed for rendering, but none were provided
+	#endif
 	
 	/* Protected methods: */
 	protected:
 	void uploadFaceSet(DataItem* dataItem) const; // Uploads new face set into OpenGL buffers
-	void uploadColoredFaceSet(DataItem* dataItem) const; // Uploads new face set with per-vertex or per-face colors into OpenGL buffers
 	
 	/* Constructors and destructors: */
 	public:

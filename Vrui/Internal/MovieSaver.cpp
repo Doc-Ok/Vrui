@@ -1,7 +1,7 @@
 /***********************************************************************
 MovieSaver - Helper class to save movies, as sequences of frames or
 already encoded into a video container format, from VR windows.
-Copyright (c) 2010 Oliver Kreylos
+Copyright (c) 2010-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -25,10 +25,11 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 #include <Video/Config.h>
 
-#include <iostream>
+#include <Misc/MessageLogger.h>
 #include <Misc/StandardValueCoders.h>
 #include <Misc/ConfigurationFile.h>
 #include <Misc/CreateNumberedFileName.h>
+#include <IO/OpenFile.h>
 #include <Sound/SoundDataFormat.h>
 #include <Sound/SoundRecorder.h>
 #include <Vrui/Internal/ImageSequenceMovieSaver.h>
@@ -145,18 +146,23 @@ int MovieSaver::waitForNextFrame(void)
 	return numSkippedFrames;
 	}
 
+void MovieSaver::stopSound(void)
+	{
+	/* Delete the sound recorder: */
+	delete soundRecorder;
+	soundRecorder=0;
+	}
+
 MovieSaver::MovieSaver(const Misc::ConfigurationFileSection& configFileSection)
-	:frameRate(30.0),
+	:baseDirectory(IO::openDirectory(configFileSection.retrieveString("./movieBaseDirectory",".").c_str())),
+	 frameRate(configFileSection.retrieveValue<double>("./movieFrameRate",30.0)),
+	 frameInterval(1.0/frameRate),
 	 soundRecorder(0),
 	 firstFrame(true)
 	{
-	/* Read the movie frame rate and calculate the frame interval time: */
-	frameRate=configFileSection.retrieveValue<double>("./movieFrameRate",frameRate);
-	frameInterval=Misc::Time(1.0/frameRate);
-	
 	/* Check if the user wants to record a commentary track: */
 	std::string soundFileName=configFileSection.retrieveString("./movieSoundFileName","");
-	if(soundFileName!="")
+	if(!soundFileName.empty())
 		{
 		try
 			{
@@ -167,30 +173,29 @@ MovieSaver::MovieSaver(const Misc::ConfigurationFileSection& configFileSection)
 			soundDataFormat.framesPerSecond=configFileSection.retrieveValue<int>("./movieSampleRate",soundDataFormat.framesPerSecond);
 			
 			/* Create a sound recorder for the given sound file name: */
-			char numberedFileName[1024];
-			std::string audioSourceName("default");
-			audioSourceName=configFileSection.retrieveString("./movieSoundDeviceName",audioSourceName);
-			soundRecorder=new Sound::SoundRecorder(audioSourceName.c_str(),soundDataFormat,Misc::createNumberedFileName(soundFileName.c_str(),4,numberedFileName));
+			std::string audioSourceName=configFileSection.retrieveString("./movieSoundDeviceName","default");
+			soundFileName=baseDirectory->getPath(baseDirectory->createNumberedFileName(soundFileName.c_str(),4).c_str());
+			soundRecorder=new Sound::SoundRecorder(audioSourceName.c_str(),soundDataFormat,soundFileName.c_str());
 			}
-		catch(std::runtime_error error)
+		catch(const std::runtime_error& err)
 			{
 			/* Print a message, but carry on: */
-			std::cerr<<"MovieSaver: Disabling sound recording due to exception "<<error.what()<<std::endl;
+			Misc::formattedConsoleWarning("MovieSaver: Disabling sound recording due to exception %s",err.what());
 			}
 		}
 	}
 
 MovieSaver::~MovieSaver(void)
 	{
+	/* Delete the sound recorder: */
+	delete soundRecorder;
+	
 	if(!frameWritingThread.isJoined())
 		{
 		/* Stop the frame writing thread: */
 		frameWritingThread.cancel();
 		frameWritingThread.join();
 		}
-	
-	/* Delete the sound recorder: */
-	delete soundRecorder;
 	}
 
 MovieSaver* MovieSaver::createMovieSaver(const Misc::ConfigurationFileSection& configFileSection)
@@ -198,7 +203,7 @@ MovieSaver* MovieSaver::createMovieSaver(const Misc::ConfigurationFileSection& c
 	#if VIDEO_CONFIG_HAVE_THEORA
 	
 	/* Determine the desired movie saver type: */
-	if(configFileSection.retrieveValue<bool>("./movieSaveTheora",true))
+	if(configFileSection.retrieveValue<bool>("./movieSaveTheora",false))
 		{
 		/* Return a Theora movie saver: */
 		return new TheoraMovieSaver(configFileSection);

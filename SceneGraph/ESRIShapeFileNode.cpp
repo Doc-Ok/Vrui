@@ -2,7 +2,7 @@
 ESRIShapeFileNode - Class to represent an ESRI shape file as a
 collection of line sets, point sets, or face sets (each shape file can
 only contain a single type of primitives).
-Copyright (c) 2009-2011 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -30,7 +30,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <IO/SeekableFile.h>
 #include <IO/ValueSource.h>
 #include <IO/XBaseTable.h>
-#include <Cluster/OpenFile.h>
 #include <Geometry/Point.h>
 #include <Geometry/AffineCombiner.h>
 #include <Geometry/Geoid.h>
@@ -719,8 +718,7 @@ Methods of class ESRIShapeFileNode:
 **********************************/
 
 ESRIShapeFileNode::ESRIShapeFileNode(void)
-	:transformToCartesian(false),pointSize(1.0f),lineWidth(1.0f),
-	 multiplexer(0)
+	:transformToCartesian(false),pointSize(1.0f),lineWidth(1.0f)
 	{
 	}
 
@@ -740,11 +738,8 @@ void ESRIShapeFileNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 		{
 		vrmlFile.parseField(url);
 		
-		/* Fully qualify all URLs: */
-		for(size_t i=0;i<url.getNumValues();++i)
-			url.setValue(i,vrmlFile.getFullUrl(url.getValue(i)));
-		
-		multiplexer=vrmlFile.getMultiplexer();
+		/* Remember the VRML file's base directory: */
+		baseDirectory=&vrmlFile.getBaseDirectory();
 		}
 	else if(strcmp(fieldName,"appearance")==0)
 		{
@@ -790,7 +785,7 @@ void ESRIShapeFileNode::update(void)
 		try
 			{
 			/* Open the projection file: */
-			IO::ValueSource prjFile(Cluster::openFile(multiplexer,prjFileName.c_str()));
+			IO::ValueSource prjFile(baseDirectory->openFile(prjFileName.c_str()));
 			prjFile.setPunctuation("[](),");
 			prjFile.setQuotes("\"");
 			prjFile.skipWs();
@@ -798,7 +793,7 @@ void ESRIShapeFileNode::update(void)
 			/* Parse the projection file: */
 			projection=parseProjectionFile(prjFile);
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			Misc::throwStdErr("ESRIShapeFile::update: Unable to read projection file %s due to exception %s",prjFileName.c_str(),err.what());
 			}
@@ -811,7 +806,7 @@ void ESRIShapeFileNode::update(void)
 	/* Open the shape file: */
 	std::string shapeFileName=url.getValue(0);
 	shapeFileName.append(".shp");
-	IO::SeekableFilePtr shapeFile(Cluster::openSeekableFile(multiplexer,shapeFileName.c_str()));
+	IO::SeekableFilePtr shapeFile(baseDirectory->openSeekableFile(shapeFileName.c_str()));
 	
 	/****************************
 	Read the shape file's header:
@@ -853,7 +848,7 @@ void ESRIShapeFileNode::update(void)
 	/* Open the attribute file: */
 	std::string attributeFileName=url.getValue(0);
 	attributeFileName.append(".dbf");
-	IO::SeekableFilePtr attributeFileSource(Cluster::openSeekableFile(multiplexer,attributeFileName.c_str()));
+	IO::SeekableFilePtr attributeFileSource(baseDirectory->openSeekableFile(attributeFileName.c_str()));
 	IO::XBaseTable attributeFile(attributeFileName.c_str(),attributeFileSource);
 	
 	/* Check if we need to create labels: */

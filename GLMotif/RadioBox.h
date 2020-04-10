@@ -1,7 +1,7 @@
 /***********************************************************************
 RadioBox - Subclass of RowColumn that contains only mutually exclusive
 ToggleButton objects.
-Copyright (c) 2001-2015 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -25,6 +25,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <Misc/CallbackData.h>
 #include <Misc/CallbackList.h>
+#include <GLMotif/VariableTracker.h>
 #include <GLMotif/RowColumn.h>
 
 /* Forward declarations: */
@@ -34,7 +35,7 @@ class ToggleButton;
 
 namespace GLMotif {
 
-class RadioBox:public RowColumn
+class RadioBox:public RowColumn,public VariableTracker
 	{
 	/* Embedded classes: */
 	public:
@@ -80,13 +81,25 @@ class RadioBox:public RowColumn
 	
 	/* Protected methods: */
 	static void childrenValueChangedCallbackWrapper(Misc::CallbackData* callbackData,void* userData); // Callback that is called when a child changes value by user interaction
+	bool findAndSelectToggle(int toggleIndex); // Selects the toggle button of the given index; deselects all toggles if index<0 and selection mode is ATMOST_ONE; does nothing if index is too large; returns true if selected toggle changed
 	
 	/* Constructors and destructors: */
 	public:
 	RadioBox(const char* sName,Container* sParent,bool manageChild =true);
 	
-	/* Methods inherited from Container: */
+	/* Methods from class Widget: */
+	virtual void updateVariables(void);
+	
+	/* Methods from class Container: */
 	virtual void addChild(Widget* newChild);
+	
+	/* Methods from class VariableTracker: */
+	template <class VariableTypeParam>
+	void track(VariableTypeParam& newVariable) // Tracks the given variable and sets its initial value
+		{
+		findAndSelectToggle(newVariable);
+		VariableTracker::track(newVariable);
+		}
 	
 	/* New methods: */
 	void addToggle(const char* newToggleLabel); // Adds a new toggle button with the given label
@@ -105,7 +118,12 @@ class RadioBox:public RowColumn
 		}
 	int getToggleIndex(const ToggleButton* toggle) const; // Returns the index of the given toggle
 	void setSelectedToggle(ToggleButton* newSelectedToggle); // Changes the currently selected toggle
-	void setSelectedToggle(int newSelectedToggleIndex); // Changes the currently selected toggle based on the given child index
+	void setSelectedToggle(int newSelectedToggleIndex) // Changes the currently selected toggle based on the given child index
+		{
+		/* Select the toggle of the requested index and update a potential tracked variable if the selection changed: */
+		if(findAndSelectToggle(newSelectedToggleIndex))
+			setTrackedSInt(newSelectedToggleIndex);
+		}
 	Misc::CallbackList& getValueChangedCallbacks(void) // Returns list of value changed callbacks
 		{
 		return valueChangedCallbacks;

@@ -2,7 +2,7 @@
 Pipe - Wrapper class for UNIX unnamed pipes for inter-process
 communication between a parent and child process, or for FIFO self-
 communication.
-Copyright (c) 2016 Oliver Kreylos
+Copyright (c) 2016-2019 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -25,8 +25,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Misc/Pipe.h>
 
 #include <string.h>
-#include <unistd.h>
-#include <errno.h>
+#include <fcntl.h>
 #include <Misc/ThrowStdErr.h>
 
 namespace Misc {
@@ -35,14 +34,49 @@ namespace Misc {
 Methods of class Pipe:
 *********************/
 
-Pipe::Pipe(void)
+void Pipe::throwReadError(int errorCode)
+	{
+	Misc::throwStdErr("Misc::Pipe::read: Error %d (%s) while reading from pipe",errorCode,strerror(errorCode));
+	}
+
+void Pipe::throwWriteError(int errorCode)
+	{
+	Misc::throwStdErr("Misc::Pipe::write: Error %d (%s) while writing to pipe",errorCode,strerror(errorCode));
+	}
+
+Pipe::Pipe(bool nonBlocking)
+	:haveEof(false)
 	{
 	/* Open a pipe: */
 	pipeFds[1]=pipeFds[0]=-1;
 	if(pipe(pipeFds)<0)
+		Misc::throwStdErr("Misc::Pipe::Pipe: Could not open pipe due to error %d (%s)",errno,strerror(errno));
+	
+	/* Check if the caller wants non-blocking mode: */
+	if(nonBlocking)
 		{
-		int error=errno;
-		Misc::throwStdErr("Pipe::Pipe: Could not open pipe due to error %d (%s)",error,strerror(error));
+		bool ok=true;
+		
+		/* Set both ends of the pipe to non-blocking mode: */
+		for(int i=0;i<2;++i)
+			{
+			/* Set the non-blocking flag: */
+			int fdFlags;
+			if(ok)
+				ok=(fdFlags=fcntl(pipeFds[i],F_GETFL,0))>=0;
+			if(ok)
+				ok=fcntl(pipeFds[i],F_SETFL,fdFlags|O_NONBLOCK)>=0;
+			}
+		
+		/* Check for errors: */
+		if(!ok)
+			{
+			/* Close the pipe again and throw an exception: */
+			int error=errno;
+			close(pipeFds[0]);
+			close(pipeFds[1]);
+			Misc::throwStdErr("Misc::Pipe::Pipe: Could not set pipe to non-blocking mode due to error %d (%s)",error,strerror(error));
+			}
 		}
 	}
 

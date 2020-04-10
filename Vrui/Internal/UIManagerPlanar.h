@@ -1,7 +1,7 @@
 /***********************************************************************
 UIManagerPlanar - UI manager class that aligns user interface components
 on a fixed plane.
-Copyright (c) 2015-2018 Oliver Kreylos
+Copyright (c) 2015-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -49,7 +49,7 @@ class UIManagerPlanar:public UIManager
 	
 	/* Methods from UIManager: */
 	virtual Point projectRay(const Ray& ray) const;
-	virtual void projectDevice(InputDevice* device) const;
+	virtual void projectDevice(InputDevice* device,const TrackerState& proposedTransform) const;
 	virtual ONTransform calcUITransform(const Point& point) const;
 	virtual ONTransform calcUITransform(const Ray& ray) const;
 	virtual ONTransform calcUITransform(const InputDevice* device) const;

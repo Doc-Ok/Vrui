@@ -24,17 +24,13 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #define SCENEGRAPH_CURVESETNODE_INCLUDED
 
 #include <vector>
+#include <IO/Directory.h>
 #include <GL/gl.h>
 #include <GL/GLObject.h>
 #include <GL/GLLineLightingShader.h>
 #include <SceneGraph/Geometry.h>
 #include <SceneGraph/FieldTypes.h>
 #include <SceneGraph/GeometryNode.h>
-
-/* Forward declarations: */
-namespace Cluster {
-class Multiplexer;
-}
 
 namespace SceneGraph {
 
@@ -66,7 +62,7 @@ class CurveSetNode:public GeometryNode,public GLObject
 	
 	/* Derived state: */
 	protected:
-	Cluster::Multiplexer* multiplexer; // Multiplexer to read curve files in a cluster environment
+	IO::DirectoryPtr baseDirectory; // Base directory for relative URLs
 	std::vector<GLsizei> numVertices; // Array of numbers of vertices for each curve
 	GLsizei numLineSegments; // Total number of line segments in all curves
 	std::vector<Point> vertices; // Array of vertices for all curves

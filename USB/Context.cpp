@@ -1,6 +1,6 @@
 /***********************************************************************
 Context - Class representing libusb library contexts.
-Copyright (c) 2010-2017 Oliver Kreylos
+Copyright (c) 2010-2019 Oliver Kreylos
 
 This file is part of the USB Support Library (USB).
 
@@ -24,9 +24,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <libusb-1.0/libusb.h>
 #include <Misc/ThrowStdErr.h>
 #include <Misc/Autopointer.h>
-
-// DEBUGGING
-#include <iostream>
+#include <USB/Config.h>
 
 namespace USB {
 
@@ -114,7 +112,19 @@ ContextPtr Context::acquireContext(void)
 
 void Context::setDebugLevel(int newDebugLevel)
 	{
+	#if USB_CONFIG_HAVE_SET_OPTION
+	
+	if(newDebugLevel<LIBUSB_LOG_LEVEL_NONE)
+		newDebugLevel=LIBUSB_LOG_LEVEL_NONE;
+	else if(newDebugLevel>LIBUSB_LOG_LEVEL_DEBUG)
+		newDebugLevel=LIBUSB_LOG_LEVEL_DEBUG;
+	libusb_set_option(context,LIBUSB_OPTION_LOG_LEVEL,newDebugLevel);
+	
+	#else
+	
 	libusb_set_debug(context,newDebugLevel);
+	
+	#endif
 	}
 
 }

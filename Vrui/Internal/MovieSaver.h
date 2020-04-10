@@ -1,7 +1,7 @@
 /***********************************************************************
 MovieSaver - Helper class to save movies, as sequences of frames or
 already encoded into a video container format, from VR windows.
-Copyright (c) 2010 Oliver Kreylos
+Copyright (c) 2010-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -24,7 +24,9 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #ifndef VRUI_INTERNAL_MOVIESAVER_INCLUDED
 #define VRUI_INTERNAL_MOVIESAVER_INCLUDED
 
+#include <string>
 #include <Misc/Time.h>
+#include <IO/Directory.h>
 #include <Threads/Thread.h>
 #include <Threads/TripleBuffer.h>
 
@@ -87,6 +89,7 @@ class MovieSaver
 	
 	/* Elements: */
 	protected:
+	IO::DirectoryPtr baseDirectory; // Base directory where recorded data is saved
 	double frameRate; // Number of frames to write per second
 	Misc::Time frameInterval; // Time between adjacent frames; == 1.0/frame rate
 	Threads::TripleBuffer<FrameBuffer> frames; // Triple buffer of movie frames
@@ -102,6 +105,7 @@ class MovieSaver
 	protected:
 	int waitForNextFrame(void); // Suspends the caller until the next frame is due to be written; skips frames if caller lags; returns number of skipped frames
 	virtual void frameWritingThreadMethod(void) =0; // Runs in background and writes movie frames at fixed intervals
+	void stopSound(void); // Immediately stops recording sound
 	
 	/* Constructors and destructors: */
 	public:

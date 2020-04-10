@@ -1,7 +1,7 @@
 /***********************************************************************
 FileSelectionHelper - Helper class to simplify managing file selection
 dialogs and their callbacks.
-Copyright (c) 2013-2015 Oliver Kreylos
+Copyright (c) 2013-2018 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -73,7 +73,7 @@ void FileSelectionHelper::saveOKCallback(FileSelectionDialog::OKCallbackData* cb
 		/* Call the callback: */
 		(*cs->callback)(cbData);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Show an error message: */
 		Misc::formattedUserError("%s: Could not write to file %s due to exception %s",cs->dialogTitle.c_str(),cbData->getSelectedPath().c_str(),err.what());
@@ -105,7 +105,7 @@ void FileSelectionHelper::saveCallback(Misc::CallbackData* cbData,FileSelectionH
 		/* Remember that the dialog is currently open: */
 		cs->dialog=saveDialog.releaseTarget();
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Show an error message: */
 		Misc::formattedUserError("%s: Could not select file name due to exception %s",cs->dialogTitle.c_str(),err.what());
@@ -122,7 +122,7 @@ void FileSelectionHelper::loadOKCallback(FileSelectionDialog::OKCallbackData* cb
 		/* Call the callback: */
 		(*cs->callback)(cbData);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Show an error message: */
 		Misc::formattedUserError("%s: Could not read from file %s due to exception %s",cs->dialogTitle.c_str(),cbData->getSelectedPath().c_str(),err.what());
@@ -151,7 +151,7 @@ void FileSelectionHelper::loadCallback(Misc::CallbackData* cbData,FileSelectionH
 		/* Remember that the dialog is currently open: */
 		cs->dialog=loadDialog.releaseTarget();
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Show an error message: */
 		Misc::formattedUserError("%s: Could not select file name due to exception %s",cs->dialogTitle.c_str(),err.what());
@@ -164,6 +164,12 @@ FileSelectionHelper::FileSelectionHelper(WidgetManager* sWidgetManager,const cha
 	 currentDirectory(sCurrentDirectory),
 	 head(0)
 	{
+	/* Check if the caller did not supply a starting directory: */
+	if(currentDirectory==0)
+		{
+		/* Get the current directory from the IO library: */
+		currentDirectory=IO::Directory::getCurrent();
+		}
 	}
 
 FileSelectionHelper::~FileSelectionHelper(void)
@@ -281,7 +287,7 @@ void FileSelectionHelper::saveFile(const char* dialogTitle,FileSelectionHelper::
 		cs->succ=head;
 		head=cs;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Show an error message: */
 		Misc::formattedUserError("%s: Could not select file name due to exception %s",cs->dialogTitle.c_str(),err.what());
@@ -316,7 +322,7 @@ void FileSelectionHelper::saveFile(const char* dialogTitle,const char* initialFi
 		cs->succ=head;
 		head=cs;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Show an error message: */
 		Misc::formattedUserError("%s: Could not select file name due to exception %s",cs->dialogTitle.c_str(),err.what());
@@ -351,7 +357,7 @@ void FileSelectionHelper::loadFile(const char* dialogTitle,FileSelectionHelper::
 		cs->succ=head;
 		head=cs;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Show an error message: */
 		Misc::formattedUserError("%s: Could not select file name due to exception %s",cs->dialogTitle.c_str(),err.what());

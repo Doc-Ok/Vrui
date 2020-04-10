@@ -1,6 +1,6 @@
 /***********************************************************************
 GeometryNode - Base class for nodes that define renderable geometry.
-Copyright (c) 2009 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -31,6 +31,7 @@ Methods of class GeometryNode:
 *****************************/
 
 GeometryNode::GeometryNode(void)
+	:needTexCoords(false),needColors(false),needNormals(false)
 	{
 	}
 
@@ -46,6 +47,21 @@ void GeometryNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 
 void GeometryNode::update(void)
 	{
+	}
+
+void GeometryNode::mustProvideTexCoords(void)
+	{
+	needTexCoords=true;
+	}
+
+void GeometryNode::mustProvideColors(void)
+	{
+	needColors=true;
+	}
+
+void GeometryNode::mustProvideNormals(void)
+	{
+	needNormals=true;
 	}
 
 }

@@ -2,7 +2,7 @@
 InputDeviceAdapterDeviceDaemon - Class to convert from Vrui's own
 distributed device driver architecture to Vrui's internal device
 representation.
-Copyright (c) 2004-2018 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -28,7 +28,6 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <string>
 #include <vector>
 #include <Realtime/Time.h>
-#include <Threads/Spinlock.h>
 #include <Vrui/Internal/VRDeviceClient.h>
 #include <Vrui/Internal/InputDeviceAdapterIndexMap.h>
 
@@ -51,10 +50,8 @@ class InputDeviceAdapterDeviceDaemon:public InputDeviceAdapterIndexMap
 	Realtime::TimeVector motionPredictionDelta; // Motion prediction time interval to apply to tracked devices
 	std::vector<std::string> buttonNames; // Array of button names for all defined input devices
 	std::vector<std::string> valuatorNames; // Array of valuator names for all defined input devices
-	Threads::Spinlock errorMessageMutex; // Mutex protecting the error message log
-	std::vector<std::string> errorMessages; // Log of error messages received from the device client
-	std::vector<unsigned int> lowBatteryWarnings; // List of devices that recently ran into low battery
 	bool* validFlags; // Flag whether each tracked input device currently has valid tracking data
+	int* batteryStateIndexMap; // Map from virtual device / battery state indices to input device indices
 	unsigned int* batteryStates; // Battery charge level of each input device
 	
 	/* Private methods: */
@@ -76,6 +73,7 @@ class InputDeviceAdapterDeviceDaemon:public InputDeviceAdapterIndexMap
 	virtual int getFeatureIndex(InputDevice* device,const char* featureName) const;
 	virtual void updateInputDevices(void);
 	virtual TrackerState peekTrackerState(int deviceIndex);
+	virtual void hapticTick(unsigned int hapticFeatureIndex,unsigned int duration,unsigned int frequency,unsigned int amplitude);
 	
 	/* New methods: */
 	VRDeviceClient& getDeviceClient(void) // Returns a reference to the VR device client

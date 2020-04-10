@@ -1,7 +1,7 @@
 /***********************************************************************
 ReadJPEGImage - Functions to read RGB images from image files in JPEG
 formats over an IO::File abstraction.
-Copyright (c) 2011-2017 Oliver Kreylos
+Copyright (c) 2011-2018 Oliver Kreylos
 
 This file is part of the Image Handling Library (Images).
 
@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <stdio.h>
 #include <jpeglib.h>
+#include <jconfig.h>
 #include <stdexcept>
 #include <Misc/ThrowStdErr.h>
 #include <IO/File.h>
@@ -38,6 +39,10 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 namespace Images {
 
 namespace {
+
+/**************
+Helper classes:
+**************/
 
 class JPEGExceptionErrorManager:public jpeg_error_mgr
 	{
@@ -130,142 +135,112 @@ class JPEGFileSourceManager:public jpeg_source_mgr
 		}
 	};
 
-}
-
-RGBImage readJPEGImage(const char* imageName,IO::File& source)
+class JPEGReader:public jpeg_decompress_struct
 	{
-	/* Create a JPEG error handler and a JPEG decompression object: */
-	JPEGExceptionErrorManager jpegErrorManager;
-	jpeg_decompress_struct jpegDecompressStruct;
-	jpegDecompressStruct.err=&jpegErrorManager;
-	jpegDecompressStruct.client_data=0;
-	jpeg_create_decompress(&jpegDecompressStruct);
+	/* Elements: */
+	private:
+	JPEGExceptionErrorManager exceptionManager;
+	JPEGFileSourceManager fileSourceManager;
+	JSAMPLE** rowPointers;
+	public:
+	unsigned int imageSize[2];
+	unsigned int numChannels;
 	
-	/* Associate the decompression object with the source stream: */
-	JPEGFileSourceManager jpegSourceManager(source);
-	jpegDecompressStruct.src=&jpegSourceManager;
-	
-	RGBImage result;
-	RGBImage::Color** rowPointers=0;
-	try
+	/* Constructors and destructors: */
+	public:
+	JPEGReader(IO::File& source)
+		:fileSourceManager(source),
+		 rowPointers(0)
 		{
+		/* Throw an exception if the JPEG library produces anything but 8-bit samples: */
+		#if BITS_IN_JSAMPLE!=8
+		throw std::runtime_error("Images::JPEGReader: Unsupported bit depth in JPEG library");
+		#endif
+		
+		/* Initialize the JPEG library parts of this object: */
+		err=&exceptionManager;
+		client_data=0;
+		jpeg_create_decompress(this);
+		src=&fileSourceManager;
+		
 		/* Read the JPEG file header: */
-		jpeg_read_header(&jpegDecompressStruct,TRUE);
-		
-		/* Force output color space to RGB: */
-		jpegDecompressStruct.out_color_space=JCS_RGB;
-		
-		/* Prepare for decompression: */
-		jpeg_start_decompress(&jpegDecompressStruct);
-		
-		/* Create the result image: */
-		result=RGBImage(jpegDecompressStruct.output_width,jpegDecompressStruct.output_height);
-		
-		/* Create row pointers to flip the image during reading: */
-		rowPointers=new RGBImage::Color*[result.getHeight()];
-		for(unsigned int y=0;y<result.getHeight();++y)
-			rowPointers[y]=result.modifyPixelRow(result.getHeight()-1-y);
-		
-		/* Read the JPEG image's scan lines: */
-		JDIMENSION scanline=0;
-		while(scanline<jpegDecompressStruct.output_height)
-			scanline+=jpeg_read_scanlines(&jpegDecompressStruct,reinterpret_cast<JSAMPLE**>(rowPointers+scanline),jpegDecompressStruct.output_height-scanline);
-		
-		/* Finish reading image: */
-		jpeg_finish_decompress(&jpegDecompressStruct);
+		jpeg_read_header(this,TRUE);
 		}
-	catch(std::runtime_error err)
+	~JPEGReader(void)
 		{
 		/* Clean up: */
 		delete[] rowPointers;
-		jpeg_destroy_decompress(&jpegDecompressStruct);
-		
-		/* Wrap and re-throw the exception: */
-		Misc::throwStdErr("Images::readJPEGImage: Caught exception \"%s\" while reading image \"%s\"",err.what(),imageName);
+		jpeg_destroy_decompress(this);
 		}
 	
-	/* Clean up: */
-	delete[] rowPointers;
-	jpeg_destroy_decompress(&jpegDecompressStruct);
-	
-	/* Return the result image: */
-	return result;
-	}
-
-BaseImage readGenericJPEGImage(const char* imageName,IO::File& source)
-	{
-	/* Create a JPEG error handler and a JPEG decompression object: */
-	JPEGExceptionErrorManager jpegErrorManager;
-	jpeg_decompress_struct jpegDecompressStruct;
-	jpegDecompressStruct.err=&jpegErrorManager;
-	jpegDecompressStruct.client_data=0;
-	jpeg_create_decompress(&jpegDecompressStruct);
-	
-	/* Associate the decompression object with the source stream: */
-	JPEGFileSourceManager jpegSourceManager(source);
-	jpegDecompressStruct.src=&jpegSourceManager;
-	
-	BaseImage result;
-	unsigned char** rowPointers=0;
-	try
+	/* Methods: */
+	void setupProcessing(bool forceRgb)
 		{
-		/* Read the JPEG file header: */
-		jpeg_read_header(&jpegDecompressStruct,TRUE);
-		
-		/* Set up the result image format: */
-		unsigned int numChannels=3;
-		unsigned int channelSize=1;
-		GLenum format=GL_RGB;
-		GLenum channelType=GL_UNSIGNED_BYTE;
-		
-		/* Check if the source image is grayscale: */
-		if(jpegDecompressStruct.out_color_space==JCS_GRAYSCALE)
-			{
-			numChannels=1;
-			format=GL_LUMINANCE;
-			}
-		else
+		if(forceRgb||out_color_space!=JCS_GRAYSCALE)
 			{
 			/* Force output color space to RGB: */
-			jpegDecompressStruct.out_color_space=JCS_RGB;
+			out_color_space=JCS_RGB;
+			numChannels=3;
 			}
+		else
+			numChannels=1;
 		
 		/* Prepare for decompression: */
-		jpeg_start_decompress(&jpegDecompressStruct);
-		
-		/* Create the result image: */
-		result=BaseImage(jpegDecompressStruct.output_width,jpegDecompressStruct.output_height,numChannels,channelSize,format,channelType);
-		
+		jpeg_start_decompress(this);
+		imageSize[0]=output_width;
+		imageSize[1]=output_height;
+		}
+	void readImage(JSAMPLE* pixels,ptrdiff_t rowStride)
+		{
 		/* Create row pointers to flip the image during reading: */
-		rowPointers=new unsigned char*[result.getHeight()];
-		ptrdiff_t rowStride=result.getRowStride();
-		rowPointers[0]=static_cast<unsigned char*>(result.replacePixels())+(result.getHeight()-1)*rowStride;
-		for(unsigned int y=1;y<result.getHeight();++y)
+		rowPointers=new JSAMPLE*[imageSize[1]];
+		rowPointers[0]=pixels+(imageSize[1]-1)*rowStride;
+		for(unsigned int y=1;y<imageSize[1];++y)
 			rowPointers[y]=rowPointers[y-1]-rowStride;
 		
 		/* Read the JPEG image's scan lines: */
 		JDIMENSION scanline=0;
-		while(scanline<jpegDecompressStruct.output_height)
-			scanline+=jpeg_read_scanlines(&jpegDecompressStruct,reinterpret_cast<JSAMPLE**>(rowPointers+scanline),jpegDecompressStruct.output_height-scanline);
+		while(scanline<output_height)
+			scanline+=jpeg_read_scanlines(this,rowPointers+scanline,output_height-scanline);
 		
 		/* Finish reading image: */
-		jpeg_finish_decompress(&jpegDecompressStruct);
+		jpeg_finish_decompress(this);
 		}
-	catch(std::runtime_error err)
-		{
-		/* Clean up: */
-		delete[] rowPointers;
-		jpeg_destroy_decompress(&jpegDecompressStruct);
-		
-		/* Wrap and re-throw the exception: */
-		Misc::throwStdErr("Images::readGenericJPEGImage: Caught exception \"%s\" while reading image \"%s\"",err.what(),imageName);
-		}
+	};
+
+}
+
+RGBImage readJPEGImage(IO::File& source)
+	{
+	/* Create a JPEG image reader for the given source file: */
+	JPEGReader reader(source);
 	
-	/* Clean up: */
-	delete[] rowPointers;
-	jpeg_destroy_decompress(&jpegDecompressStruct);
+	/* Set up image processing: */
+	reader.setupProcessing(true);
 	
-	/* Return the result image: */
+	/* Create the result image: */
+	RGBImage result(reader.imageSize[0],reader.imageSize[1]);
+	
+	/* Read the JPEG image: */
+	reader.readImage(reinterpret_cast<JSAMPLE*>(result.replacePixels()),result.getRowStride());
+	
+	return result;
+	}
+
+BaseImage readGenericJPEGImage(IO::File& source)
+	{
+	/* Create a JPEG image reader for the given source file: */
+	JPEGReader reader(source);
+	
+	/* Set up image processing: */
+	reader.setupProcessing(false);
+	
+	/* Create the result image: */
+	BaseImage result(reader.imageSize[0],reader.imageSize[1],reader.numChannels,1,reader.numChannels==3?GL_RGB:GL_LUMINANCE,GL_UNSIGNED_BYTE);
+	
+	/* Read the JPEG image: */
+	reader.readImage(reinterpret_cast<JSAMPLE*>(result.replacePixels()),result.getRowStride());
+	
 	return result;
 	}
 

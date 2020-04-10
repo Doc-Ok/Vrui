@@ -24,6 +24,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #ifndef VRUI_VRSCREEN_INCLUDED
 #define VRUI_VRSCREEN_INCLUDED
 
+#include <Misc/CallbackList.h>
 #include <Geometry/OrthonormalTransformation.h>
 #include <Geometry/ProjectiveTransformation.h>
 #include <Vrui/Geometry.h>
@@ -45,6 +46,34 @@ class VRScreen
 	public:
 	typedef Geometry::ProjectiveTransformation<Scalar,2> PTransform2; // Type for 2D homography transformations
 	
+	struct CallbackData:public Misc::CallbackData // Generic callback data for screen events
+		{
+		/* Elements: */
+		public:
+		VRScreen* screen; // The screen that caused the callback
+		
+		/* Constructors and destructors: */
+		CallbackData(VRScreen* sScreen)
+			:screen(sScreen)
+			{
+			}
+		};
+	
+	struct SizeChangedCallbackData:public CallbackData // Callback data when a screen changes size
+		{
+		/* Elements: */
+		public:
+		Scalar newScreenSize[2]; // New screen size; screen object's size is yet unchanged
+		
+		/* Constructors and destructors: */
+		SizeChangedCallbackData(VRScreen* sScreen,Scalar newWidth,Scalar newHeight)
+			:CallbackData(sScreen)
+			{
+			newScreenSize[0]=newWidth;
+			newScreenSize[1]=newHeight;
+			}
+		};
+	
 	/* Elements: */
 	private:
 	char* screenName; // Name for the screen
@@ -57,6 +86,7 @@ class VRScreen
 	PTransform2 screenHomography; // The screen's screen space homography
 	PTransform inverseClipHomography; // The inverse of the screen's clip space homography
 	bool intersect; // Flag whether to use this screen for interaction queries
+	Misc::CallbackList sizeChangedCallbacks; // List of callbacks to be called when the screen's size changes
 	
 	/* Transient state data: */
 	bool enabled; // Flag if the screen is enabled, i.e., can be used for rendering
@@ -75,7 +105,7 @@ class VRScreen
 		{
 		return enabled;
 		}
-	void attachToDevice(InputDevice* newDevice); // Attaches the screen to an input device if !=0; otherwise, creates fixed screen
+	InputDevice* attachToDevice(InputDevice* newDevice); // Attaches the screen to an input device if !=0, otherwise, creates fixed screen; returns previous device or 0
 	void setSize(Scalar newWidth,Scalar newHeight); // Adjusts the screen's size in physical units; maintains the current center position
 	void setTransform(const ONTransform& newTransform); // Sets the transformation from screen to physical or device coordinates
 	const char* getName(void) const // Returns screen's name
@@ -125,6 +155,10 @@ class VRScreen
 		}
 	void setScreenTransform(void) const; // Sets up OpenGL matrices to render directly onto the screen
 	void resetScreenTransform(void) const; // Resets OpenGL matrices back to state before calling setScreenTransform()
+	Misc::CallbackList& getSizeChangedCallbacks(void) // Returns the list of callbacks called when the screen's size changes
+		{
+		return sizeChangedCallbacks;
+		}
 	};
 
 }

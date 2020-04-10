@@ -1,7 +1,7 @@
 /***********************************************************************
 HttpFile - Class for high-performance reading from remote files using
 the HTTP/1.1 protocol.
-Copyright (c) 2011-2015 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the Portable Communications Library (Comm).
 
@@ -29,7 +29,11 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Misc/MessageLogger.h>
 #include <Misc/Time.h>
 #include <IO/ValueSource.h>
+#include <Comm/Config.h>
 #include <Comm/TCPPipe.h>
+#if COMM_CONFIG_HAVE_OPENSSL
+#include <Comm/TLSPipe.h>
+#endif
 
 namespace Comm {
 
@@ -135,7 +139,7 @@ size_t HttpFile::readData(IO::File::Byte* buffer,size_t bufferSize)
 		}
 	}
 
-void HttpFile::init(const HttpFile::URLParts& urlParts)
+void HttpFile::init(const HttpFile::URLParts& urlParts,const Misc::Time* timeout)
 	{
 	/* Assemble the GET request: */
 	std::string request;
@@ -165,15 +169,25 @@ void HttpFile::init(const HttpFile::URLParts& urlParts)
 	request.append("Accept: text/html\r\n");
 	#endif
 	
+	#if 0
+	request.append("Connection: keep-alive\r\n");
+	#endif
+	
 	request.append("\r\n");
 	
 	/* Send the GET request: */
 	pipe->writeRaw(request.data(),request.size());
 	pipe->flush();
 	
-	/* Wait for the server's reply: */
-	if(!pipe->waitForData(Misc::Time(30,0)))
-		throw OpenError(Misc::printStdErrMsg("Comm::HttpFile: Timeout while waiting for reply from server \"%s\" on port %d",urlParts.serverName.c_str(),urlParts.portNumber));
+	if(timeout!=0)
+		{
+		/* Wait for the server's reply: */
+		if(!pipe->waitForData(*timeout))
+			{
+			char buffer[512];
+			throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::HttpFile: Timeout while waiting for reply from server \"%s\" on port %d",urlParts.serverName.c_str(),urlParts.portNumber));
+			}
+		}
 	
 	{
 	/* Attach a value source to the pipe to parse the server's reply: */
@@ -184,11 +198,45 @@ void HttpFile::init(const HttpFile::URLParts& urlParts)
 	
 	/* Read the status line: */
 	if(!reply.isLiteral("HTTP")||!reply.isLiteral('/'))
-		throw OpenError(Misc::printStdErrMsg("Comm::HttpFile: Malformed HTTP reply from server \"%s\" on port %d",urlParts.serverName.c_str(),urlParts.portNumber));
+		{
+		char buffer[512];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::HttpFile: Malformed HTTP reply from server \"%s\" on port %d",urlParts.serverName.c_str(),urlParts.portNumber));
+		}
 	reply.skipString();
 	unsigned int statusCode=reply.readUnsignedInteger();
 	if(statusCode!=200)
-		throw OpenError(Misc::printStdErrMsg("Comm::HttpFile: HTTP error %d while opening resource \"%s\" on server \"%s\" on port %d",statusCode,urlParts.resourcePath.c_str(),urlParts.serverName.c_str(),urlParts.portNumber));
+		{
+		char buffer[1024];
+		
+		/* Read the error string: */
+		std::string error=reply.readLine();
+		if(error.back()=='\r')
+			error.pop_back();
+		reply.skipWs();
+		
+		/* Handle known HTTP errors: */
+		if(statusCode==301) // HTTP 301 Moved Permanently
+			{
+			/* Parse reply options to find a location tag: */
+			while(!reply.eof()&&reply.peekc()!='\r')
+				{
+				if(reply.isString("Location:"))
+					{
+					/* Throw a redirect error: */
+					std::string redirectUrl=reply.readLine();
+					throw HttpRedirect(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::HttpFile: Resource \"%s\" on server \"%s\" on port %d permanently moved to location \"%s\"",urlParts.resourcePath.c_str(),urlParts.serverName.c_str(),urlParts.portNumber,redirectUrl.c_str()),error,redirectUrl);
+					}
+				
+				reply.skipLine();
+				reply.skipWs();
+				}
+			}
+		
+		/* Throw a generic HTTP protocol error: */
+		throw HttpError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::HttpFile: HTTP error %d (%s) while opening resource \"%s\" on server \"%s\" on port %d",statusCode,error.c_str(),urlParts.resourcePath.c_str(),urlParts.serverName.c_str(),urlParts.portNumber),statusCode,error);
+		}
+	
+	/* Skip the rest of the status line: */
 	reply.readLine();
 	reply.skipWs();
 	
@@ -215,7 +263,10 @@ void HttpFile::init(const HttpFile::URLParts& urlParts)
 							{
 							reply.skipString();
 							if(!reply.isLiteral('='))
-								throw OpenError(Misc::printStdErrMsg("Comm::HttpFile: Malformed HTTP reply from server \"%s\" on port %d",urlParts.serverName.c_str(),urlParts.portNumber));
+								{
+								char buffer[512];
+								throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::HttpFile: Malformed HTTP reply from server \"%s\" on port %d",urlParts.serverName.c_str(),urlParts.portNumber));
+								}
 							reply.skipString();
 							}
 						}
@@ -242,7 +293,10 @@ void HttpFile::init(const HttpFile::URLParts& urlParts)
 	
 	/* Read the CR/LF pair: */
 	if(reply.getChar()!='\r'||reply.getChar()!='\n')
-		throw OpenError(Misc::printStdErrMsg("Comm::HttpFile: Malformed HTTP reply from server \"%s\" on port %d",urlParts.serverName.c_str(),urlParts.portNumber));
+		{
+		char buffer[512];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::HttpFile: Malformed HTTP reply from server \"%s\" on port %d",urlParts.serverName.c_str(),urlParts.portNumber));
+		}
 	}
 	
 	if(chunked)
@@ -251,9 +305,11 @@ void HttpFile::init(const HttpFile::URLParts& urlParts)
 		unreadSize=parseChunkHeader(*pipe);
 		haveEof=unreadSize==0;
 		}
+	
+	canReadThrough=false;
 	}
 
-HttpFile::HttpFile(const char* fileUrl)
+HttpFile::HttpFile(const char* fileUrl,const Misc::Time* timeout)
 	:IO::File(),
 	 chunked(false),haveEof(false),
 	 fixedSize(false),
@@ -264,13 +320,26 @@ HttpFile::HttpFile(const char* fileUrl)
 	URLParts urlParts=splitUrl(fileUrl);
 	
 	/* Connect to the HTTP server: */
-	pipe=new Comm::TCPPipe(urlParts.serverName.c_str(),urlParts.portNumber);
+	if(urlParts.https)
+		{
+		#if COMM_CONFIG_HAVE_OPENSSL
+		/* Open a TLS-secured TCP connection to the HTTP server: */
+		pipe=new Comm::TLSPipe(urlParts.serverName.c_str(),urlParts.portNumber);
+		#else
+		throw std::runtime_error("Comm::HttpFile: HTTPS connections not supported due to lack of OpenSSL library");
+		#endif
+		}
+	else
+		{
+		/* Open a standard TCP connection to the HTTP server: */
+		pipe=new Comm::TCPPipe(urlParts.serverName.c_str(),urlParts.portNumber);
+		}
 	
 	/* Initialize the HTTP parser: */
-	init(urlParts);
+	init(urlParts,timeout);
 	}
 
-HttpFile::HttpFile(const HttpFile::URLParts& urlParts,Comm::PipePtr sPipe)
+HttpFile::HttpFile(const HttpFile::URLParts& urlParts,Comm::PipePtr sPipe,const Misc::Time* timeout)
 	:IO::File(),
 	 pipe(sPipe),
 	 chunked(false),haveEof(false),
@@ -279,7 +348,7 @@ HttpFile::HttpFile(const HttpFile::URLParts& urlParts,Comm::PipePtr sPipe)
 	 gzipped(false)
 	{
 	/* Initialize the HTTP parser: */
-	init(urlParts);
+	init(urlParts,timeout);
 	}
 
 HttpFile::~HttpFile(void)
@@ -326,7 +395,7 @@ HttpFile::~HttpFile(void)
 			pipe->skip<char>(unreadSize);
 			}
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Print an error message and carry on: */
 		Misc::formattedUserError("Comm::HttpFile: Caught exception \"%s\" while closing file",err.what());
@@ -354,16 +423,94 @@ size_t HttpFile::resizeReadBuffer(size_t newReadBufferSize)
 	return pipe->getReadBufferSize();
 	}
 
+bool HttpFile::checkHttpPrefix(const char* url,const char** prefixEnd)
+	{
+	/* Initialize the prefix end: */
+	if(prefixEnd!=0)
+		*prefixEnd=url;
+	
+	/* Check for initial "http": */
+	if(url[0]=='h'&&url[1]=='t'&&url[2]=='t'&&url[3]=='p')
+		{
+		url+=4;
+		
+		/* Check for "https": */
+		if(url[0]=='s')
+			++url;
+		
+		/* Check for "://": */
+		if(url[0]==':'&&url[1]=='/'&&url[2]=='/')
+			{
+			/* Found a match: */
+			if(prefixEnd!=0)
+				*prefixEnd=url+3;
+			return true;
+			}
+		}
+	
+	/* Wasn't a match: */
+	return false;
+	}
+
+bool HttpFile::checkHttpPrefix(const char* urlBegin,const char* urlEnd,const char** prefixEnd)
+	{
+	/* Initialize the prefix end: */
+	if(prefixEnd!=0)
+		*prefixEnd=urlBegin;
+	
+	/* Check for initial "http": */
+	if(urlEnd-urlBegin>=4&&urlBegin[0]=='h'&&urlBegin[1]=='t'&&urlBegin[2]=='t'&&urlBegin[3]=='p')
+		{
+		urlBegin+=4;
+		
+		/* Check for "https": */
+		if(urlBegin!=urlEnd&&urlBegin[0]=='s')
+			++urlBegin;
+		
+		/* Check for "://": */
+		if(urlEnd-urlBegin>=3&&urlBegin[0]==':'&&urlBegin[1]=='/'&&urlBegin[2]=='/')
+			{
+			/* Found a match: */
+			if(prefixEnd!=0)
+				*prefixEnd=urlBegin+3;
+			return true;
+			}
+		}
+	
+	/* Wasn't a match: */
+	return false;
+	}
+
+const char* HttpFile::getResourcePath(const char* url)
+	{
+	/* Parse the URL to skip server name and port: */
+	const char* uPtr=url;
+	
+	/* Skip the protocol identifier: */
+	checkHttpPrefix(uPtr,&uPtr);
+	
+	/* Server name is terminated by colon, slash, or NUL: */
+	while(*uPtr!='\0'&&*uPtr!=':'&&*uPtr!='/')
+		++uPtr;
+	
+	/* Skip the port number: */
+	if(*uPtr==':')
+		{
+		++uPtr;
+		while(*uPtr>='0'&&*uPtr<='9')
+			++uPtr;
+		}
+	
+	return uPtr;
+	}
+
 HttpFile::URLParts HttpFile::splitUrl(const char* url)
 	{
 	URLParts result;
 	
-	/* Parse the URL to determine server name, port, and absolute resource location: */
-	const char* uPtr=url;
-	
-	/* Skip the protocol identifier: */
-	if(strncmp(uPtr,"http://",7)==0)
-		uPtr+=7;
+	/* Skip the protocol identifier and identify secure HTTPS: */
+	const char* uPtr;
+	result.https=checkHttpPrefix(url,&uPtr)&&uPtr-url==8;
 	
 	/* Server name is terminated by colon, slash, or NUL: */
 	const char* serverStart=uPtr;
@@ -372,7 +519,7 @@ HttpFile::URLParts HttpFile::splitUrl(const char* url)
 	result.serverName=std::string(serverStart,uPtr);
 	
 	/* Get the port number: */
-	result.portNumber=80;
+	result.portNumber=result.https?443:80;
 	if(*uPtr==':')
 		{
 		++uPtr;
@@ -389,6 +536,48 @@ HttpFile::URLParts HttpFile::splitUrl(const char* url)
 		{
 		/* Retrieve the absolute path: */
 		result.resourcePath=uPtr;
+		}
+	else
+		{
+		/* Use the root resource if no path is specified: */
+		result.resourcePath.push_back('/');
+		}
+	
+	return result;
+	}
+
+HttpFile::URLParts HttpFile::splitUrl(const char* urlBegin,const char* urlEnd)
+	{
+	URLParts result;
+	
+	/* Skip the protocol identifier and identify secure HTTPS: */
+	const char* uPtr;
+	result.https=checkHttpPrefix(urlBegin,urlEnd,&uPtr)&&uPtr-urlBegin==8;
+	
+	/* Server name is terminated by colon, slash, or NUL: */
+	const char* serverStart=uPtr;
+	while(uPtr!=urlEnd&&*uPtr!=':'&&*uPtr!='/')
+		++uPtr;
+	result.serverName=std::string(serverStart,uPtr);
+	
+	/* Get the port number: */
+	result.portNumber=result.https?443:80;
+	if(*uPtr==':')
+		{
+		++uPtr;
+		result.portNumber=0;
+		while(uPtr!=urlEnd&&*uPtr>='0'&&*uPtr<='9')
+			{
+			result.portNumber=result.portNumber*10+int(*uPtr-'0');
+			++uPtr;
+			}
+		}
+	
+	/* Get the absolute resource path: */
+	if(uPtr!=urlEnd&&*uPtr=='/')
+		{
+		/* Retrieve the absolute path: */
+		result.resourcePath=std::string(uPtr,urlEnd);
 		}
 	else
 		{

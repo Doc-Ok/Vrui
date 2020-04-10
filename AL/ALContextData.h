@@ -1,7 +1,7 @@
 /***********************************************************************
 ALContextData - Class to store per-AL-context data for application
 objects.
-Copyright (c) 2006-2010 Oliver Kreylos
+Copyright (c) 2006-2020 Oliver Kreylos
 
 This file is part of the OpenAL Support Library (ALSupport).
 
@@ -82,6 +82,8 @@ class ALContextData
 	Transform* modelviewStack; // The OpenAL "modelview" matrix stack
 	Transform* modelview; // Pointer to the top of the "modelview" matrix stack
 	Error lastError; // Last stack error
+	Scalar referenceDistance; // Reference distance for distance attenuation
+	Scalar rolloffFactor; // Distance roll-off factor for distance attenuation
 	
 	/* Constructors and destructors: */
 	public:
@@ -157,6 +159,17 @@ class ALContextData
 	void loadMatrix(const Transform& t); // Replaces the current modelview matrix with the given matrix
 	void multMatrix(const Transform& t); // Multiplies the current modelview matrix with the given matrix from the right
 	Error getError(void); // Returns the last error and resets the error flag
+	
+	/* Methods to set per-source states that should actually be per-context states: */
+	void setAttenuation(Scalar newReferenceDistance,Scalar newRolloffFactor); // Sets reference distance and roll-off factor
+	Scalar getReferenceDistance(void) const // Returns a default reference distance for distance attenuation
+		{
+		return referenceDistance;
+		}
+	Scalar getRolloffFactor(void) const // Returns a distance roll-off factor for distance attenuation
+		{
+		return rolloffFactor;
+		}
 	};
 
 /****************************************************************************************

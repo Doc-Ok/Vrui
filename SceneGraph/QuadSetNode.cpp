@@ -1,7 +1,7 @@
 /***********************************************************************
 QuadSetNode - Class for sets of quadrilaterals as renderable
 geometry.
-Copyright (c) 2011-2017 Oliver Kreylos
+Copyright (c) 2011-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -216,10 +216,8 @@ void QuadSetNode::uploadQuads(QuadSetNode::DataItem* dataItem) const
 	}
 
 QuadSetNode::QuadSetNode(void)
-	:GLObject(false),
-	 ccw(true),solid(true),
+	:ccw(true),solid(true),
 	 subdivideX(1),subdivideY(1),
-	 inited(false),
 	 version(0)
 	{
 	}
@@ -267,13 +265,6 @@ void QuadSetNode::update(void)
 	
 	/* Update the quad set version number: */
 	++version;
-	
-	/* Register the object with all OpenGL contexts if not done already: */
-	if(!inited)
-		{
-		GLObject::init();
-		inited=true;
-		}
 	}
 
 Box QuadSetNode::calcBoundingBox(void) const
@@ -331,6 +322,7 @@ void QuadSetNode::glRenderAction(GLRenderState& renderState) const
 		return;
 	
 	/* Set up OpenGL state: */
+	renderState.setFrontFace(GL_CCW);
 	if(solid.getValue())
 		renderState.enableCulling(GL_BACK);
 	else
@@ -345,8 +337,8 @@ void QuadSetNode::glRenderAction(GLRenderState& renderState) const
 		typedef GLuint Index; // Type for vertex indices
 		
 		/* Bind the quad set's vertex and index buffer objects: */
-		glBindBufferARB(GL_ARRAY_BUFFER_ARB,dataItem->vertexBufferObjectId);
-		glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,dataItem->indexBufferObjectId);
+		renderState.bindVertexBuffer(dataItem->vertexBufferObjectId);
+		renderState.bindIndexBuffer(dataItem->indexBufferObjectId);
 		
 		/* Check if the vertex or index buffers are outdated: */
 		if(dataItem->version!=version)
@@ -357,7 +349,7 @@ void QuadSetNode::glRenderAction(GLRenderState& renderState) const
 			}
 		
 		/* Set up the vertex arrays: */
-		GLVertexArrayParts::enable(Vertex::getPartsMask());
+		renderState.enableVertexArrays(Vertex::getPartsMask());
 		glVertexPointer(static_cast<Vertex*>(0));
 		
 		/* Render the quad set: */
@@ -373,13 +365,6 @@ void QuadSetNode::glRenderAction(GLRenderState& renderState) const
 			/* Draw all quads in one go: */
 			glDrawArrays(GL_QUADS,0,numQuads*4);
 			}
-		
-		/* Reset the vertex arrays: */
-		GLVertexArrayParts::disable(Vertex::getPartsMask());
-		
-		/* Protect the buffers: */
-		glBindBufferARB(GL_ARRAY_BUFFER_ARB,0);
-		glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,0);
 		}
 	else
 		{
@@ -392,23 +377,6 @@ void QuadSetNode::initContext(GLContextData& contextData) const
 	/* Create a data item and store it in the context: */
 	DataItem* dataItem=new DataItem;
 	contextData.addDataItem(this,dataItem);
-	
-	/* Upload the initial version of the quad set: */
-	if(dataItem->vertexBufferObjectId!=0&&dataItem->indexBufferObjectId!=0&&numQuads>0)
-		{
-		/* Bind the quad set's vertex and index buffer objects: */
-		glBindBufferARB(GL_ARRAY_BUFFER_ARB,dataItem->vertexBufferObjectId);
-		glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,dataItem->indexBufferObjectId);
-		
-		/* Upload the quad set's vertices: */
-		uploadQuads(dataItem);
-		
-		/* Protect the buffers: */
-		glBindBufferARB(GL_ARRAY_BUFFER_ARB,0);
-		glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,0);
-		
-		dataItem->version=version;
-		}
 	}
 
 }

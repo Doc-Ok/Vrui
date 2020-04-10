@@ -1,7 +1,7 @@
 /***********************************************************************
 BillboardNode - Class for group nodes that transform their children to
 always face the viewer.
-Copyright (c) 2009-2013 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #ifndef SCENEGRAPH_BILLBOARDNODE_INCLUDED
 #define SCENEGRAPH_BILLBOARDNODE_INCLUDED
 
+#include <Misc/Autopointer.h>
 #include <Geometry/Vector.h>
 #include <SceneGraph/FieldTypes.h>
 #include <SceneGraph/GroupNode.h>
@@ -58,6 +59,8 @@ class BillboardNode:public GroupNode
 	/* Methods from GraphNode: */
 	virtual void glRenderAction(GLRenderState& renderState) const;
 	};
+
+typedef Misc::Autopointer<BillboardNode> BillboardNodePointer;
 
 }
 

@@ -1,6 +1,6 @@
 /***********************************************************************
 PointSetNode - Class for sets of points as renderable geometry.
-Copyright (c) 2009 Oliver Kreylos
+Copyright (c) 2009-2020 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <GL/GLContextData.h>
 #include <GL/GLExtensionManager.h>
 #include <GL/Extensions/GLARBVertexBufferObject.h>
+#include <GL/GLSphereRenderer.h>
 #include <GL/GLGeometryWrappers.h>
 #include <GL/GLGeometryVertex.h>
 #include <SceneGraph/VRMLFile.h>
@@ -68,9 +69,14 @@ Methods of class PointSetNode:
 *****************************/
 
 PointSetNode::PointSetNode(void)
-	:pointSize(Scalar(1)),
-	 version(0)
+	:drawSpheres(false),pointSize(Scalar(1)),
+	 sphereRenderer(0),version(0)
 	{
+	}
+
+PointSetNode::~PointSetNode(void)
+	{
+	delete sphereRenderer;
 	}
 
 const char* PointSetNode::getStaticClassName(void)
@@ -93,6 +99,10 @@ void PointSetNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 		{
 		vrmlFile.parseSFNode(coord);
 		}
+	else if(strcmp(fieldName,"drawSpheres")==0)
+		{
+		vrmlFile.parseField(drawSpheres);
+		}
 	else if(strcmp(fieldName,"pointSize")==0)
 		{
 		vrmlFile.parseField(pointSize);
@@ -105,26 +115,45 @@ void PointSetNode::update(void)
 	{
 	/* Bump up the point set's version number: */
 	++version;
+	
+	/* Check if sphere rendering was requested: */
+	if(drawSpheres.getValue())
+		{
+		/* Create a sphere renderer: */
+		if(sphereRenderer==0)
+			sphereRenderer=new GLSphereRenderer();
+		
+		/* Set the sphere renderer's parameters: */
+		sphereRenderer->setFixedRadius(pointSize.getValue());
+		sphereRenderer->setColorMaterial(color.getValue()!=0);
+		}
 	}
 
 Box PointSetNode::calcBoundingBox(void) const
 	{
+	Box bbox=Box::empty;
+	
 	if(coord.getValue()!=0)
 		{
 		/* Return the bounding box of the point coordinates: */
+		Box box;
 		if(pointTransform.getValue()!=0)
 			{
 			/* Return the bounding box of the transformed point coordinates: */
-			return pointTransform.getValue()->calcBoundingBox(coord.getValue()->point.getValues());
+			bbox=pointTransform.getValue()->calcBoundingBox(coord.getValue()->point.getValues());
 			}
 		else
 			{
 			/* Return the bounding box of the untransformed point coordinates: */
-			return coord.getValue()->calcBoundingBox();
+			bbox=coord.getValue()->calcBoundingBox();
 			}
+		
+		/* Expand the bounding box if sphere rendering is requested: */
+		if(drawSpheres.getValue())
+			bbox.extrude(pointSize.getValue());
 		}
-	else
-		return Box::empty;
+	
+	return bbox;
 	}
 
 void PointSetNode::glRenderAction(GLRenderState& renderState) const
@@ -135,9 +164,14 @@ void PointSetNode::glRenderAction(GLRenderState& renderState) const
 		DataItem* dataItem=renderState.contextData.retrieveDataItem<DataItem>(this);
 		
 		/* Set up OpenGL state: */
-		renderState.disableMaterials();
-		renderState.disableTextures();
-		glPointSize(pointSize.getValue());
+		if(drawSpheres.getValue())
+			sphereRenderer->enable(GLfloat(renderState.getTransform().getScaling()),renderState.contextData);
+		else
+			{
+			renderState.disableMaterials();
+			renderState.disableTextures();
+			glPointSize(pointSize.getValue());
+			}
 		
 		if(dataItem->vertexBufferObjectId!=0)
 			{
@@ -145,7 +179,7 @@ void PointSetNode::glRenderAction(GLRenderState& renderState) const
 			typedef GLGeometry::Vertex<void,0,void,0,void,Scalar,3> Vertex;
 			
 			/* Bind the point set's vertex buffer object: */
-			glBindBufferARB(GL_ARRAY_BUFFER_ARB,dataItem->vertexBufferObjectId);
+			renderState.bindVertexBuffer(dataItem->vertexBufferObjectId);
 			
 			/* Check if the vertex buffer object is outdated: */
 			if(dataItem->version!=version)
@@ -200,26 +234,17 @@ void PointSetNode::glRenderAction(GLRenderState& renderState) const
 			/* Set up the vertex arrays: */
 			if(color.getValue()!=0)
 				{
-				GLVertexArrayParts::enable(ColorVertex::getPartsMask());
+				renderState.enableVertexArrays(ColorVertex::getPartsMask());
 				glVertexPointer(static_cast<ColorVertex*>(0));
 				}
 			else
 				{
-				GLVertexArrayParts::enable(Vertex::getPartsMask());
+				renderState.enableVertexArrays(Vertex::getPartsMask());
 				glVertexPointer(static_cast<Vertex*>(0));
 				}
 			
 			/* Draw the point set: */
 			glDrawArrays(GL_POINTS,0,coord.getValue()->point.getNumValues());
-			
-			/* Disable the vertex arrays: */
-			if(color.getValue()!=0)
-				GLVertexArrayParts::disable(ColorVertex::getPartsMask());
-			else
-				GLVertexArrayParts::disable(Vertex::getPartsMask());
-			
-			/* Protect the vertex buffer object: */
-			glBindBufferARB(GL_ARRAY_BUFFER_ARB,0);
 			}
 		else
 			{
@@ -244,8 +269,6 @@ void PointSetNode::glRenderAction(GLRenderState& renderState) const
 				}
 			else
 				{
-				/* Use the current emissive color: */
-				glColor(renderState.emissiveColor);
 				for(size_t i=0;i<numPoints;++i)
 					{
 					if(pointTransform.getValue()!=0)
@@ -256,6 +279,10 @@ void PointSetNode::glRenderAction(GLRenderState& renderState) const
 				}
 			glEnd();
 			}
+		
+		/* Restore OpenGL state: */
+		if(drawSpheres.getValue())
+			sphereRenderer->disable(renderState.contextData);
 		}
 	}
 

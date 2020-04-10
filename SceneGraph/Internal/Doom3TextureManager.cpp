@@ -1,7 +1,7 @@
 /***********************************************************************
 Doom3TextureManager - Class to grant Doom3 materials access to shared
 texture images.
-Copyright (c) 2007-2010 Oliver Kreylos
+Copyright (c) 2007-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -181,7 +181,7 @@ Doom3TextureManager::ImageID Doom3TextureManager::loadTexture(const char* textur
 			/* Initialize the texture image: */
 			image.image=targaReader.readImage<Images::RGBAImage>();
 			}
-		catch(Doom3FileManager::ReadError err)
+		catch(const Doom3FileManager::ReadError& err)
 			{
 			/* Initialize the texture image: */
 			image.image=Images::RGBAImage(2,2);

@@ -1,6 +1,6 @@
 /***********************************************************************
 SketchingTool - Tool to create and edit 3D curves.
-Copyright (c) 2009-2017 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -23,7 +23,6 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/Tools/SketchingTool.h>
 
 #include <Misc/SelfDestructArray.h>
-#include <Misc/File.h>
 #include <Misc/StandardValueCoders.h>
 #include <Misc/ConfigurationFile.h>
 #include <Misc/MessageLogger.h>
@@ -36,7 +35,6 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <GL/GLColorTemplates.h>
 #include <GL/GLValueCoders.h>
 #include <GL/GLGeometryWrappers.h>
-#include <GL/GLTransformationWrappers.h>
 #include <GLMotif/StyleSheet.h>
 #include <GLMotif/WidgetManager.h>
 #include <GLMotif/PopupWindow.h>
@@ -48,8 +46,6 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <GLMotif/WidgetStateHelper.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/ToolManager.h>
-#include <Vrui/DisplayState.h>
-#include <Vrui/OpenFile.h>
 
 namespace Misc {
 
@@ -178,7 +174,7 @@ GLMotif::FileSelectionHelper* SketchingToolFactory::getCurvesSelectionHelper(voi
 	{
 	/* Create a new file selection helper if there isn't one yet: */
 	if(curvesSelectionHelper==0)
-		curvesSelectionHelper=new GLMotif::FileSelectionHelper(getWidgetManager(),curvesFileName.c_str(),".curves",openDirectory("."));
+		curvesSelectionHelper=new GLMotif::FileSelectionHelper(getWidgetManager(),curvesFileName.c_str(),".curves");
 	
 	return curvesSelectionHelper;
 	}
@@ -900,10 +896,7 @@ void SketchingTool::frame(void)
 void SketchingTool::display(GLContextData& contextData) const
 	{
 	/* Go to navigational coordinates: */
-	glMatrixMode(GL_MODELVIEW);
-	glPushMatrix();
-	glLoadIdentity();
-	glMultMatrix(getDisplayState(contextData).modelviewNavigational);
+	goToNavigationalSpace(contextData);
 	
 	/* Render all sketching objects: */
 	Curve::setGLState(contextData);
@@ -1002,7 +995,7 @@ void SketchingTool::saveCurvesCallback(GLMotif::FileSelectionDialog::OKCallbackD
 		for(std::vector<BrushStroke*>::iterator bsIt=brushStrokes.begin();bsIt!=brushStrokes.end();++bsIt)
 			(*bsIt)->write(curveFile);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Show an error message: */
 		Misc::formattedUserError("Save Curves...: Could not save curves to file %s due to exception %s",cbData->selectedFileName,err.what());
@@ -1076,7 +1069,7 @@ void SketchingTool::loadCurvesCallback(GLMotif::FileSelectionDialog::OKCallbackD
 				brushStrokes.push_back(bs);
 			}
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Delete the list of read sketching objects: */
 		for(std::vector<SketchObject*>::iterator soIt=newSketchObjects.begin();soIt!=newSketchObjects.end();++soIt)

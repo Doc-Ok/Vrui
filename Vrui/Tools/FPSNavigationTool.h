@@ -1,7 +1,7 @@
 /***********************************************************************
 FPSNavigationTool - Class encapsulating the navigation behaviour of a
 typical first-person shooter (FPS) game.
-Copyright (c) 2005-2015 Oliver Kreylos
+Copyright (c) 2005-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -67,6 +67,7 @@ class FPSNavigationToolFactory:public ToolFactory
 		bool fixAzimuth; // Flag whether to fix the tool's azimuth angle during movement
 		bool levelOnExit; // Flag whether to reset the elevation angle to zero upon deactivating the tool
 		bool drawHud; // Flag whether to draw the navigation heads-up display
+		bool drawElevation; // Flag whether to draw an elevation angle ribbon as part of the HUD
 		Color hudColor; // Color to draw the HUD
 		float hudDist; // Distance of HUD plane from eye point in physical coordinate units
 		float hudRadius; // Radius of HUD on HUD plane

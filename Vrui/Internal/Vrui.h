@@ -1,7 +1,7 @@
 /***********************************************************************
 Internal kernel interface of the Vrui virtual reality development
 toolkit.
-Copyright (c) 2000-2018 Oliver Kreylos
+Copyright (c) 2000-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -26,7 +26,11 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 #include <vector>
 #include <deque>
+#include <Misc/RingBuffer.h>
+#include <Misc/StringHashFunctions.h>
+#include <Misc/HashTable.h>
 #include <Misc/Timer.h>
+#include <Misc/CommandDispatcher.h>
 #include <Misc/CallbackList.h>
 #include <Realtime/Time.h>
 #include <Threads/Mutex.h>
@@ -41,6 +45,10 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <GLMotif/StyleSheet.h>
 #include <GLMotif/WidgetManager.h>
 #include <GLMotif/ToggleButton.h>
+#include <GLMotif/TextField.h>
+#include <GLMotif/DropdownBox.h>
+#include <GLMotif/TextFieldSlider.h>
+#include <GLMotif/HSVColorSelector.h>
 #include <GLMotif/FileSelectionHelper.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/GlyphRenderer.h>
@@ -68,6 +76,7 @@ class CascadeButton;
 namespace Vrui {
 class InputDeviceDataSaver;
 class MultipipeDispatcher;
+class Lightsource;
 class ScaleBar;
 class VisletManager;
 class GUIInteractor;
@@ -92,6 +101,14 @@ struct VruiState
 		InputDevice* inputDevice; // Pointer to input device
 		Point center; // Center of protective sphere in input device's coordinates
 		Scalar radius; // Radius of protective sphere around input device's position
+		};
+	
+	struct HapticDevice // Structure describing an input device with a haptic feature, to check against the tool kill zone
+		{
+		/* Elements: */
+		public:
+		InputDevice* inputDevice; // Pointer to input device
+		bool inKillZone; // Flag whether the input device is currently inside the tool kill zone
 		};
 	
 	class DisplayStateMapper:public GLObject // Helper class to associate DisplayState objects with each VRWindow's GL context
@@ -143,6 +160,7 @@ struct VruiState
 	Vector forwardDirection;
 	Vector upDirection;
 	Plane floorPlane;
+	Misc::CallbackList environmentDefinitionChangedCallbacks;
 	
 	/* Glyph management: */
 	GlyphRenderer* glyphRenderer;
@@ -163,6 +181,8 @@ struct VruiState
 	
 	/* Light source management: */
 	LightsourceManager* lightsourceManager;
+	Lightsource* sunLightsource; // A directional lightsource in physical space
+	float sunAzimuth,sunElevation,sunIntensity;
 	
 	/* Clipping plane management: */
 	ClipPlaneManager* clipPlaneManager;
@@ -183,9 +203,12 @@ struct VruiState
 	int numProtectorDevices;
 	ScreenProtectorDevice* protectorDevices;
 	bool protectScreens;
+	bool alwaysRenderProtection; // Flag to request always rendering the screen protectors
 	Scalar renderProtection; // If >0.0, screen protectors need to be drawn during the current frame
 	Color protectorGridColor; // Color to draw screen protectors
 	Scalar protectorGridSpacing; // Spacing between grid lines when drawing screen protectors
+	int numHapticDevices;
+	HapticDevice* hapticDevices;
 	
 	/* Window management: */
 	WindowProperties windowProperties;
@@ -214,10 +237,19 @@ struct VruiState
 	UIManager* uiManager;
 	GLMotif::PopupMenu* dialogsMenu;
 	std::vector<GLMotif::PopupWindow*> poppedDialogs;
-	GLMotif::PopupMenu* systemMenu;
+	GLMotif::PopupMenu* systemMenu; // Vrui system menu as top-level pop-up if the application does not define its own main menu
+	bool systemMenuTopLevel; // Flag whether the system menu is a top-level pop-up (and must be deleted)
+	GLMotif::Widget* quitSeparator; // Separator between system menu entries and the quit entry
 	GLMotif::CascadeButton* dialogsMenuCascade;
+	GLMotif::Button* undoViewButton;
+	GLMotif::Button* redoViewButton;
 	MutexMenu* mainMenu;
 	GLMotif::FileSelectionHelper viewSelectionHelper; // Helper to load and save view files
+	GLMotif::PopupWindow* settingsDialog; // The Vrui settings dialog
+	GLMotif::Pager* settingsPager; // The pager widget holding individual settings pages
+	GLMotif::TextFieldSlider* sunAzimuthSlider;
+	GLMotif::TextFieldSlider* sunElevationSlider;
+	GLMotif::TextFieldSlider* sunIntensitySlider;
 	bool userMessagesToConsole; // Flag whether to route user messages, normally displayed as dialog boxes, to the console instead
 	
 	/* 3D picking management: */
@@ -231,7 +263,8 @@ struct VruiState
 	int navigationTransformationChangedMask; // Bit mask for changed parts of the navigation transformation (0x1-transform,0x2-display center/size)
 	NavTransform newNavigationTransformation;
 	NavTransform navigationTransformation,inverseNavigationTransformation;
-	std::vector<NavTransform> storedNavigationTransformations;
+	Misc::RingBuffer<NavTransform> navigationUndoBuffer;
+	Misc::RingBuffer<NavTransform>::iterator navigationUndoCurrent;
 	Misc::CallbackList navigationTransformationChangedCallbacks; // List of callbacks called when the navigation transformation changes
 	CoordinateManager* coordinateManager;
 	ScaleBar* scaleBar;
@@ -253,6 +286,8 @@ struct VruiState
 	void* soundFunctionData;
 	ResetNavigationFunctionType resetNavigationFunction;
 	void* resetNavigationFunctionData;
+	FinishMainLoopFunctionType finishMainLoopFunction;
+	void* finishMainLoopFunctionData;
 	
 	/* Time management: */
 	Misc::Timer appTime; // Free-running application timer
@@ -270,8 +305,10 @@ struct VruiState
 	double animationFrameInterval; // Suggested frame interval to be used for animations
 	Threads::Mutex frameCallbacksMutex; // Mutex protecting the list of extra frame callbacks
 	std::vector<FrameCallbackSlot> frameCallbacks; // List of extra frame callbacks
+	Misc::CommandDispatcher commandDispatcher; // Dispatcher for pipe and console commands
 	
 	/* Transient dragging/moving/scaling state: */
+	Misc::CallbackList navigationToolActivationCallbacks;
 	const Tool* activeNavigationTool;
 	
 	/* List of created virtual input devices: */
@@ -291,6 +328,7 @@ struct VruiState
 	GLMotif::PopupMenu* buildViewMenu(void); // Builds the view submenu
 	GLMotif::PopupMenu* buildDevicesMenu(void); // Builds the input devices submenu
 	void buildSystemMenu(GLMotif::Container* parent); // Builds the Vrui system menu inside the given container widget
+	void pushNavigationTransformation(void); // Pushes the current navigation transformation into the navigation undo buffer
 	void updateNavigationTransformation(const NavTransform& newTransform); // Updates the working version of the navigation transformation
 	void loadViewpointFile(IO::Directory& directory,const char* viewpointFileName); // Overrides the navigation transformation with viewpoint data stored in the given viewpoint file
 	
@@ -303,6 +341,7 @@ struct VruiState
 	/* Initialization methods: */
 	void initialize(const Misc::ConfigurationFileSection& configFileSection); // Initializes complete Vrui state
 	void createSystemMenu(void); // Creates Vrui's system menu
+	void createSettingsDialog(void); // Creates Vrui's settings dialog window
 	DisplayState* registerContext(GLContextData& contextData) const; // Registers a newly created OpenGL context with the Vrui state object
 	void prepareMainLoop(void); // Performs last steps of initialization before main loop is run
 	
@@ -314,6 +353,15 @@ struct VruiState
 	/* De-initialization methods: */
 	void finishMainLoop(void); // Performs first steps of shutdown after mainloop finishes
 	
+	/* Pipe command callback methods: */
+	static void listCommandsCallback(const char* argumentBegin,const char* argumentEnd,void* userData);
+	static void showMessageCommandCallback(const char* argumentBegin,const char* argumentEnd,void* userData);
+	static void resetViewCommandCallback(const char* argumentBegin,const char* argumentEnd,void* userData);
+	static void loadViewCommandCallback(const char* argumentBegin,const char* argumentEnd,void* userData);
+	static void loadInputGraphCommandCallback(const char* argumentBegin,const char* argumentEnd,void* userData);
+	static void saveScreenshotCommandCallback(const char* argumentBegin,const char* argumentEnd,void* userData);
+	static void quitCommandCallback(const char* argumentBegin,const char* argumentEnd,void* userData);
+	
 	/* System menu callback methods: */
 	void dialogsMenuCallback(GLMotif::Button::SelectCallbackData* cbData,GLMotif::PopupWindow* const& dialog);
 	void widgetPopCallback(GLMotif::WidgetManager::WidgetPopCallbackData* cbData);
@@ -321,16 +369,34 @@ struct VruiState
 	void saveViewCallback(GLMotif::FileSelectionDialog::OKCallbackData* cbData);
 	void resetViewCallback(Misc::CallbackData* cbData);
 	void alignViewCallback(Misc::CallbackData* cbData);
-	void pushViewCallback(Misc::CallbackData* cbData);
-	void popViewCallback(Misc::CallbackData* cbData);
+	void undoViewCallback(Misc::CallbackData* cbData);
+	void redoViewCallback(Misc::CallbackData* cbData);
 	void createInputDeviceCallback(Misc::CallbackData* cbData,const int& numButtons);
 	void destroyInputDeviceCallback(Misc::CallbackData* cbData);
 	void loadInputGraphCallback(GLMotif::FileSelectionDialog::OKCallbackData* cbData);
 	void saveInputGraphCallback(GLMotif::FileSelectionDialog::OKCallbackData* cbData);
+	void toolKillZoneActiveCallback(GLMotif::ToggleButton::ValueChangedCallbackData* cbData);
 	void showToolKillZoneCallback(GLMotif::ToggleButton::ValueChangedCallbackData* cbData);
 	void protectScreensCallback(GLMotif::ToggleButton::ValueChangedCallbackData* cbData);
+	void showSettingsDialogCallback(Misc::CallbackData* cbData);
 	void showScaleBarToggleCallback(GLMotif::ToggleButton::ValueChangedCallbackData* cbData);
 	void quitCallback(Misc::CallbackData* cbData);
+	
+	/* Settings dialog callback methods: */
+	void navigationUnitScaleValueChangedCallback(GLMotif::TextField::ValueChangedCallbackData* cbData);
+	void navigationUnitValueChangedCallback(GLMotif::DropdownBox::ValueChangedCallbackData* cbData);
+	void ambientIntensityValueChangedCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
+	void viewerHeadlightValueChangedCallback(GLMotif::ToggleButton::ValueChangedCallbackData* cbData,const int& viewerIndex);
+	void updateSunLightsource(void);
+	void sunValueChangedCallback(GLMotif::ToggleButton::ValueChangedCallbackData* cbData);
+	void sunAzimuthValueChangedCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
+	void sunElevationValueChangedCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
+	void sunIntensityValueChangedCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
+	void backgroundColorValueChangedCallback(GLMotif::HSVColorSelector::ValueChangedCallbackData* cbData);
+	void foregroundColorValueChangedCallback(GLMotif::HSVColorSelector::ValueChangedCallbackData* cbData);
+	void backplaneValueChangedCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
+	void frontplaneValueChangedCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
+	void globalGainValueChangedCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
 	};
 
 extern VruiState* vruiState;
@@ -359,6 +425,7 @@ struct VruiWindowGroup;
 extern void setRandomSeed(unsigned int newRandomSeed); // Sets Vrui's random seed; can only be called by InputDeviceAdapterPlayback during its initialization
 extern void vruiDelay(double interval);
 extern double peekApplicationTime(void); // Returns the (approximate) application time that will be used by the next Vrui frame; can only be called by input device adapters during event handling
+extern void synchronize(double firstFrameTime); // Gives a precise time value to use for the initial frame time; can only be called by InputDeviceAdapterPlayback during initialization
 extern void synchronize(double nextFrameTime,bool wait); // Gives a precise time value to use for the next frame; delays frame until wall-clock time matches if wait is true; can only be called by InputDeviceAdapterPlayback during playback
 extern void resetNavigation(void); // Calls the application-provided function to reset the navigation transformation
 extern void setDisplayCenter(const Point& newDisplayCenter,Scalar newDisplaySize); // Sets the center and size of Vrui's display environment

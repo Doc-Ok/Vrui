@@ -1,7 +1,7 @@
 /***********************************************************************
 StandardFile - Class for high-performance reading/writing from/to
 standard operating system files.
-Copyright (c) 2010-2015 Oliver Kreylos
+Copyright (c) 2010-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -59,8 +59,8 @@ size_t StandardFile::readData(File::Byte* buffer,size_t bufferSize)
 	if(readResult<0)
 		{
 		/* Unknown error; probably a bad thing: */
-		int error=errno;
-		throw Error(Misc::printStdErrMsg("IO::StandardFile: Fatal error %d (%s) while reading from file",error,strerror(error)));
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::StandardFile: Fatal error %d (%s) while reading from file",errno,strerror(errno)));
 		}
 	
 	/* Advance the read pointer: */
@@ -102,8 +102,8 @@ void StandardFile::writeData(const File::Byte* buffer,size_t bufferSize)
 		else if(errno!=EAGAIN&&errno!=EWOULDBLOCK&&errno!=EINTR)
 			{
 			/* Unknown error; probably a bad thing: */
-			int error=errno;
-			throw Error(Misc::printStdErrMsg("IO::StandardFile: Fatal error %d (%s) while writing to file",error,strerror(error)));
+			char buffer[512];
+			throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::StandardFile: Fatal error %d (%s) while writing to file",errno,strerror(errno)));
 			}
 		}
 	}
@@ -141,8 +141,8 @@ size_t StandardFile::writeDataUpTo(const File::Byte* buffer,size_t bufferSize)
 	else
 		{
 		/* Unknown error; probably a bad thing: */
-		int error=errno;
-		throw Error(Misc::printStdErrMsg("IO::StandardFile: Fatal error %d (%s) while writing to file",error,strerror(error)));
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::StandardFile: Fatal error %d (%s) while writing to file",errno,strerror(errno)));
 		}
 	}
 
@@ -177,8 +177,8 @@ void StandardFile::openFile(const char* fileName,File::AccessMode accessMode,int
 	/* Check for errors and throw an exception: */
 	if(fd<0)
 		{
-		int error=errno;
-		throw OpenError(Misc::printStdErrMsg("IO::StandardFile: Unable to open file %s for %s due to error %d (%s)",fileName,getAccessModeName(accessMode),error,strerror(error)));
+		char buffer[512];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::StandardFile: Unable to open file %s for %s due to error %d (%s)",fileName,getAccessModeName(accessMode),errno,strerror(errno)));
 		}
 	}
 
@@ -232,8 +232,8 @@ SeekableFile::Offset StandardFile::getSize(void) const
 	struct stat statBuffer;
 	if(fstat(fd,&statBuffer)<0)
 		{
-		int error=errno;
-		throw Error(Misc::printStdErrMsg("IO::StandardFile: Error %d (%s) while determining file size",error,strerror(error)));
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::StandardFile: Error %d (%s) while determining file size",errno,strerror(errno)));
 		}
 	
 	/* Return the file size: */

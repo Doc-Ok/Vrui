@@ -1,6 +1,6 @@
 /***********************************************************************
 Config - Daemon for distributed VR device driver architecture.
-Copyright (c) 2014-2016 Oliver Kreylos
+Copyright (c) 2014-2020 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -23,8 +23,18 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #ifndef VRDEVICEDAEMON_CONFIG_INCLUDED
 #define VRDEVICEDAEMON_CONFIG_INCLUDED
 
-#define VRDEVICEDAEMON_CONFIG_VRDEVICESDIR "/home/okreylos/Share/VRDevices/lib64"
-#define VRDEVICEDAEMON_CONFIG_VRCALIBRATORSDIR "/home/okreylos/Share/VRCalibrators/lib64"
+#define VRDEVICEDAEMON_CONFIG_VRDEVICESDIR_DEBUG "/home/okreylos/Share/VRDevices/lib64/debug"
+#define VRDEVICEDAEMON_CONFIG_VRDEVICESDIR_RELEASE "/home/okreylos/Share/VRDevices/lib64"
+#define VRDEVICEDAEMON_CONFIG_VRCALIBRATORSDIR_DEBUG "/home/okreylos/Share/VRCalibrators/lib64/debug"
+#define VRDEVICEDAEMON_CONFIG_VRCALIBRATORSDIR_RELEASE "/home/okreylos/Share/VRCalibrators/lib64"
+#ifdef DEBUG
+	#define VRDEVICEDAEMON_CONFIG_VRDEVICESDIR VRDEVICEDAEMON_CONFIG_VRDEVICESDIR_DEBUG
+	#define VRDEVICEDAEMON_CONFIG_VRCALIBRATORSDIR VRDEVICEDAEMON_CONFIG_VRCALIBRATORSDIR_DEBUG
+#else
+	#define VRDEVICEDAEMON_CONFIG_VRDEVICESDIR VRDEVICEDAEMON_CONFIG_VRDEVICESDIR_RELEASE
+	#define VRDEVICEDAEMON_CONFIG_VRCALIBRATORSDIR VRDEVICEDAEMON_CONFIG_VRCALIBRATORSDIR_RELEASE
+#endif
+
 #define VRDEVICEDAEMON_CONFIG_DSONAMETEMPLATE "lib%s.so"
 
 #define VRDEVICEDAEMON_CONFIG_CONFIGFILENAME "/home/okreylos/Share/VRDevices.cfg"

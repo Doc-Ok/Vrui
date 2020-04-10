@@ -1,7 +1,7 @@
 /***********************************************************************
 ArcInfoExportFileNode - Class to represent an ARC/INFO export file as a
 collection of line sets, point sets, and face sets.
-Copyright (c) 2009-2011 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -23,13 +23,9 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #ifndef SCENEGRAPH_ARCINFOEXPORTFILENODE_INCLUDED
 #define SCENEGRAPH_ARCINFOEXPORTFILENODE_INCLUDED
 
+#include <IO/Directory.h>
 #include <SceneGraph/FieldTypes.h>
 #include <SceneGraph/GroupNode.h>
-
-/* Forward declarations: */
-namespace Cluster {
-class Multiplexer;
-}
 
 namespace SceneGraph {
 
@@ -43,7 +39,7 @@ class ArcInfoExportFileNode:public GroupNode
 	
 	/* Derived state: */
 	protected:
-	Cluster::Multiplexer* multiplexer; // Multiplexer to read ARC/INFO export files in a cluster environment
+	IO::DirectoryPtr baseDirectory; // Base directory for relative URLs
 	
 	/* Constructors and destructors: */
 	public:

@@ -1,7 +1,7 @@
 /***********************************************************************
 ArrayMarshallers - Generic marshaller classes for standard C-style
 arrays, with implicit or explicit array sizes or array wrapper classes.
-Copyright (c) 2010-2017 Oliver Kreylos
+Copyright (c) 2010-2020 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -67,7 +67,7 @@ class FixedArrayMarshaller // Marshaller class for arrays with a-priori known si
 	static void read(ValueParam* elements,size_t numElements,DataSourceParam& source)
 		{
 		for(size_t i=0;i<numElements;++i)
-			elements[i]=Marshaller<ValueParam>::read(source);
+			Marshaller<ValueParam>::read(source,elements[i]);
 		}
 	template <class StoredValueParam,class DataSourceParam>
 	static void read(StoredValueParam* elements,size_t numElements,DataSourceParam& source)
@@ -118,7 +118,7 @@ class DynamicArrayMarshaller // Marshaller class for arrays with explicit sizes
 		if(maxNumElements>numElements)
 			maxNumElements=numElements;
 		for(size_t i=0;i<maxNumElements;++i)
-			elements[i]=Marshaller<ValueParam>::read(source);
+			Marshaller<ValueParam>::read(source,elements[i]);
 		return numElements;
 		}
 	template <class StoredValueParam,class DataSourceParam>
@@ -135,7 +135,7 @@ class DynamicArrayMarshaller // Marshaller class for arrays with explicit sizes
 	static void readMore(ValueParam* elements,size_t numElements,DataSourceParam& source) // Reads additional elements from the source after an initial read filled its buffer
 		{
 		for(size_t i=0;i<numElements;++i)
-			elements[i]=Marshaller<ValueParam>::read(source);
+			Marshaller<ValueParam>::read(source,elements[i]);
 		}
 	template <class StoredValueParam,class DataSourceParam>
 	static void readMore(StoredValueParam* elements,size_t numElements,DataSourceParam& source) // Ditto, with value type conversion
@@ -155,7 +155,7 @@ class DynamicArrayMarshaller // Marshaller class for arrays with explicit sizes
 		size_t numElements=size_t(source.template read<Misc::UInt32>());
 		elements=new ValueParam[numElements];
 		for(size_t i=0;i<numElements;++i)
-			elements[i]=Marshaller<ValueParam>::read(source);
+			Marshaller<ValueParam>::read(source,elements[i]);
 		return numElements;
 		}
 	template <class StoredValueParam,class DataSourceParam>
@@ -202,12 +202,26 @@ class Marshaller<FixedArray<ElementParam,sizeParam> >
 			Marshaller<ElementParam>::write(ElementParam(value[i]),sink);
 		}
 	template <class DataSourceParam>
+	static FixedArray<ElementParam,sizeParam>& read(DataSourceParam& source,FixedArray<ElementParam,sizeParam>& value)
+		{
+		for(int i=0;i<sizeParam;++i)
+			Marshaller<ElementParam>::read(source,value[i]);
+		return value;
+		}
+	template <class DataSourceParam>
 	static FixedArray<ElementParam,sizeParam> read(DataSourceParam& source)
 		{
 		FixedArray<ElementParam,sizeParam> result;
 		for(int i=0;i<sizeParam;++i)
-			result[i]=Marshaller<ElementParam>::read(source);
+			Marshaller<ElementParam>::read(source,result[i]);
 		return result;
+		}
+	template <class StoredElementParam,class DataSourceParam>
+	static FixedArray<StoredElementParam,sizeParam>& read(DataSourceParam& source,FixedArray<StoredElementParam,sizeParam>& value)
+		{
+		for(int i=0;i<sizeParam;++i)
+			value[i]=StoredElementParam(Marshaller<ElementParam>::read(source));
+		return value;
 		}
 	template <class StoredElementParam,class DataSourceParam>
 	static FixedArray<StoredElementParam,sizeParam> read(DataSourceParam& source)

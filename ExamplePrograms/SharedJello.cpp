@@ -3,7 +3,7 @@ SharedJello - VR program to interact with "virtual Jell-O" in a
 collaborative VR environment using a client/server approach and a
 simplified force interaction model based on the Nanotech Construction
 Kit.
-Copyright (c) 2007-2016 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 
 This file is part of the Virtual Jell-O interactive VR demonstration.
 
@@ -28,12 +28,11 @@ Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <stdexcept>
 #include <iostream>
 #include <Misc/ThrowStdErr.h>
-#include <Cluster/OpenPipe.h>
+#include <Comm/OpenPipe.h>
 #include <Geometry/Plane.h>
 #include <Geometry/LinearUnit.h>
 #include <GL/gl.h>
 #include <GLMotif/StyleSheet.h>
-#include <GLMotif/WidgetManager.h>
 #include <GLMotif/PopupMenu.h>
 #include <GLMotif/PopupWindow.h>
 #include <GLMotif/RowColumn.h>
@@ -116,7 +115,7 @@ void SharedJello::updateSettingsDialog(void)
 
 GLMotif::PopupWindow* SharedJello::createSettingsDialog(void)
 	{
-	const GLMotif::StyleSheet& ss=*Vrui::getWidgetManager()->getStyleSheet();
+	const GLMotif::StyleSheet& ss=*Vrui::getUiStyleSheet();
 	
 	settingsDialog=new GLMotif::PopupWindow("SettingsDialog",Vrui::getWidgetManager(),"Settings Dialog");
 	settingsDialog->setCloseButton(true);
@@ -280,7 +279,7 @@ SharedJello::SharedJello(int& argc,char**& argv)
 		Misc::throwStdErr("SharedJello::SharedJello: No server host name or port ID provided");
 	
 	/* Connect to the shared Jell-O server: */
-	pipe=Cluster::openTCPPipe(Vrui::getClusterMultiplexer(),serverHostName,serverPortID);
+	pipe=Comm::openTCPPipe(serverHostName,serverPortID);
 	pipe->negotiateEndianness();
 	
 	/* Initiate the connection: */

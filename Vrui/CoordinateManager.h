@@ -2,7 +2,7 @@
 CoordinateManager - Class to manage the (navigation) coordinate system
 of a Vrui application to support system-wide navigation manipulation
 interfaces.
-Copyright (c) 2007-2010 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -50,12 +50,26 @@ class CoordinateManager
 			}
 		};
 	
+	class UnitChangedCallbackData:public CallbackData // Class for callback data sent when the unit of length measurement changes
+		{
+		/* Elements: */
+		public:
+		const Geometry::LinearUnit& oldUnit; // Previous unit of length measurement
+		const Geometry::LinearUnit& newUnit; // New unit of length measurement (not yet installed at the time callback is called)
+		
+		/* Constructors and destructors: */
+		UnitChangedCallbackData(const Geometry::LinearUnit& sOldUnit,const Geometry::LinearUnit& sNewUnit)
+			:oldUnit(sOldUnit),newUnit(sNewUnit)
+			{
+			}
+		};
+	
 	class CoordinateTransformChangedCallbackData:public CallbackData // Class for callback data sent when the user coordinate transformation changes
 		{
 		/* Elements: */
 		public:
 		CoordinateTransform* oldTransform; // Previous coordinate transformation
-		CoordinateTransform* newTransform; // New coordinate transformation (already installed at the time callback is called)
+		CoordinateTransform* newTransform; // New coordinate transformation (not yet installed at the time callback is called)
 		
 		/* Constructors and destructors: */
 		CoordinateTransformChangedCallbackData(CoordinateTransform* sOldTransform,CoordinateTransform* sNewTransform)
@@ -69,6 +83,7 @@ class CoordinateManager
 	
 	/* Current coordinate unit: */
 	Geometry::LinearUnit unit; // Unit of length measurements
+	Misc::CallbackList unitChangedCallbacks; // List of callbacks to be called when the unit of length measurement changes
 	
 	/* Current coordinate transformation: */
 	CoordinateTransform* transform; // Coordinate transformation from navigation space to "user interest space," used by measurement tools
@@ -93,6 +108,10 @@ class CoordinateManager
 	CoordinateTransform* getCoordinateTransform(void) // Ditto
 		{
 		return transform;
+		}
+	Misc::CallbackList& getUnitChangedCallbacks(void) // Returns the list of unit of length measurement change callbacks
+		{
+		return unitChangedCallbacks;
 		}
 	Misc::CallbackList& getCoordinateTransformChangedCallbacks(void) // Returns the list of coordinate transformation change callbacks
 		{

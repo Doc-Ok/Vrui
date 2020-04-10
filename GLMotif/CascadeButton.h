@@ -1,7 +1,7 @@
 /***********************************************************************
 CascadeButton - Class for buttons that pop up secondary top-level
 GLMotif UI components.
-Copyright (c) 2001-2015 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -41,8 +41,7 @@ class CascadeButton:public DecoratedButton
 	Popup* popup; // Window to pop up when button is selected
 	bool isPopped; // Flag if the popup window is displayed
 	Point popupBottom,popupTop; // Bottom-left and top-left corners of popup in button's coordinate system
-	Point lastEventPos; // Last event position for which findRecipient was called
-	Point foundPos; // Event position in current event processing round
+	Point popupPos; // Event position when the popup was initially popped up
 	Widget* foundWidget; // Widget that responded to the last findRecipient call
 	GlyphGadget arrow; // The cascade button's arrow glyph
 	
@@ -62,6 +61,7 @@ class CascadeButton:public DecoratedButton
 	virtual ZRange calcZRange(void) const;
 	virtual void resize(const Box& newExterior);
 	virtual void setBackgroundColor(const Color& newBackgroundColor);
+	virtual void updateVariables(void);
 	virtual bool findRecipient(Event& event);
 	virtual void pointerButtonDown(Event& event);
 	virtual void pointerButtonUp(Event& event);

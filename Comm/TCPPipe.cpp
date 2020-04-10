@@ -1,7 +1,7 @@
 /***********************************************************************
 TCPPipe - Class for high-performance reading/writing from/to connected
 TCP sockets.
-Copyright (c) 2010-2016 Oliver Kreylos
+Copyright (c) 2010-2019 Oliver Kreylos
 
 This file is part of the Portable Communications Library (Comm).
 
@@ -70,8 +70,8 @@ size_t TCPPipe::readData(IO::File::Byte* buffer,size_t bufferSize)
 	if(readResult<0)
 		{
 		/* Unknown error; probably a bad thing: */
-		int error=errno;
-		throw Error(Misc::printStdErrMsg(pipeReadErrorString,error,strerror(error)));
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),pipeReadErrorString,errno,strerror(errno)));
 		}
 	
 	return size_t(readResult);
@@ -102,8 +102,8 @@ void TCPPipe::writeData(const IO::File::Byte* buffer,size_t bufferSize)
 		else if(errno!=EAGAIN&&errno!=EWOULDBLOCK&&errno!=EINTR)
 			{
 			/* Unknown error; probably a bad thing: */
-			int error=errno;
-			throw Error(Misc::printStdErrMsg(pipeWriteErrorString,error,strerror(error)));
+			char buffer[512];
+			throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),pipeWriteErrorString,errno,strerror(errno)));
 			}
 		}
 	}
@@ -132,8 +132,8 @@ size_t TCPPipe::writeDataUpTo(const IO::File::Byte* buffer,size_t bufferSize)
 	else
 		{
 		/* Unknown error; probably a bad thing: */
-		int error=errno;
-		throw Error(Misc::printStdErrMsg(pipeWriteErrorString,error,strerror(error)));
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),pipeWriteErrorString,errno,strerror(errno)));
 		}
 	}
 
@@ -163,7 +163,10 @@ TCPPipe::TCPPipe(const char* hostName,int portId)
 	{
 	/* Convert port ID to string for getaddrinfo (awkward!): */
 	if(portId<0||portId>65535)
-		throw OpenError(Misc::printStdErrMsg("Comm::TCPPipe::TCPPipe: Invalid port %d",portId));
+		{
+		char buffer[512];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::TCPPipe::TCPPipe: Invalid port %d",portId));
+		}
 	char portIdBuffer[6];
 	char* portIdString=Misc::print(portId,portIdBuffer+5);
 	
@@ -177,7 +180,10 @@ TCPPipe::TCPPipe(const char* hostName,int portId)
 	struct addrinfo* addresses;
 	int aiResult=getaddrinfo(hostName,portIdString,&hints,&addresses);
 	if(aiResult!=0)
-		throw OpenError(Misc::printStdErrMsg("Comm::TCPPipe::TCPPipe: Unable to resolve host name %s due to error %s",hostName,gai_strerror(aiResult)));
+		{
+		char buffer[512];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::TCPPipe::TCPPipe: Unable to resolve host name %s due to error %s",hostName,gai_strerror(aiResult)));
+		}
 	
 	/* Try all returned addresses in order until one successfully connects: */
 	for(struct addrinfo* aiPtr=addresses;aiPtr!=0;aiPtr=aiPtr->ai_next)
@@ -201,7 +207,10 @@ TCPPipe::TCPPipe(const char* hostName,int portId)
 	
 	/* Check if connection setup failed: */
 	if(fd<0)
-		throw OpenError(Misc::printStdErrMsg("Comm::TCPPipe::TCPPipe: Unable to connect to host %s on port %d",hostName,portId));
+		{
+		char buffer[512];
+		throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::TCPPipe::TCPPipe: Unable to connect to host %s on port %d",hostName,portId));
+		}
 	
 	/* Turn off socket-level buffering: */
 	disableNagle(fd);
@@ -227,7 +236,7 @@ TCPPipe::~TCPPipe(void)
 		/* Flush the write buffer: */
 		flush();
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Print an error message and carry on: */
 		Misc::formattedUserError("Comm::TCPPipe: Caught exception \"%s\" while closing pipe",err.what());
@@ -291,7 +300,10 @@ int TCPPipe::getPortId(void) const
 	char portIdBuffer[NI_MAXSERV];
 	int niResult=getnameinfo(reinterpret_cast<const struct sockaddr*>(&socketAddress),socketAddressLen,0,0,portIdBuffer,sizeof(portIdBuffer),NI_NUMERICSERV);
 	if(niResult!=0)
-		throw Error(Misc::printStdErrMsg("Comm::TCPPipe::getPortId: Unable to retrieve port ID due to error %s",gai_strerror(niResult)));
+		{
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::TCPPipe::getPortId: Unable to retrieve port ID due to error %s",gai_strerror(niResult)));
+		}
 	
 	/* Convert the port ID string to a number: */
 	int result=0;
@@ -313,7 +325,10 @@ std::string TCPPipe::getAddress(void) const
 	char addressBuffer[NI_MAXHOST];
 	int niResult=getnameinfo(reinterpret_cast<const struct sockaddr*>(&socketAddress),socketAddressLen,addressBuffer,sizeof(addressBuffer),0,0,NI_NUMERICHOST);
 	if(niResult!=0)
-		throw Error(Misc::printStdErrMsg("Comm::TCPPipe::getAddress: Unable to retrieve address due to error %s",gai_strerror(niResult)));
+		{
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::TCPPipe::getAddress: Unable to retrieve address due to error %s",gai_strerror(niResult)));
+		}
 	
 	return addressBuffer;
 	}
@@ -330,7 +345,10 @@ std::string TCPPipe::getHostName(void) const
 	char hostNameBuffer[NI_MAXHOST];
 	int niResult=getnameinfo(reinterpret_cast<const struct sockaddr*>(&socketAddress),socketAddressLen,hostNameBuffer,sizeof(hostNameBuffer),0,0,0);
 	if(niResult!=0)
-		throw Error(Misc::printStdErrMsg("Comm::TCPPipe::getHostName: Unable to retrieve host name due to error %s",gai_strerror(niResult)));
+		{
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::TCPPipe::getHostName: Unable to retrieve host name due to error %s",gai_strerror(niResult)));
+		}
 	
 	return hostNameBuffer;
 	}
@@ -347,7 +365,10 @@ int TCPPipe::getPeerPortId(void) const
 	char portIdBuffer[NI_MAXSERV];
 	int niResult=getnameinfo(reinterpret_cast<const struct sockaddr*>(&socketAddress),socketAddressLen,0,0,portIdBuffer,sizeof(portIdBuffer),NI_NUMERICSERV);
 	if(niResult!=0)
-		throw Error(Misc::printStdErrMsg("Comm::TCPPipe::getPeerPortId: Unable to retrieve peer port ID due to error %s",gai_strerror(niResult)));
+		{
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::TCPPipe::getPeerPortId: Unable to retrieve peer port ID due to error %s",gai_strerror(niResult)));
+		}
 	
 	/* Convert the port ID string to a number: */
 	int result=0;
@@ -369,7 +390,10 @@ std::string TCPPipe::getPeerAddress(void) const
 	char addressBuffer[NI_MAXHOST];
 	int niResult=getnameinfo(reinterpret_cast<const struct sockaddr*>(&socketAddress),socketAddressLen,addressBuffer,sizeof(addressBuffer),0,0,NI_NUMERICHOST);
 	if(niResult!=0)
-		throw Error(Misc::printStdErrMsg("Comm::TCPPipe::getPeerAddress: Unable to retrieve peer address due to error %s",gai_strerror(niResult)));
+		{
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::TCPPipe::getPeerAddress: Unable to retrieve peer address due to error %s",gai_strerror(niResult)));
+		}
 	
 	return addressBuffer;
 	}
@@ -386,7 +410,10 @@ std::string TCPPipe::getPeerHostName(void) const
 	char hostNameBuffer[NI_MAXHOST];
 	int niResult=getnameinfo(reinterpret_cast<const struct sockaddr*>(&socketAddress),socketAddressLen,hostNameBuffer,sizeof(hostNameBuffer),0,0,0);
 	if(niResult!=0)
-		throw Error(Misc::printStdErrMsg("Comm::TCPPipe::getPeerHostName: Unable to retrieve peer host name due to error %s",gai_strerror(niResult)));
+		{
+		char buffer[512];
+		throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"Comm::TCPPipe::getPeerHostName: Unable to retrieve peer host name due to error %s",gai_strerror(niResult)));
+		}
 	
 	return hostNameBuffer;
 	}

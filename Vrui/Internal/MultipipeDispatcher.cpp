@@ -1,7 +1,7 @@
 /***********************************************************************
 MultipipeDispatcher - Class to distribute input device and ancillary
 data between the nodes in a multipipe VR environment.
-Copyright (c) 2004-2013 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -24,6 +24,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Vrui/Internal/MultipipeDispatcher.h>
 
 #include <Misc/ThrowStdErr.h>
+#include <Misc/Marshaller.h>
 #include <Misc/StringMarshaller.h>
 #include <Cluster/MulticastPipe.h>
 #include <GL/GLMarshallers.h>
@@ -81,7 +82,7 @@ MultipipeDispatcher::MultipipeDispatcher(InputDeviceManager* sInputDeviceManager
 			Glyph& glyph=inputDeviceManager->getInputGraphManager()->getInputDeviceGlyph(device);
 			pipe->write<char>(glyph.isEnabled()?1:0);
 			pipe->write<int>(glyph.getGlyphType());
-			Misc::Marshaller<GLMaterial>::write(glyph.getGlyphMaterial(),*pipe);
+			Misc::write(glyph.getGlyphMaterial(),*pipe);
 			
 			/* Send all button names: */
 			for(int buttonIndex=0;buttonIndex<device->getNumButtons();++buttonIndex)

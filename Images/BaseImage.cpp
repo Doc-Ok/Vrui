@@ -2,7 +2,7 @@
 BaseImage - Generic base class to represent images of arbitrary pixel
 formats. The image coordinate system is such that pixel (0,0) is in the
 lower-left corner.
-Copyright (c) 2016-2018 Oliver Kreylos
+Copyright (c) 2016-2020 Oliver Kreylos
 
 This file is part of the Image Handling Library (Images).
 
@@ -26,6 +26,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <stddef.h>
 #include <string.h>
 #include <stdexcept>
+#include <Misc/SizedTypes.h>
+#include <IO/File.h>
 #include <Math/Math.h>
 #include <GL/Extensions/GLEXTFramebufferObject.h>
 
@@ -717,6 +719,114 @@ inline GLdouble convertColorScalar<GLushort,GLdouble>(GLushort value)
 Methods of class BaseImage:
 **************************/
 
+BaseImage::BaseImage(IO::File& imageFile)
+	:rep(0)
+	{
+	/* Read the image's format: */
+	unsigned int size[2];
+	for(int i=0;i<2;++i)
+		size[i]=(unsigned int)(imageFile.read<Misc::UInt32>());
+	unsigned int numChannels=(unsigned int)(imageFile.read<Misc::UInt8>());
+	unsigned int channelSize=(unsigned int)(imageFile.read<Misc::UInt8>());
+	GLenum format=GLenum(imageFile.read<Misc::UInt32>());
+	GLenum scalarType=GLenum(imageFile.read<Misc::UInt32>());
+	
+	/* Create an image representation: */
+	rep=new ImageRepresentation(size[0],size[1],numChannels,channelSize,format,scalarType);
+	
+	/* Read the image's pixels: */
+	size_t numComponents=size_t(size[1])*size_t(size[0])*size_t(numChannels);
+	switch(scalarType)
+		{
+		case GL_BYTE:
+			imageFile.read(static_cast<signed char*>(rep->image),numComponents);
+			break;
+		
+		case GL_UNSIGNED_BYTE:
+			imageFile.read(static_cast<unsigned char*>(rep->image),numComponents);
+			break;
+		
+		case GL_SHORT:
+			imageFile.read(static_cast<signed short*>(rep->image),numComponents);
+			break;
+		
+		case GL_UNSIGNED_SHORT:
+			imageFile.read(static_cast<unsigned short*>(rep->image),numComponents);
+			break;
+		
+		case GL_INT:
+			imageFile.read(static_cast<signed int*>(rep->image),numComponents);
+			break;
+		
+		case GL_UNSIGNED_INT:
+			imageFile.read(static_cast<unsigned int*>(rep->image),numComponents);
+			break;
+		
+		case GL_FLOAT:
+			imageFile.read(static_cast<float*>(rep->image),numComponents);
+			break;
+		
+		case GL_DOUBLE:
+			imageFile.read(static_cast<double*>(rep->image),numComponents);
+			break;
+		
+		default:
+			rep->detach();
+			throw std::runtime_error("Images::BaseImage::BaseImage: Image file has unsupported pixel format");
+		}
+	}
+
+void BaseImage::write(IO::File& imageFile) const
+	{
+	/* Write the image's format: */
+	for(int i=0;i<2;++i)
+		imageFile.write(Misc::UInt32(rep->size[i]));
+	imageFile.write(Misc::UInt8(rep->numChannels));
+	imageFile.write(Misc::UInt8(rep->channelSize));
+	imageFile.write(Misc::UInt32(rep->format));
+	imageFile.write(Misc::UInt32(rep->scalarType));
+	
+	/* Write the image's pixels: */
+	size_t numComponents=size_t(rep->size[1])*size_t(rep->size[0])*size_t(rep->numChannels);
+	switch(rep->scalarType)
+		{
+		case GL_BYTE:
+			imageFile.write(static_cast<const signed char*>(rep->image),numComponents);
+			break;
+		
+		case GL_UNSIGNED_BYTE:
+			imageFile.write(static_cast<const unsigned char*>(rep->image),numComponents);
+			break;
+		
+		case GL_SHORT:
+			imageFile.write(static_cast<const signed short*>(rep->image),numComponents);
+			break;
+		
+		case GL_UNSIGNED_SHORT:
+			imageFile.write(static_cast<const unsigned short*>(rep->image),numComponents);
+			break;
+		
+		case GL_INT:
+			imageFile.write(static_cast<const signed int*>(rep->image),numComponents);
+			break;
+		
+		case GL_UNSIGNED_INT:
+			imageFile.write(static_cast<const unsigned int*>(rep->image),numComponents);
+			break;
+		
+		case GL_FLOAT:
+			imageFile.write(static_cast<const float*>(rep->image),numComponents);
+			break;
+		
+		case GL_DOUBLE:
+			imageFile.write(static_cast<const double*>(rep->image),numComponents);
+			break;
+		
+		default:
+			throw std::runtime_error("Images::BaseImage::write: Image file has unsupported pixel format");
+		}
+	}
+
 BaseImage BaseImage::dropAlpha(void) const
 	{
 	/* Process the image based on its format: */
@@ -964,12 +1074,6 @@ void BaseImage::glTexImage2D(GLenum target,GLint level,GLint internalFormat,bool
 
 void BaseImage::glTexImage2DMipmap(GLenum target,GLint internalFormat,bool padImageSize) const
 	{
-	/* Set up pixel processing pipeline: */
-	glPixelStorei(GL_UNPACK_ALIGNMENT,1);
-	glPixelStorei(GL_UNPACK_SKIP_PIXELS,0);
-	glPixelStorei(GL_UNPACK_ROW_LENGTH,0);
-	glPixelStorei(GL_UNPACK_SKIP_ROWS,0);
-	
 	/* Set the texture's mipmap level range: */
 	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_BASE_LEVEL,0);
 	

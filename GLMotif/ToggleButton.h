@@ -1,6 +1,6 @@
 /***********************************************************************
 ToggleButton - Class for buttons displaying a binary (on/off) status.
-Copyright (c) 2001-2010 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -24,11 +24,12 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <Misc/CallbackData.h>
 #include <Misc/CallbackList.h>
+#include <GLMotif/VariableTracker.h>
 #include <GLMotif/DecoratedButton.h>
 
 namespace GLMotif {
 
-class ToggleButton:public DecoratedButton
+class ToggleButton:public DecoratedButton,public VariableTracker
 	{
 	/* Embedded classes: */
 	public:
@@ -78,9 +79,18 @@ class ToggleButton:public DecoratedButton
 	ToggleButton(const char* sName,Container* sParent,const char* sLabel,const GLFont* sFont,bool manageChild =true); // Deprecated
 	ToggleButton(const char* sName,Container* sParent,const char* sLabel,bool manageChild =true);
 	
-	/* Methods inherited from Widget: */
+	/* Methods from class Widget: */
 	virtual ZRange calcZRange(void) const;
 	virtual void resize(const Box& newExterior);
+	virtual void updateVariables(void);
+	
+	/* Methods from class VariableTracker: */
+	template <class VariableTypeParam>
+	void track(VariableTypeParam& newVariable) // Tracks the given variable and sets its initial value
+		{
+		setToggle(newVariable);
+		VariableTracker::track(newVariable);
+		}
 	
 	/* New methods: */
 	ToggleType getToggleType(void) const
@@ -100,7 +110,9 @@ class ToggleButton:public DecoratedButton
 		}
 	void setToggle(bool newSet)
 		{
+		/* Update the toggle state and a potentially tracked variable: */
 		setSet(newSet);
+		setTrackedBool(newSet);
 		}
 	Misc::CallbackList& getValueChangedCallbacks(void) // Returns list of callbacks called when the toggle button's state changes
 		{

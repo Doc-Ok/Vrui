@@ -1,7 +1,7 @@
 /***********************************************************************
 GzipFilter - Class for read/write access to gzip-compressed files using
 a IO::File abstraction.
-Copyright (c) 2011-2016 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -24,7 +24,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <Misc/ThrowStdErr.h>
 #include <Misc/MessageLogger.h>
-#include <IO/StandardFile.h>
+#include <IO/OpenFile.h>
 
 namespace IO {
 
@@ -66,7 +66,10 @@ size_t GzipFilter::readData(File::Byte* buffer,size_t bufferSize)
 			if(inflateEnd(&stream)!=Z_OK)
 				{
 				if(stream.msg!=0)
-					throw Error(Misc::printStdErrMsg("IO::GzipFilter: Error \"%s\" after decompression",stream.msg));
+					{
+					char buffer[512];
+					throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::GzipFilter: Error \"%s\" after decompression",stream.msg));
+					}
 				else
 					throw Error("IO::GzipFilter: Data corruption detected after decompression");
 				}
@@ -75,7 +78,10 @@ size_t GzipFilter::readData(File::Byte* buffer,size_t bufferSize)
 		else if(result!=Z_OK)
 			{
 			if(stream.msg!=0)
-				throw Error(Misc::printStdErrMsg("IO::GzipFilter: Error \"%s\" while decompressing",stream.msg));
+				{
+				char buffer[512];
+				throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::GzipFilter: Error \"%s\" while decompressing",stream.msg));
+				}
 			else
 				throw Error("IO::GzipFilter: Internal zlib error while decompressing");
 			}
@@ -104,7 +110,10 @@ void GzipFilter::writeData(const File::Byte* buffer,size_t bufferSize)
 		if(deflate(&stream,Z_NO_FLUSH)!=Z_OK)
 			{
 			if(stream.msg!=0)
-				throw Error(Misc::printStdErrMsg("IO::GzipFilter: Error \"%s\" while compressing",stream.msg));
+				{
+				char buffer[512];
+				throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::GzipFilter: Error \"%s\" while compressing",stream.msg));
+				}
 			else
 				throw Error("IO::GzipFilter: Internal zlib error while compressing");
 			}
@@ -136,7 +145,10 @@ size_t GzipFilter::writeDataUpTo(const File::Byte* buffer,size_t bufferSize)
 	if(deflate(&stream,Z_NO_FLUSH)!=Z_OK)
 		{
 		if(stream.msg!=0)
-			throw Error(Misc::printStdErrMsg("IO::GzipFilter: Error \"%s\" while compressing",stream.msg));
+			{
+			char buffer[512];
+			throw Error(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::GzipFilter: Error \"%s\" while compressing",stream.msg));
+			}
 		else
 			throw Error("IO::GzipFilter: Internal zlib error while compressing");
 		}
@@ -168,15 +180,18 @@ void GzipFilter::init(void)
 		stream.zalloc=Z_NULL;
 		stream.zfree=Z_NULL;
 		stream.opaque=0;
-		if(inflateInit2(&stream,15+16)!=Z_OK) // Detect only gzip headers
+		if(inflateInit2(&stream,15+32)!=Z_OK) // Detect zlib and gzip headers
 			{
 			if(stream.msg!=0)
-				throw OpenError(Misc::printStdErrMsg("IO::GzipFilter: Error \"%s\" during initialization",stream.msg));
+				{
+				char buffer[512];
+				throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::GzipFilter: Error \"%s\" during initialization",stream.msg));
+				}
 			else
 				throw OpenError("IO::GzipFilter: Internal zlib error during initialization");
 			}
 		
-		/* Read the gzip header to determine if the file really is gzip-compressed: */
+		/* Read the compressed data header to determine if the file really is zlib- or gzip-compressed: */
 		while(stream.avail_in==0)
 			{
 			/* Read the next glob of compressed data: */
@@ -212,7 +227,10 @@ void GzipFilter::init(void)
 		if(deflateInit2(&stream,Z_DEFAULT_COMPRESSION,Z_DEFLATED,15+16,8,Z_DEFAULT_STRATEGY)!=Z_OK)
 			{
 			if(stream.msg!=0)
-				throw OpenError(Misc::printStdErrMsg("IO::GzipFilter: Error \"%s\" during initialization",stream.msg));
+				{
+				char buffer[512];
+				throw OpenError(Misc::printStdErrMsgReentrant(buffer,sizeof(buffer),"IO::GzipFilter: Error \"%s\" during initialization",stream.msg));
+				}
 			else
 				throw OpenError("IO::GzipFilter: Internal zlib error during initialization");
 			}
@@ -229,7 +247,7 @@ GzipFilter::GzipFilter(FilePtr sGzippedFile)
 
 GzipFilter::GzipFilter(const char* gzippedFileName,File::AccessMode sAccessMode)
 	:File(),
-	 gzippedFile(new IO::StandardFile(gzippedFileName,sAccessMode)),
+	 gzippedFile(IO::openFile(gzippedFileName,sAccessMode)),
 	 readEof(false)
 	{
 	init();

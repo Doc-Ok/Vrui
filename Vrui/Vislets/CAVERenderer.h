@@ -1,7 +1,7 @@
 /***********************************************************************
 CAVERenderer - Vislet class to render the default KeckCAVES backround
 image seamlessly inside a VR application.
-Copyright (c) 2005-2018 Oliver Kreylos
+Copyright (c) 2005-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -119,8 +119,8 @@ class CAVERenderer:public Vislet,public GLObject
 	/* Methods: */
 	public:
 	virtual VisletFactory* getFactory(void) const;
-	virtual void disable(void);
-	virtual void enable(void);
+	virtual void enable(bool startup);
+	virtual void disable(bool shutdown);
 	virtual void initContext(GLContextData& contextData) const;
 	virtual void frame(void);
 	virtual void display(GLContextData& contextData) const;

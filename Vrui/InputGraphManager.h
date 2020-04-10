@@ -2,7 +2,7 @@
 InputGraphManager - Class to maintain the bipartite input device / tool
 graph formed by tools being assigned to input devices, and input devices
 in turn being grabbed by tools.
-Copyright (c) 2004-2018 Oliver Kreylos
+Copyright (c) 2004-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -153,8 +153,8 @@ class InputGraphManager
 		~GraphInputDevice(void); // Destroys the graph wrapper
 		};
 	
-	typedef Misc::HashTable<InputDevice*,GraphInputDevice*> DeviceMap; // Hash table to map from input devices to graph input devices
-	typedef Misc::HashTable<Tool*,GraphTool*> ToolMap; // Hash table to map from tools to graph tools
+	typedef Misc::HashTable<const InputDevice*,GraphInputDevice*> DeviceMap; // Hash table to map from input devices to graph input devices
+	typedef Misc::HashTable<const Tool*,GraphTool*> ToolMap; // Hash table to map from tools to graph tools
 	
 	/* Elements: */
 	GlyphRenderer* glyphRenderer; // Pointer to the glyph renderer
@@ -207,14 +207,38 @@ class InputGraphManager
 	void loadInputGraph(const Misc::ConfigurationFileSection& configFileSection); // Loads all virtual input devices and tools defined in the given configuration file section
 	void loadInputGraph(IO::Directory& directory,const char* configurationFileName,const char* baseSectionName); // Ditto
 	void saveInputGraph(IO::Directory& directory,const char* configurationFileName,const char* baseSectionName) const; // Saves the current state of all virtual input devices and assigned tools to the given section in the given configuration file
-	bool isNavigational(InputDevice* device) const; // Returns whether the given device will follow navigation coordinates while ungrabbed
+	bool isNavigational(const InputDevice* device) const // Returns whether the given device will follow navigation coordinates while ungrabbed
+		{
+		/* Get pointer to the graph input device and return device's navigational flag: */
+		return deviceMap.getEntry(device).getDest()->navigational;
+		}
 	void setNavigational(InputDevice* device,bool newNavigational); // Sets whether the given device will follow navigation coordinates while ungrabbed
 	Glyph& getInputDeviceGlyph(InputDevice* device); // Returns the glyph associated with the given input device
-	bool isReal(InputDevice* device) const; // Returns true if the given input device is a real device
-	bool isGrabbed(InputDevice* device) const; // Returns true if the given input device is currently grabbed by a tool
-	bool isEnabled(InputDevice* device) const; // Returns true if the given input device is currently enabled
+	bool isReal(const InputDevice* device) const // Returns true if the given input device is a real device
+		{
+		/* Get pointer to the graph input device and return true if device is in graph level 0: */
+		return deviceMap.getEntry(device).getDest()->level==0;
+		}
+	bool isGrabbed(const InputDevice* device) const // Returns true if the given input device is currently grabbed by a tool
+		{
+		/* Get pointer to the graph input device and return true if device has a grabber: */
+		return deviceMap.getEntry(device).getDest()->grabber!=0;
+		}
+	bool isEnabled(const InputDevice* device) const // Returns true if the given input device is currently enabled
+		{
+		/* Get pointer to the graph input device and return device's enabled flag: */
+		return deviceMap.getEntry(device).getDest()->enabled;
+		}
 	void disable(InputDevice* device); // Disables the given input device; does nothing if device is already disabled
 	void enable(InputDevice* device); // Enables the given input device; does nothing if device is already enabled
+	void setEnabled(InputDevice* device,bool newEnabled) // Sets the given device's enabled flag
+		{
+		/* Forward the call to the other methods: */
+		if(newEnabled)
+			enable(device);
+		else
+			disable(device);
+		}
 	InputDevice* getFirstInputDevice(void); // Returns pointer to the first ungrabbed and enabled input device
 	InputDevice* getNextInputDevice(InputDevice* device); // Returns pointer to the next enabled input device in the same level after the given one
 	InputDevice* findInputDevice(const Point& position,bool ungrabbedOnly =true); // Finds an ungrabbed and enabled input device based on a position in physical coordinates

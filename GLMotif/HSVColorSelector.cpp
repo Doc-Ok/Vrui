@@ -1,7 +1,7 @@
 /***********************************************************************
 HSVColorSelector - Class for widgets to display and select colors based
 on the HSV color model.
-Copyright (c) 2012-2013 Oliver Kreylos
+Copyright (c) 2012-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -38,6 +38,112 @@ namespace GLMotif {
 Methods of class HSVColorSelector:
 *********************************/
 
+void HSVColorSelector::setColor(const Color& newColor)
+	{
+	/* Calculate the new color's brightness value and smallest color component: */
+	currentValue=newColor[0];
+	int minComp=0;
+	for(int i=1;i<3;++i)
+		{
+		if(currentValue<newColor[i])
+			currentValue=newColor[i];
+		if(newColor[minComp]>newColor[i])
+			minComp=i;
+		}
+	
+	if(currentValue>0.0f)
+		{
+		/* Scale the color to the full hue/saturation range: */
+		GLfloat nc[3];
+		for(int i=0;i<3;++i)
+			nc[i]=newColor[i]/currentValue;
+		
+		/*******************************************************************
+		The following code uses barycentric interpolation in each of the
+		color hexagon's six triangles to determine the 2D position of the
+		color indicator based on the new RGB color.
+		It's best to draw a diagram of the hexagon, and label the corners
+		and the center point with their RGB color values to understand this.
+		*******************************************************************/
+		
+		/* Determine the color triangle containing the new color: */
+		GLfloat s=Math::sin(Math::rad(30.0f));
+		GLfloat c=Math::cos(Math::rad(30.0f));
+		if(minComp==0) // Color is in green-cyan-blue triangles
+			{
+			if(nc[1]>=nc[2])
+				{
+				/* Color is in green-cyan triangle: */
+				currentColorPos[0]=(1.0f-nc[2])*-c;
+				currentColorPos[1]=(1.0f-nc[2])*-s-(nc[2]-nc[0]);
+				}
+			else
+				{
+				/* Color is in cyan-blue triangle: */
+				currentColorPos[0]=(1.0f-nc[1])*c;
+				currentColorPos[1]=(1.0f-nc[1])*-s-(nc[1]-nc[0]);
+				}
+			}
+		else if(minComp==1) // Color is in blue-magenta-red triangles
+			{
+			if(nc[2]>=nc[0])
+				{
+				/* Color is in blue-magenta triangle: */
+				currentColorPos[0]=(1.0f-nc[1])*c;
+				currentColorPos[1]=(2.0f*nc[0]-nc[1]-1.0f)*s;
+				}
+			else
+				{
+				/* Color is in magenta-red triangle: */
+				currentColorPos[0]=(nc[2]-nc[1])*c;
+				currentColorPos[1]=(nc[2]-nc[1])*s+(1.0f-nc[2]);
+				}
+			}
+		else // Color is in red-yellow-green triangles
+			{
+			if(nc[0]>=nc[1])
+				{
+				/* Color is in red-yellow triangle: */
+				currentColorPos[0]=(nc[1]-nc[2])*-c;
+				currentColorPos[1]=(nc[1]-nc[2])*s+(1.0f-nc[1]);
+				}
+			else
+				{
+				/* Color is in yellow-green triangle: */
+				currentColorPos[0]=(1.0f-nc[2])*-c;
+				currentColorPos[1]=(2.0f*nc[0]-nc[2]-1.0f)*s;
+				}
+			}
+		}
+	else
+		{
+		/* Set the color position for black to the center: */
+		currentColorPos[0]=currentColorPos[1]=0.0f;
+		}
+	
+	/* Set the slider's current value: */
+	slider->setValue(currentValue);
+	}
+
+void HSVColorSelector::updateColor(void)
+	{
+	/* Update the visual representation: */
+	update();
+	
+	/* Calculate the new color: */
+	Color color=getCurrentColor();
+	
+	if(trackedColor!=0)
+		{
+		/* Update the tracked color variable: */
+		*trackedColor=color;
+		}
+	
+	/* Call the value changed callbacks: */
+	ValueChangedCallbackData myCbData(this,color);
+	valueChangedCallbacks.call(&myCbData);
+	}
+
 void HSVColorSelector::sliderDraggingCallback(DragWidget::DraggingCallbackData* cbData)
 	{
 	/* Forward the callback to our own listeners: */
@@ -50,18 +156,15 @@ void HSVColorSelector::sliderValueChangedCallback(Slider::ValueChangedCallbackDa
 	/* Get the new current value from the slider: */
 	currentValue=cbData->value;
 	
-	/* Update the visual representation: */
-	update();
-	
-	/* Call the value changed callbacks: */
-	ValueChangedCallbackData myCbData(this,getCurrentColor());
-	valueChangedCallbacks.call(&myCbData);
+	/* Update the color selector: */
+	updateColor();
 	}
 
 HSVColorSelector::HSVColorSelector(const char* sName,Container* sParent,bool sManageChild)
 	:Container(sName,sParent,false),
 	 slider(new Slider("Slider",this,Slider::VERTICAL,0.0f,false)),
-	 snapping(false)
+	 snapping(false),
+	 trackedColor(0)
 	{
 	/* Initialize the widget's layout: */
 	const StyleSheet* ss=getStyleSheet();
@@ -98,7 +201,7 @@ HSVColorSelector::~HSVColorSelector(void)
 
 Vector HSVColorSelector::calcNaturalSize(void) const
 	{
-	/* Calculate the width and height of the color hexagon: */
+	/* Calculate the minimal width and height of the color hexagon: */
 	Vector result;
 	result[0]=Math::cos(Math::rad(30.0f))*preferredSize;
 	result[1]=preferredSize;
@@ -154,6 +257,15 @@ void HSVColorSelector::resize(const Box& newExterior)
 	if(hexRadius>hexBox.size[1]-marginWidth*2.0f)
 		hexRadius=hexBox.size[1]-marginWidth*2.0f;
 	hexRadius*=0.5f;
+	}
+
+void HSVColorSelector::updateVariables(void)
+	{
+	if(trackedColor!=0)
+		{
+		/* Set the color selector to the value of the tracked color variable: */
+		setColor(*trackedColor);
+		}
 	}
 
 void HSVColorSelector::draw(GLContextData& contextData) const
@@ -395,12 +507,8 @@ void HSVColorSelector::pointerMotion(Event& event)
 				currentColorPos[i]=closestColor[i];
 			}
 		
-		/* Call the value changed callbacks: */
-		ValueChangedCallbackData cbData(this,getCurrentColor());
-		valueChangedCallbacks.call(&cbData);
-		
-		/* Update the visual representation: */
-		update();
+		/* Update the color selector: */
+		updateColor();
 		}
 	}
 
@@ -559,89 +667,23 @@ Color HSVColorSelector::getCurrentColor(void) const
 
 void HSVColorSelector::setCurrentColor(const Color& newColor)
 	{
-	/* Calculate the new color's brightness value and smallest color component: */
-	currentValue=newColor[0];
-	int minComp=0;
-	for(int i=1;i<3;++i)
-		{
-		if(currentValue<newColor[i])
-			currentValue=newColor[i];
-		if(newColor[minComp]>newColor[i])
-			minComp=i;
-		}
+	/* Update the color selector: */
+	setColor(newColor);
 	
-	if(currentValue>0.0f)
+	if(trackedColor!=0)
 		{
-		/* Scale the color to the full hue/saturation range: */
-		GLfloat nc[3];
-		for(int i=0;i<3;++i)
-			nc[i]=newColor[i]/currentValue;
-		
-		/*******************************************************************
-		The following code uses barycentric interpolation in each of the
-		color hexagon's six triangles to determine the 2D position of the
-		color indicator based on the new RGB color.
-		It's best to draw a diagram of the hexagon, and label the corners
-		and the center point with their RGB color values to understand this.
-		*******************************************************************/
-		
-		/* Determine the color triangle containing the new color: */
-		GLfloat s=Math::sin(Math::rad(30.0f));
-		GLfloat c=Math::cos(Math::rad(30.0f));
-		if(minComp==0) // Color is in green-cyan-blue triangles
-			{
-			if(nc[1]>=nc[2])
-				{
-				/* Color is in green-cyan triangle: */
-				currentColorPos[0]=(1.0f-nc[2])*-c;
-				currentColorPos[1]=(1.0f-nc[2])*-s-(nc[2]-nc[0]);
-				}
-			else
-				{
-				/* Color is in cyan-blue triangle: */
-				currentColorPos[0]=(1.0f-nc[1])*c;
-				currentColorPos[1]=(1.0f-nc[1])*-s-(nc[1]-nc[0]);
-				}
-			}
-		else if(minComp==1) // Color is in blue-magenta-red triangles
-			{
-			if(nc[2]>=nc[0])
-				{
-				/* Color is in blue-magenta triangle: */
-				currentColorPos[0]=(1.0f-nc[1])*c;
-				currentColorPos[1]=(2.0f*nc[0]-nc[1]-1.0f)*s;
-				}
-			else
-				{
-				/* Color is in magenta-red triangle: */
-				currentColorPos[0]=(nc[2]-nc[1])*c;
-				currentColorPos[1]=(nc[2]-nc[1])*s+(1.0f-nc[2]);
-				}
-			}
-		else // Color is in red-yellow-green triangles
-			{
-			if(nc[0]>=nc[1])
-				{
-				/* Color is in red-yellow triangle: */
-				currentColorPos[0]=(nc[1]-nc[2])*-c;
-				currentColorPos[1]=(nc[1]-nc[2])*s+(1.0f-nc[1]);
-				}
-			else
-				{
-				/* Color is in yellow-green triangle: */
-				currentColorPos[0]=(1.0f-nc[2])*-c;
-				currentColorPos[1]=(2.0f*nc[0]-nc[2]-1.0f)*s;
-				}
-			}
+		/* Update the tracked color: */
+		*trackedColor=newColor;
 		}
-	else
-		{
-		/* Set the color position for black to the center: */
-		currentColorPos[0]=currentColorPos[1]=0.0f;
-		}
+	}
+
+void HSVColorSelector::track(Color& newTrackedColor)
+	{
+	/* Change the tracked color variable: */
+	trackedColor=&newTrackedColor;
 	
-	/* Set the slider's current value: */
-	slider->setValue(currentValue);
+	/* Update the color selector: */
+	setColor(*trackedColor);
 	}
 
 }

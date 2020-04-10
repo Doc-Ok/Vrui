@@ -1,7 +1,7 @@
 /***********************************************************************
 ScriptExecutorTool - Class for tools to execute an external program or
 shell script when a button is pressed.
-Copyright (c) 2016 Oliver Kreylos
+Copyright (c) 2016-2018 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -34,7 +34,6 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Misc/MessageLogger.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/ToolManager.h>
-#include <Vrui/OpenFile.h>
 
 namespace Vrui {
 
@@ -64,7 +63,7 @@ Methods of class ScriptExecutorToolFactory:
 
 ScriptExecutorToolFactory::ScriptExecutorToolFactory(ToolManager& toolManager)
 	:ToolFactory("ScriptExecutorTool",toolManager),
-	 scriptSelectionHelper(Vrui::getWidgetManager(),"",".sh",Vrui::openDirectory("."))
+	 scriptSelectionHelper(getWidgetManager(),"",".sh")
 	{
 	/* Initialize tool layout: */
 	layout.setNumButtons(1);

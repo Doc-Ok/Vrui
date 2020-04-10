@@ -1,7 +1,7 @@
 /***********************************************************************
 OculusRift - Class to represent the Oculus Rift HMD's built-in
 orientation tracker.
-Copyright (c) 2013-2015 Oliver Kreylos
+Copyright (c) 2013-2018 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -642,7 +642,7 @@ OculusRift::OculusRift(VRDevice::Factory* sFactory,VRDeviceManager* sDeviceManag
 			for(int j=0;j<4;++j)
 				magCorrect(i,j)=Scalar(calibFile->read<Misc::Float64>());
 		}
-	catch(std::runtime_error)
+	catch(const std::runtime_error&)
 		{
 		/* Read the accelerometer and magnetometer correction matrices: */
 		accelCorrect=configFile.retrieveValue<Correction>("./accelCorrection",accelCorrect);

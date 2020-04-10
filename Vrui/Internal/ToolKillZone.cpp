@@ -1,6 +1,6 @@
 /***********************************************************************
 ToolKillZone - Base class for "kill zones" for tools and input devices.
-Copyright (c) 2004-2015 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -63,7 +63,7 @@ void ToolKillZone::updateModel(void)
 
 ToolKillZone::ToolKillZone(const Misc::ConfigurationFileSection& configFileSection)
 	:baseDevice(0),
-	 render(true),
+	 active(true),render(true),
 	 material(getWidgetMaterial()),
 	 modelVersion(1)
 	{
@@ -76,6 +76,9 @@ ToolKillZone::ToolKillZone(const Misc::ConfigurationFileSection& configFileSecti
 		if(baseDevice==0)
 			Misc::throwStdErr("ToolKillZone: Unknown base input device \"%s\"",baseDeviceName.c_str());
 		}
+	
+	/* Retrieve the active flag: */
+	active=configFileSection.retrieveValue<bool>("./killZoneActive",active);
 	
 	/* Retrieve the render flag: */
 	render=configFileSection.retrieveValue<bool>("./killZoneRender",render);
@@ -93,6 +96,11 @@ void ToolKillZone::initContext(GLContextData& contextData) const
 	/* Create a new context data item: */
 	DataItem* dataItem=new DataItem;
 	contextData.addDataItem(this,dataItem);
+	}
+
+void ToolKillZone::setActive(bool newActive)
+	{
+	active=newActive;
 	}
 
 void ToolKillZone::setRender(bool newRender)

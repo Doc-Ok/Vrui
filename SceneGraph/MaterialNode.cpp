@@ -1,7 +1,7 @@
 /***********************************************************************
 MaterialNode - Class for attribute nodes defining Phong material
 properties.
-Copyright (c) 2009 Oliver Kreylos
+Copyright (c) 2009-2019 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <SceneGraph/MaterialNode.h>
 
 #include <string.h>
+#include <Math/Math.h>
 #include <GL/gl.h>
 #include <GL/GLColorTemplates.h>
 #include <GL/GLColorOperations.h>
@@ -92,7 +93,7 @@ void MaterialNode::update(void)
 	material.ambient=material.diffuse;
 	material.ambient*=ambientIntensity.getValue();
 	material.specular=specularColor.getValue();
-	material.shininess=shininess.getValue()*128.0f;
+	material.shininess=Math::min(shininess.getValue(),1.0f)*128.0f;
 	material.emission=emissiveColor.getValue();
 	}
 
@@ -103,13 +104,19 @@ void MaterialNode::setGLState(GLRenderState& renderState) const
 	
 	/* Set the material properties: */
 	glMaterial(GLMaterialEnums::FRONT_AND_BACK,material);
-	renderState.emissiveColor=material.emission;
+	renderState.setEmissiveColor(material.emission);
 	glColor(material.diffuse);
 	}
 
 void MaterialNode::resetGLState(GLRenderState& state) const
 	{
 	/* Don't do anything here; next guy cleans up */
+	}
+
+bool MaterialNode::requiresNormals(void) const
+	{
+	/* Require normals if any of the directional material properties are non-black: */
+	return material.diffuse!=MColor(0.0f,0.0f,0.0f)||material.specular!=MColor(0.0f,0.0f,0.0f);
 	}
 
 }

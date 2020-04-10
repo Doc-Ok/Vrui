@@ -1,7 +1,7 @@
 /***********************************************************************
 HIDDevice - VR device driver class for generic input devices supported
 by the Linux HID event interface. Reports buttons and absolute axes.
-Copyright (c) 2004-2017 Oliver Kreylos
+Copyright (c) 2004-2019 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -440,7 +440,7 @@ HIDDevice::HIDDevice(VRDevice::Factory* sFactory,VRDeviceManager* sDeviceManager
 				converter=AxisConverter(absAxisConf.minimum,mid-absAxisConf.flat,mid+absAxisConf.flat,absAxisConf.maximum);
 				
 				/* Override axis settings from configuration file: */
-				char axisSettingsTag[20];
+				char axisSettingsTag[32];
 				snprintf(axisSettingsTag,sizeof(axisSettingsTag),"axis%dSettings",absAxisMap[i]);
 				converter=configFile.retrieveValue<AxisConverter>(axisSettingsTag,converter);
 				
@@ -466,7 +466,7 @@ HIDDevice::HIDDevice(VRDevice::Factory* sFactory,VRDeviceManager* sDeviceManager
 				converter=AxisConverter(-1.0f,1.0f);
 				
 				/* Override axis settings from configuration file: */
-				char axisSettingsTag[20];
+				char axisSettingsTag[32];
 				snprintf(axisSettingsTag,sizeof(axisSettingsTag),"axis%dSettings",relAxisMap[i]);
 				converter=configFile.retrieveValue<AxisConverter>(axisSettingsTag,converter);
 				
@@ -482,7 +482,7 @@ HIDDevice::HIDDevice(VRDevice::Factory* sFactory,VRDeviceManager* sDeviceManager
 	valuatorGains=new float[getNumValuators()];
 	for(int i=0;i<getNumValuators();++i)
 		{
-		char valuatorGainTag[40];
+		char valuatorGainTag[32];
 		snprintf(valuatorGainTag,sizeof(valuatorGainTag),"./valuatorGain%d",i);
 		valuatorGains[i]=configFile.retrieveValue<float>(valuatorGainTag,1.0f);
 		}

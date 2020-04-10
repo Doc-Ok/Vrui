@@ -22,11 +22,13 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <string>
 #include <iostream>
 #include <Misc/ThrowStdErr.h>
+#include <Misc/PrintfTemplateTests.h>
 #include <Threads/MutexCond.h>
 #include <Threads/Thread.h>
 #include <Threads/TripleBuffer.h>
 #include <IO/File.h>
 #include <IO/Directory.h>
+#include <IO/OpenFile.h>
 #include <Math/Math.h>
 #include <Math/Constants.h>
 #include <GL/gl.h>
@@ -45,7 +47,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <GLMotif/TextFieldSlider.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/Application.h>
-#include <Vrui/OpenFile.h>
 
 class ImageSequenceViewer:public Vrui::Application,public GLObject
 	{
@@ -258,56 +259,27 @@ ImageSequenceViewer::ImageSequenceViewer(int& argc,char**& argv)
 			frameNameTemplate=argv[i];
 		}
 	
-	/* Check if the frame name template is valid: */
-	int indexBegin=-1;
-	int indexEnd=-1;
-	int lastSlash=-1;
-	int length=int(frameNameTemplate.length());
-	int i=0;
-	while(i<length)
-		{
-		/* Look for the next conversion: */
-		while(i<length&&frameNameTemplate[i]!='%')
-			{
-			if(frameNameTemplate[i]=='/')
-				lastSlash=i;
-			++i;
-			}
-		if(i>=length)
-			break;
-		
-		/* Check if it's a decimal conversion: */
-		int begin=i;
-		++i;
-		while(i<length&&frameNameTemplate[i]>='0'&&frameNameTemplate[i]<='9')
-			++i;
-		if(i>=length)
-			break;
-		if(frameNameTemplate[i]=='d')
-			{
-			if(indexBegin==-1)
-				{
-				indexBegin=begin;
-				++i;
-				indexEnd=i;
-				}
-			else
-				Misc::throwStdErr("More than one %d conversion in frame name template %s",frameNameTemplate.c_str());
-			}
-		else
-			Misc::throwStdErr("Invalid % conversion in frame name template %s",frameNameTemplate.c_str());
-		}
-	if(indexBegin==-1)
-		Misc::throwStdErr("No %d conversion in frame name template %s",frameNameTemplate.c_str());
+	/* Check if the frame name template is a valid integer printf template: */
+	unsigned int indexStart,indexLength;
+	indexLength=indexStart=0;
+	if(!Misc::isValidTemplate(frameNameTemplate,'d',2048,&indexStart,&indexLength))
+		Misc::throwStdErr("ImageSequenceViewer: Invalid frame name template \"%s\"",frameNameTemplate.c_str());
 	
 	/* Split the frame name template into directory and file name: */
-	if(lastSlash>=indexBegin)
-		Misc::throwStdErr("Frame name template %s has %d conversion in path name",frameNameTemplate.c_str());
-	std::string frameDirName(frameNameTemplate.begin(),frameNameTemplate.begin()+lastSlash+1);
-	frameDir=Vrui::openDirectory(frameDirName.c_str());
-	frameNameTemplate=std::string(frameNameTemplate.begin()+lastSlash+1,frameNameTemplate.end());
-	indexBegin-=lastSlash+1;
-	indexEnd-=lastSlash+1;
+	std::string::iterator lastSlashIt;
+	for(std::string::iterator fntIt=frameNameTemplate.begin();fntIt!=frameNameTemplate.end();++fntIt)
+		if(*fntIt=='/')
+			lastSlashIt=fntIt;
+	std::string frameDirName(frameNameTemplate.begin(),lastSlashIt);
+	frameNameTemplate=std::string(lastSlashIt+1,frameNameTemplate.end());
+	
+	/* Ensure that the index conversion is in the file name, and not in the path: */
+	if(indexStart<frameDirName.length()+1)
+		Misc::throwStdErr("ImageSequenceViewer: Frame name template \"%s\" has %%d conversion in path name",frameNameTemplate.c_str());
+	indexStart-=frameDirName.length()+1;
+	
+	/* Open the directory containing all frame images: */
+	frameDir=IO::openDirectory(frameDirName.c_str());
 	
 	/* Determine the index range of the frame sequence: */
 	firstIndex=Math::Constants<int>::max;
@@ -317,16 +289,17 @@ ImageSequenceViewer::ImageSequenceViewer(int& argc,char**& argv)
 		{
 		/* Check if the current file is a frame file: */
 		const char* cPtr=frameDir->getEntryName();
-		if(strncmp(cPtr,frameNameTemplate.c_str(),indexBegin)==0)
+		if(strncmp(cPtr,frameNameTemplate.c_str(),indexStart)==0)
 			{
-			cPtr+=indexBegin;
+			/* Extract the current file's index: */
+			cPtr+=indexStart;
 			int index=0;
 			while(*cPtr>='0'&&*cPtr<='9')
 				{
 				index=index*10+int(*cPtr-'0');
 				++cPtr;
 				}
-			if(strcmp(cPtr,frameNameTemplate.c_str()+indexEnd)==0)
+			if(strcmp(cPtr,frameNameTemplate.c_str()+indexStart+indexLength)==0)
 				{
 				/* Update the index range: */
 				if(firstIndex>index)

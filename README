@@ -1,6 +1,6 @@
 ========================================================================
-README for Vrui version 4.6, build 005
-Copyright (c) 1998-2018 Oliver Kreylos
+README for Vrui version 6.0, build 001
+Copyright (c) 1998-2020 Oliver Kreylos
 ========================================================================
 
 Overview
@@ -50,12 +50,14 @@ Recommended:
 * libudev      (udev event notification library)
 * libdbus      (Desktop Bus IPC library)
 * libusb1      (user-space USB library version 1.x)
+* openssl      (SSL/TLS library for https support in Comm library)
 * libpng       (library to read/write PNG images)
 * libjpeg      (library to read/write JPEG images)
 * libtiff      (library to read/write TIFF images)
 * alsa-lib     (low-level sound library)
 * openal-soft  (OpenAL 3D audio library)
 * libv4l       (Video4Linux2, user-space video capture library)
+* libfreetype  (Outline font processor)
 * libXrandr    (X11 RANDR extension library to auto-detect display
                 devices)
 * libXi        (X11 Input2 extension library to support multitouch

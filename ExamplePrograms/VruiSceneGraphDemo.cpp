@@ -2,7 +2,7 @@
 VruiSceneGraphDemo - Demonstration program for the Vrui scene graph
 architecture; shows how to construct a scene graph programmatically, or
 load one from one or more VRML 2.0 / 97 files.
-Copyright (c) 2010-2015 Oliver Kreylos
+Copyright (c) 2010-2018 Oliver Kreylos
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -37,7 +37,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <SceneGraph/NodeCreator.h>
 #include <SceneGraph/VRMLFile.h>
 #include <Vrui/Vrui.h>
-#include <Vrui/OpenFile.h>
 #include <Vrui/Application.h>
 #include <Vrui/SceneGraphSupport.h>
 
@@ -101,7 +100,7 @@ VruiSceneGraphDemo::VruiSceneGraphDemo(int& argc,char**& argv)
 				SceneGraph::GroupNodePointer root=new SceneGraph::GroupNode;
 				
 				/* Load and parse the VRML file: */
-				SceneGraph::VRMLFile vrmlFile(argv[i],Vrui::openFile(argv[i]),nodeCreator,Vrui::getClusterMultiplexer());
+				SceneGraph::VRMLFile vrmlFile(argv[i],nodeCreator);
 				vrmlFile.parse(root);
 				
 				/* Add the new scene graph to the list: */

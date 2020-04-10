@@ -1,7 +1,7 @@
 /***********************************************************************
 GLGeometryVertex - Class to encapsulate OpenGL vertex properties using
 geometry data types.
-Copyright (c) 2009-2010 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the OpenGL C++ Wrapper Library (GLWrappers).
 
@@ -21,6 +21,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 ***********************************************************************/
 
 #include <GL/GLGeometryVertex.icpp>
+
+namespace GLGeometry {
 
 namespace {
 
@@ -577,6 +579,8 @@ class GLVertexPointerImplementation<void,0,
 			}
 		}
 	};
+
+}
 
 }
 

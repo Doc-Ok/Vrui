@@ -1,7 +1,7 @@
 /***********************************************************************
 PopupWindow - Class for main windows with a draggable title bar and an
 optional close button.
-Copyright (c) 2001-2014 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -31,7 +31,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <GL/gl.h>
 #include <GL/GLObject.h>
 #endif
-#include <GLMotif/Container.h>
+#include <GLMotif/SingleChildContainer.h>
 
 /* Forward declarations: */
 class GLFont;
@@ -43,9 +43,9 @@ class NewButton;
 namespace GLMotif {
 
 #if GLMOTIF_POPUPWINDOW_USE_RENDERCACHE
-class PopupWindow:public Container,public GLObject
+class PopupWindow:public SingleChildContainer,public GLObject
 #else
-class PopupWindow:public Container
+class PopupWindow:public SingleChildContainer
 #endif
 	{
 	/* Embedded classes: */
@@ -123,7 +123,6 @@ class PopupWindow:public Container
 	NewButton* closeButton; // Optional button to close the popup window
 	int resizableMask; // Bit mask whether the window can be resized horizontally (0x1) and/or vertically (0x2)
 	GLfloat childBorderWidth; // Width of border around child widget
-	Widget* child; // Single child of the popup window
 	Misc::CallbackList resizeCallbacks; // List of callbacks called when the window is resized
 	Misc::CallbackList closeCallbacks; // List of callbacks called when the window is closed via the close button
 	
@@ -147,7 +146,7 @@ class PopupWindow:public Container
 	PopupWindow(const char* sName,WidgetManager* sManager,const char* sTitleString);
 	virtual ~PopupWindow(void); // Pops down the popup window and destroys it
 	
-	/* Methods inherited from Widget: */
+	/* Methods from class Widget: */
 	virtual const WidgetManager* getManager(void) const
 		{
 		return manager;
@@ -169,15 +168,13 @@ class PopupWindow:public Container
 	virtual void pointerButtonUp(Event& event);
 	virtual void pointerMotion(Event& event);
 	
-	/* Methods inherited from Container: */
+	/* Methods from class Container: */
 	virtual void addChild(Widget* newChild);
 	virtual void removeChild(Widget* removeChild);
 	virtual void requestResize(Widget* child,const Vector& newExteriorSize);
-	virtual Widget* getFirstChild(void);
-	virtual Widget* getNextChild(Widget* child);
 	
 	#if GLMOTIF_POPUPWINDOW_USE_RENDERCACHE
-	/* Methods inherited from GLObject: */
+	/* Methods from class GLObject: */
 	virtual void initContext(GLContextData& contextData) const;
 	#endif
 	
@@ -191,14 +188,6 @@ class PopupWindow:public Container
 	void setResizableFlags(bool horizontal,bool vertical); // Sets whether the popup window can be resized interactively
 	void setChildBorderWidth(GLfloat newChildBorderWidth); // Changes the border width around the child widget
 	const char* getTitleString(void) const; // Returns the current title label string
-	const Widget* getChild(void) const // Returns the popup window's child
-		{
-		return child;
-		}
-	Widget* getChild(void) // Ditto
-		{
-		return child;
-		}
 	static void popDownFunction(Misc::CallbackData* cbData); // Default callback function that simply pops down, but does not delete, the popup window; cbData must be derived form PopupWindow::CallbackData
 	static void deleteFunction(Misc::CallbackData* cbData); // Default callback function that simply deletes the popup window; cbData must be derived from PopupWindow::CallbackData
 	Misc::CallbackList& getResizeCallbacks(void) // Returns list of callbacks called when the window is resized

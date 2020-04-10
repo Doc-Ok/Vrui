@@ -1,7 +1,7 @@
 /***********************************************************************
 ReadTIFFImage - Functions to read RGB images from image files in TIFF
 formats over an IO::SeekableFile abstraction.
-Copyright (c) 2011-2017 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the Image Handling Library (Images).
 
@@ -35,13 +35,14 @@ namespace Images {
 class BaseImage;
 class RGBImage;
 class RGBAImage;
+struct GeoTIFFMetadata;
 }
 
 namespace Images {
 
-RGBImage readTIFFImage(const char* imageName,IO::File& source); // Reads an RGB image in TIFF format from the given data source
-RGBAImage readTransparentTIFFImage(const char* imageName,IO::File& source); // Reads an RGBA image in TIFF format from the given data source
-BaseImage readGenericTIFFImage(const char* imageName,IO::File& source); // Reads a generic image in TIFF format from the given data source
+RGBImage readTIFFImage(IO::File& source); // Reads an RGB image in TIFF format from the given data source
+RGBAImage readTransparentTIFFImage(IO::File& source); // Reads an RGBA image in TIFF format from the given data source
+BaseImage readGenericTIFFImage(IO::File& source,GeoTIFFMetadata* metadata =0); // Reads a generic image in TIFF format from the given data source
 
 }
 

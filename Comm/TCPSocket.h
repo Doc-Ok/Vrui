@@ -2,7 +2,7 @@
 TCPSocket - Wrapper class for TCP sockets ensuring exception safety and
 improved latency/throughput by supporting TCP_NODELAY and TCP_CORK where
 available.
-Copyright (c) 2002-2007 Oliver Kreylos
+Copyright (c) 2002-2018 Oliver Kreylos
 
 This file is part of the Portable Communications Library (Comm).
 
@@ -31,6 +31,9 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 /* Forward declarations: */
 namespace Misc {
 class Time;
+}
+namespace Comm {
+class IPv4SocketAddress;
 }
 
 namespace Comm {
@@ -76,7 +79,8 @@ class TCPSocket
 		}
 	public:
 	TCPSocket(int portId,int backlog); // Creates a socket on the local host and starts listening; if portId is negative, random free port is assigned
-	TCPSocket(std::string hostname,int portId); // Creates a socket connected to a remote host
+	TCPSocket(const std::string& hostname,int portId); // Creates a socket connected to a remote host
+	TCPSocket(const IPv4SocketAddress& hostAddress); // Ditto, using an IP v4 socket address
 	TCPSocket(const TCPSocket& source); // Copy constructor
 	TCPSocket& operator=(const TCPSocket& source); // Assignment operator
 	~TCPSocket(void); // Closes a socket
@@ -86,14 +90,11 @@ class TCPSocket
 		{
 		return socketFd;
 		}
-	TCPSocket& connect(std::string hostname,int portId); // Connects an existing socket to a remote host; closes previous connection
-	int getPortId(void) const; // Returns port ID assigned to a socket
-	std::string getAddress(void) const; // Returns internet address assigned to a socket in dotted notation
-	std::string getHostname(bool throwException =true) const; // Returns host name of socket; throws exception if host name cannot be resolved and flag is true
-	TCPSocket accept(void) const; // Waits for an incoming connection on a listening socket and returns a new socket connected to the initiator
-	int getPeerPortId(void) const; // Returns port ID of remote socket
-	std::string getPeerAddress(void) const; // Returns internet address of remote socket in dotted notation
-	std::string getPeerHostname(bool throwException =true) const; // Returns host name of remote socket; throws exception if host name cannot be resolved and flag is true
+	IPv4SocketAddress getAddress(void) const; // Returns the IPv4 socket address to which the socket is bound
+	TCPSocket& connect(const std::string& hostname,int portId); // Connects an existing socket to a remote host; closes previous connection
+	TCPSocket& connect(const IPv4SocketAddress& hostAddress); // Ditto, using an IP v4 socket address
+	TCPSocket accept(void) const; // Waits for an incoming connection on a listening socket and returns a new TCP socket connected to the initiator
+	IPv4SocketAddress getPeerAddress(void) const; // Returns the IPv4 socket address to which the socket is connected
 	void shutdown(bool shutdownRead,bool shutdownWrite); // Shuts down the read or write part of a socket; further reads or writes are not allowed
 	
 	/* Options methods: */

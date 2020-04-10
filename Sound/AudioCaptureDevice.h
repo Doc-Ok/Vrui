@@ -1,6 +1,6 @@
 /***********************************************************************
 AudioCaptureDevice - Base class for audio capture devices.
-Copyright (c) 2010-2015 Oliver Kreylos
+Copyright (c) 2010-2018 Oliver Kreylos
 
 This file is part of the Basic Sound Library (Sound).
 
@@ -79,6 +79,7 @@ class AudioCaptureDevice
 	/* Device enumeration method: */
 	public:
 	static DeviceList getDevices(void); // Returns a list of device IDs for all audio capture devices currently available on the system
+	static AudioCaptureDevice* openDevice(const char* name); // Opens the first audio device of the given name; returns null if no device of the given name exists
 	
 	/* Constructors and destructors: */
 	AudioCaptureDevice(void); // Creates audio capture device
@@ -89,7 +90,7 @@ class AudioCaptureDevice
 	virtual SoundDataFormat setAudioFormat(const SoundDataFormat& newFormat) =0; // Sets the audio device's audio format to the most closely matching supported format; returns actually configured audio format
 	
 	/* Streaming capture interface methods: */
-	virtual unsigned int allocateFrameBuffers(unsigned int requestedFrameBufferSize,unsigned int requestedNumFrameBuffers) =0; // Allocates the given number of streaming frame buffers of the given sizes; returns actual number of buffers allocated by device
+	virtual unsigned int allocateFrameBuffers(unsigned int requestedFrameBufferSize,unsigned int requestedNumFrameBuffers) =0; // Allocates the given number of streaming frame buffers of the given sizes in frames; returns actual number of buffers allocated by device
 	virtual void startStreaming(void); // Starts streaming audio capture using a previously allocated set of frame buffers
 	virtual void startStreaming(StreamingCallback* newStreamingCallback); // Ditto; calls callback from separate thread whenever a new frame buffer becomes ready
 	virtual FrameBuffer dequeueFrame(void) =0; // Returns the next frame buffer captured from the audio device; blocks if no frames are ready

@@ -1,7 +1,7 @@
 /***********************************************************************
 ArcInfoExportFileNode - Class to represent an ARC/INFO export file as a
 collection of line sets, point sets, and face sets.
-Copyright (c) 2009-2011 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -24,7 +24,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <string.h>
 #include <IO/ValueSource.h>
-#include <Cluster/OpenFile.h>
 #include <SceneGraph/EventTypes.h>
 #include <SceneGraph/VRMLFile.h>
 #include <SceneGraph/ShapeNode.h>
@@ -51,7 +50,7 @@ bool readBlockHeader(IO::ValueSource& exportFile,int values[7])
 			++numValues;
 			}
 		}
-	catch(IO::ValueSource::NumberError err)
+	catch(const IO::ValueSource::NumberError& err)
 		{
 		/* Ignore the error: */
 		}
@@ -67,7 +66,6 @@ Methods of class ArcInfoExportFileNode:
 **************************************/
 
 ArcInfoExportFileNode::ArcInfoExportFileNode(void)
-	:multiplexer(0)
 	{
 	}
 
@@ -87,11 +85,8 @@ void ArcInfoExportFileNode::parseField(const char* fieldName,VRMLFile& vrmlFile)
 		{
 		vrmlFile.parseField(url);
 		
-		/* Fully qualify all URLs: */
-		for(size_t i=0;i<url.getNumValues();++i)
-			url.setValue(i,vrmlFile.getFullUrl(url.getValue(i)));
-		
-		multiplexer=vrmlFile.getMultiplexer();
+		/* Remember the VRML file's base directory: */
+		baseDirectory=&vrmlFile.getBaseDirectory();
 		}
 	else
 		GroupNode::parseField(fieldName,vrmlFile);
@@ -120,7 +115,7 @@ void ArcInfoExportFileNode::update(void)
 		return;
 	
 	/* Open the ARC/INFO export file: */
-	IO::ValueSource exportFile(Cluster::openFile(multiplexer,url.getValue(0).c_str()));
+	IO::ValueSource exportFile(baseDirectory->openFile(url.getValue(0).c_str()));
 	
 	/* Check the file's format: */
 	if(exportFile.readString()!="EXP"||exportFile.readInteger()!=0)

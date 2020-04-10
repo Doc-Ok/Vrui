@@ -1,7 +1,7 @@
 /***********************************************************************
 Texture - Base class for widgets displaying dynamically-generated
 textures.
-Copyright (c) 2011-2017 Oliver Kreylos
+Copyright (c) 2011-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -58,7 +58,7 @@ Methods of class Texture:
 Texture::Texture(const char* sName,Container* sParent)
 	:Widget(sName,sParent,false),
 	 version(1),regionVersion(1),
-	 interpolationMode(GL_NEAREST),settingsVersion(1),
+	 interpolationMode(GL_NEAREST),mipmapLevel(0),settingsVersion(1),
 	 illuminated(false)
 	{
 	/* Initialize the texture size and resolution: */
@@ -76,7 +76,7 @@ Texture::Texture(const char* sName,Container* sParent)
 Texture::Texture(const char* sName,Container* sParent,const unsigned int sSize[2],const GLfloat sResolution[2],bool sManageChild)
 	:Widget(sName,sParent,false),
 	 version(1),regionVersion(1),
-	 interpolationMode(GL_NEAREST),settingsVersion(1),
+	 interpolationMode(GL_NEAREST),mipmapLevel(0),settingsVersion(1),
 	 illuminated(false)
 	{
 	/* Copy the texture size and resolution: */
@@ -179,6 +179,9 @@ void Texture::draw(GLContextData& contextData) const
 					;
 			}
 		
+		/* Set the maximum mipmap level: */
+		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,mipmapLevel);
+		
 		/* Call the texture update method: */
 		uploadTexture(dataItem->textureObjectId,dataItem->npotdtSupported,dataItem->textureSize,contextData);
 		
@@ -212,7 +215,10 @@ void Texture::draw(GLContextData& contextData) const
 		{
 		/* Set the texture interpolation mode: */
 		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,interpolationMode);
-		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,interpolationMode);
+		if(interpolationMode==GL_NEAREST||interpolationMode==GL_NEAREST_MIPMAP_NEAREST)
+			glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+		else
+			glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
 		
 		/* Mark the texture display mode as up-to-date: */
 		dataItem->settingsVersion=settingsVersion;
@@ -250,7 +256,7 @@ void Texture::initContext(GLContextData& contextData) const
 	
 	/* Initialize basic texture settings: */
 	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_BASE_LEVEL,0);
-	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
+	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,mipmapLevel);
 	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP);
 	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP);
 	
@@ -356,6 +362,15 @@ void Texture::setInterpolationMode(GLenum newInterpolationMode)
 	{
 	interpolationMode=newInterpolationMode;
 	++settingsVersion;
+	}
+
+void Texture::setMipmapLevel(int newMipmapLevel)
+	{
+	mipmapLevel=newMipmapLevel;
+	++settingsVersion;
+	
+	/* Changing mipmap level also invalidates the texture image: */
+	++version;
 	}
 
 void Texture::setIlluminated(bool newIlluminated)

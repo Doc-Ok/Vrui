@@ -1,7 +1,7 @@
 /***********************************************************************
 VRScreen - Class for display screens (fixed and head-mounted) in VR
 environments.
-Copyright (c) 2004-2018 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -23,6 +23,7 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 
 #include <Vrui/VRScreen.h>
 
+#include <string.h>
 #include <Misc/ThrowStdErr.h>
 #include <Misc/StandardValueCoders.h>
 #include <Misc/ConfigurationFile.h>
@@ -97,7 +98,7 @@ void VRScreen::initialize(const Misc::ConfigurationFileSection& configFileSectio
 		/* Try reading the screen transformation directly: */
 		transform=configFileSection.retrieveValue<ONTransform>("./transform");
 		}
-	catch(std::runtime_error)
+	catch(const std::runtime_error&)
 		{
 		/* Fall back to reading the screen's origin and axis directions: */
 		Point origin=configFileSection.retrieveValue<Point>("./origin");
@@ -166,8 +167,11 @@ void VRScreen::initialize(const Misc::ConfigurationFileSection& configFileSectio
 	intersect=configFileSection.retrieveValue<bool>("./intersect",intersect);
 	}
 
-void VRScreen::attachToDevice(InputDevice* newDevice)
+InputDevice* VRScreen::attachToDevice(InputDevice* newDevice)
 	{
+	/* Return the previous mounting device: */
+	InputDevice* result=deviceMounted?device:0;
+	
 	/* Set the device to which the screen is mounted, and update the mounted flag: */
 	deviceMounted=newDevice!=0;
 	device=newDevice;
@@ -180,17 +184,26 @@ void VRScreen::attachToDevice(InputDevice* newDevice)
 		}
 	else
 		enabled=true;
+	
+	return result;
 	}
 
 void VRScreen::setSize(Scalar newWidth,Scalar newHeight)
 	{
-	/* Adjust the screen's origin in its own coordinate system: */
-	transform*=ONTransform::translate(Vector(Math::div2(screenSize[0]-newWidth),Math::div2(screenSize[1]-newHeight),0));
-	inverseTransform=Geometry::invert(transform);
-	
-	/* Adjust the screen's sizes: */
-	screenSize[0]=newWidth;
-	screenSize[1]=newHeight;
+	if(screenSize[0]!=newWidth||screenSize[1]!=newHeight)
+		{
+		/* Call the size changed callbacks: */
+		SizeChangedCallbackData cbData(this,newWidth,newHeight);
+		sizeChangedCallbacks.call(&cbData);
+		
+		/* Adjust the screen's origin in its own coordinate system: */
+		transform*=ONTransform::translate(Vector(Math::div2(screenSize[0]-newWidth),Math::div2(screenSize[1]-newHeight),0));
+		inverseTransform=Geometry::invert(transform);
+		
+		/* Adjust the screen's sizes: */
+		screenSize[0]=newWidth;
+		screenSize[1]=newHeight;
+		}
 	}
 
 void VRScreen::setTransform(const ONTransform& newTransform)

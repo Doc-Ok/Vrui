@@ -1,7 +1,7 @@
 /***********************************************************************
 ImageExtractorYV12 - Class to extract images from raw video frames
 encoded in YpCbCr 4:2:0 format.
-Copyright (c) 2013 Oliver Kreylos
+Copyright (c) 2013-2018 Oliver Kreylos
 
 This file is part of the Basic Video Library (Video).
 
@@ -90,16 +90,16 @@ void ImageExtractorYV12::extractRGB(const FrameBuffer* frame,void* image)
 			ypcbcr[0]=ypPtr[0];
 			ypcbcr[1]=*cbPtr;
 			ypcbcr[2]=*crPtr;
-			Video::ypcbcrToRgb(ypcbcr,resultPtr);
+			ypcbcrToRgb(ypcbcr,resultPtr);
 			
 			ypcbcr[0]=ypPtr[1];
-			Video::ypcbcrToRgb(ypcbcr,resultPtr+3);
+			ypcbcrToRgb(ypcbcr,resultPtr+3);
 			
 			ypcbcr[0]=ypPtr[planes[0].stride];
-			Video::ypcbcrToRgb(ypcbcr,resultPtr-size[0]*3);
+			ypcbcrToRgb(ypcbcr,resultPtr-size[0]*3);
 			
 			ypcbcr[0]=ypPtr[planes[0].stride+1];
-			Video::ypcbcrToRgb(ypcbcr,resultPtr-size[0]*3+3);
+			ypcbcrToRgb(ypcbcr,resultPtr-size[0]*3+3);
 			
 			/* Go to the next pixel: */
 			resultPtr+=2*3;

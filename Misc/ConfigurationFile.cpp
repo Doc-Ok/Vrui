@@ -1,7 +1,7 @@
 /***********************************************************************
 ConfigurationFile - Class to handle permanent storage of configuration
 data in human-readable text files.
-Copyright (c) 2002-2016 Oliver Kreylos
+Copyright (c) 2002-2018 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -461,7 +461,7 @@ std::string ConfigurationFileBase::Section::retrieveTagValue(const char* relativ
 		/* Go to the section containing the given tag: */
 		sPtr=getSection(relativeTagPath,&tagName);
 		}
-	catch(SectionNotFoundError error)
+	catch(const SectionNotFoundError& error)
 		{
 		/* If the section does not exist, bail out and return the default value: */
 		return defaultValue;

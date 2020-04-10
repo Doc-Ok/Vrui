@@ -2,7 +2,7 @@
 ESRIShapeFileNode - Class to represent an ESRI shape file as a
 collection of line sets, point sets, or face sets (each shape file can
 only contain a single type of primitives).
-Copyright (c) 2009-2011 Oliver Kreylos
+Copyright (c) 2009-2018 Oliver Kreylos
 
 This file is part of the Simple Scene Graph Renderer (SceneGraph).
 
@@ -24,15 +24,11 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #ifndef SCENEGRAPH_ESRISHAPEFILENODE_INCLUDED
 #define SCENEGRAPH_ESRISHAPEFILENODE_INCLUDED
 
+#include <IO/Directory.h>
 #include <SceneGraph/FieldTypes.h>
 #include <SceneGraph/GroupNode.h>
 #include <SceneGraph/AppearanceNode.h>
 #include <SceneGraph/FontStyleNode.h>
-
-/* Forward declarations: */
-namespace Cluster {
-class Multiplexer;
-}
 
 namespace SceneGraph {
 
@@ -57,7 +53,7 @@ class ESRIShapeFileNode:public GroupNode
 	
 	/* Derived state: */
 	protected:
-	Cluster::Multiplexer* multiplexer; // Multiplexer to read shape files in a cluster environment
+	IO::DirectoryPtr baseDirectory; // Base directory for relative URLs
 	
 	/* Constructors and destructors: */
 	public:

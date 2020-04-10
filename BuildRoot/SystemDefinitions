@@ -1,7 +1,7 @@
 ########################################################################
 # SystemDefinitions - System-dependent settings for the WhyTools build
 # environment.
-# Copyright (c) 1999-2013 Oliver Kreylos
+# Copyright (c) 1999-2020 Oliver Kreylos
 # Mac OS X adaptation copyright (c) 2006 Braden Pellett
 #
 # This file is part of the WhyTools Build Environment.
@@ -75,16 +75,10 @@ SYSTEM_HAVE_ATOMICS = 0
 SYSTEM_HAVE_SPINLOCKS = 0
 SYSTEM_CAN_CANCEL_THREADS = 0
 SYSTEM_SEPARATE_LIBPTHREAD = 1
-SYSTEM_X11_LIBDIR = 
+SYSTEM_X11_BASEDIR = 
 SYSTEM_GL_WITH_X11 = 0
 SYSTEM_HAVE_GLXGETPROCADDRESS = 1
 SYSTEM_OPENAL_FRAMEWORK = 0
-
-# Configure if it is safe to sort the list of linked libraries passed to the linker:
-# (Might not be safe on older systems, or when using static linking.)
-ifndef STATIC_LINK
-  SORT_LINKLIBFLAGS = 1
-endif
 
 # Configure if it is possible to store library paths in shared libraries:
 SYSTEM_HAVE_RPATH = 1
@@ -101,14 +95,15 @@ ifeq ($(HOST_OS),Linux)
   SYSTEM = LINUX
   OSSPECFILEINSERT = Linux
   ifeq ($(HOST_ARCH),x86_64)
+		# Query correct library extension style from OS:
     ifneq ($(wildcard /usr/lib/x86_64-linux-gnu),)
       LIBEXT := lib/x86_64-linux-gnu
     else
       LIBEXT := lib64
     endif
     # Set different object and executable file paths for mixed architectures (disabled for now):
-    # OBJDIR := $(OBJDIR)/64
-    # EXEDIR := $(EXEDIR)/64
+    # OBJDIRBASE := $(OBJDIRBASE)/64
+    # EXEDIRBASE := $(EXEDIRBASE)/64
   endif
   SYSTEM_HAVE_SPINLOCKS = 1
   SYSTEM_CAN_CANCEL_THREADS = 1
@@ -176,15 +171,11 @@ endif
 GNUC_BASEDIR = /usr/$(BINEXT)
 BASECCOMP = $(GNUC_BASEDIR)/g++
 
-# Default C++ compiler is g++
-ifndef CCOMP
-  CCOMP = $(BASECCOMP)
-endif
-
 # Default C compiler is gcc
-ifndef PLAINCCOMP
-  PLAINCCOMP = $(GNUC_BASEDIR)/gcc
-endif
+PLAINCCOMP ?= $(GNUC_BASEDIR)/gcc
+
+# Default C++ compiler is g++
+CCOMP ?= $(BASECCOMP)
 
 # Check for the compiler type as it influences ABI and standard strictness
 ifeq ($(shell expr `$(BASECCOMP) -dumpversion` ">=" "3.0.0"),1)
@@ -193,8 +184,8 @@ ifeq ($(shell expr `$(BASECCOMP) -dumpversion` ">=" "3.0.0"),1)
   # root name and in the same directory as the created object file
   DEPFILETEMPLATE = '$(patsubst %.o,%.d,$@)'
   ifeq ($(shell expr `$(BASECCOMP) -dumpversion` ">=" "4.1.0"),1)
-		# gcc version 4.1.0 and up provide built-in atomics:
-		SYSTEM_HAVE_ATOMICS = 1
+    # gcc version 4.1.0 and up provide built-in atomics:
+    SYSTEM_HAVE_ATOMICS = 1
   endif
 else
   COMPILERTYPE = g++
@@ -210,36 +201,60 @@ MYINCLUDEEXT = include
 # versions, and come in static and dynamic shared versions, and also in
 # optimized and debug flavors.
 
-# Specify default optimization/debug level
-ifdef DEBUG
-  DEFAULTDEBUGLEVEL = 3
-  DEFAULTOPTLEVEL = 0
-else
-  DEFAULTDEBUGLEVEL = 0
-  DEFAULTOPTLEVEL = 3
-endif
-
-# Use an extension to tell the linker which version to use
+# Use an extension to distinguish static from dynamic libraries:
 LDEXT := $(COMPILERTYPE)
 ifdef STATIC_LINK
   LDEXT := $(LDEXT).static
 endif
+
+# Set location for package-provided libraries and dynamically-loaded
+# plugins:
+MYLIBEXT_DEBUG = $(LIBEXT)/debug
+MYLIBEXT_RELEASE = $(LIBEXT)
+PLUGINDIR_DEBUG = $(LIBEXT)/debug
+PLUGINDIR_RELEASE = $(LIBEXT)
 ifdef DEBUG
-  MYLIBEXT = $(LIBEXT)/debug
+  MYLIBEXT = $(MYLIBEXT_DEBUG)
+  PLUGINDIR = $(PLUGINDIR_DEBUG)
 else
-  MYLIBEXT = $(LIBEXT)
+  MYLIBEXT = $(MYLIBEXT_RELEASE)
+  PLUGINDIR = $(PLUGINDIR_RELEASE)
 endif
 LIBDESTDIR := $(MYLIBEXT)
 
+# Function to generate the full names of libraries:
+ifdef STATIC_LINK
+  LIBRARYNAME = $(LIBDESTDIR)/$(1).$(LDEXT).a
+else
+  LIBRARYNAME = $(LIBDESTDIR)/$(call FULLDSONAME,$(1))
+endif
+
 # Determine the executable file directory:
-EXEDIR := $(EXEDIRBASE)
+EXEDIR_DEBUG = $(EXEDIRBASE)/debug
+EXEDIR_RELEASE = $(EXEDIRBASE)
 ifdef DEBUG
-  EXEDIR := $(EXEDIR)/debug
+  EXEDIR := $(EXEDIR_DEBUG)
+else
+  EXEDIR := $(EXEDIR_RELEASE)
 endif
 
 # Create initial values for parameters that can be overriden by project makefiles
 CFLAGS = 
-LINKFLAGS = 
 EXTRACINCLUDEFLAGS = 
+LINKFLAGS = 
 EXTRALINKDIRFLAGS = 
 EXTRALINKLIBFLAGS = 
+
+# Specify default optimization/debug level
+ifdef DEBUG
+	# Select conservative levels:
+  DEFAULTDEBUGLEVEL = 3
+  DEFAULTOPTLEVEL = 0
+  
+  # Define DEBUG macro for compiler:
+  CFLAGS += -DDEBUG
+else
+	# Select aggressive levels:
+  DEFAULTDEBUGLEVEL = 0
+  DEFAULTOPTLEVEL = 3
+endif

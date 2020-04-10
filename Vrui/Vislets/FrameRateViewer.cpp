@@ -1,7 +1,7 @@
 /***********************************************************************
 FrameRateViewer - Vislet class to view a live graph of Vrui frame times
 for debugging and optimization purposes.
-Copyright (c) 2015 Oliver Kreylos
+Copyright (c) 2015-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -160,16 +160,6 @@ FrameRateViewer::~FrameRateViewer(void)
 VisletFactory* FrameRateViewer::getFactory(void) const
 	{
 	return factory;
-	}
-
-void FrameRateViewer::disable(void)
-	{
-	Vislet::disable();
-	}
-
-void FrameRateViewer::enable(void)
-	{
-	Vislet::enable();
 	}
 
 void FrameRateViewer::frame(void)

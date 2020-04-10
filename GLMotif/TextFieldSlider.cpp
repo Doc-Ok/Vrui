@@ -1,7 +1,7 @@
 /***********************************************************************
 TextFieldSlider - Compound widget containing a slider and a text field
 to display and edit the slider value.
-Copyright (c) 2010-2016 Oliver Kreylos
+Copyright (c) 2010-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <GLMotif/TextFieldSlider.h>
 
 #include <stdlib.h>
+#include <Math/Math.h>
 #include <GL/gl.h>
 #include <GL/GLColorTemplates.h>
 #include <GL/GLVertexTemplates.h>
@@ -38,7 +39,7 @@ Methods of class TextFieldSlider:
 void TextFieldSlider::textFieldValueChangedCallback(TextField::ValueChangedCallbackData* cbData)
 	{
 	/* Get the text field's new value: */
-	setValue(atof(textField->getString()));
+	setValue(atof(cbData->value));
 	
 	/* Call the value changed callbacks: */
 	ValueChangedCallbackData myCbData(this,ValueChangedCallbackData::EDITED,value);
@@ -51,11 +52,15 @@ void TextFieldSlider::sliderValueChangedCallback(Slider::ValueChangedCallbackDat
 	switch(sliderMapping)
 		{
 		case LINEAR:
-			setValue(double(slider->getValue()));
+			setValue(cbData->value);
 			break;
 		
 		case EXP10:
-			setValue(Math::pow(10.0,double(slider->getValue())));
+			setValue(Math::pow(10.0,cbData->value));
+			break;
+		
+		case GAMMA:
+			setValue(Math::pow(cbData->value,gammaExponent)*(valueMax-valueMin)+valueMin);
 			break;
 		}
 	
@@ -69,8 +74,8 @@ TextFieldSlider::TextFieldSlider(const char* sName,Container* sParent,GLint sCha
 	:Container(sName,sParent,false),
 	 textField(new TextField("TextField",this,sCharWidth,false)),
 	 slider(new Slider("Slider",this,Slider::HORIZONTAL,sShaftLength,false)),
-	 sliderMapping(LINEAR),valueType(FLOAT),
-	 valueMin(0.0),valueMax(1000.0),valueIncrement(1.0),value(500.0)
+	 sliderMapping(LINEAR),gammaExponent(1.0),valueType(FLOAT),
+	 valueMin(0),valueMax(1000),valueIncrement(1),value(500)
 	{
 	/* Get the style sheet: */
 	const StyleSheet* ss=getStyleSheet();
@@ -82,6 +87,7 @@ TextFieldSlider::TextFieldSlider(const char* sName,Container* sParent,GLint sCha
 	
 	/* Initialize the text field: */
 	textField->setEditable(true);
+	textField->setValueType(TextField::FLOAT);
 	textField->getValueChangedCallbacks().add(this,&TextFieldSlider::textFieldValueChangedCallback);
 	
 	/* Initialize the slider: */
@@ -154,6 +160,55 @@ void TextFieldSlider::resize(const Box& newExterior)
 	sliderBox.origin[1]+=(getInterior().size[1]-sliderBox.size[1])*0.5f;
 	sliderBox.size[0]=getInterior().size[0]-textFieldBox.size[0]-spacing;
 	slider->resize(sliderBox);
+	}
+
+void TextFieldSlider::updateVariables(void)
+	{
+	/* Check if tracking is active: */
+	if(isTracking())
+		{
+		/* Get the tracked variable's current value and limit it to the valid range: */
+		double newValue=Math::clamp(getTrackedFloat(),valueMin,valueMax);
+		
+		/* Check if the value changed: */
+		if(value!=newValue)
+			{
+			/* Set the value: */
+			value=newValue;
+			
+			/* Update the text field: */
+			switch(valueType)
+				{
+				case UINT:
+					textField->setValue<unsigned int>(value>0.0?(unsigned int)(Math::floor(value+0.5)):0);
+					break;
+				
+				case INT:
+					textField->setValue<int>(int(Math::floor(value+0.5)));
+					break;
+				
+				case FLOAT:
+					textField->setValue<double>(value);
+					break;
+				}
+			
+			/* Update the slider: */
+			switch(sliderMapping)
+				{
+				case LINEAR:
+					slider->setValue(value);
+					break;
+				
+				case EXP10:
+					slider->setValue(Math::log10(value));
+					break;
+				
+				case GAMMA:
+					slider->setValue(Math::pow((value-valueMin)/(valueMax-valueMin),1.0/gammaExponent));
+					break;
+				}
+			}
+		}
 	}
 
 void TextFieldSlider::draw(GLContextData& contextData) const
@@ -326,7 +381,32 @@ void TextFieldSlider::setSliderMapping(SliderMapping newSliderMapping)
 			slider->setValueRange(Math::log10(valueMin),Math::log10(valueMax),valueIncrement);
 			slider->setValue(Math::log10(value));
 			break;
+		
+		case GAMMA:
+			slider->setValueRange(0.0,1.0,valueIncrement);
+			slider->setValue(Math::pow((value-valueMin)/(valueMax-valueMin),1.0/gammaExponent));
+			break;
 		}
+	}
+
+void TextFieldSlider::setGammaExponent(double newGammaExponent)
+	{
+	/* Set the new gamma exponent: */
+	gammaExponent=newGammaExponent;
+	
+	/* Update the slider position if the current mapping mode is gamma: */
+	if(sliderMapping==GAMMA)
+		slider->setValue(Math::pow((value-valueMin)/(valueMax-valueMin),1.0/gammaExponent));
+	}
+
+void TextFieldSlider::setGammaExponent(double sliderPosition,double value)
+	{
+	/* Calculate a gamma exponent based on the given mapping and the current value range: */
+	gammaExponent=Math::log((value-valueMin)/(valueMax-valueMin))/Math::log(sliderPosition);
+	
+	/* Update the slider position if the current mapping mode is gamma: */
+	if(sliderMapping==GAMMA)
+		slider->setValue(Math::pow((value-valueMin)/(valueMax-valueMin),1.0/gammaExponent));
 	}
 
 void TextFieldSlider::setValueType(TextFieldSlider::ValueType newValueType)
@@ -338,14 +418,17 @@ void TextFieldSlider::setValueType(TextFieldSlider::ValueType newValueType)
 	switch(valueType)
 		{
 		case UINT:
-			textField->setValue<unsigned int>(value>0.0?(unsigned int)(value+0.5):0);
+			textField->setValueType(TextField::UINT);
+			textField->setValue<unsigned int>(value>0.0?(unsigned int)(Math::floor(value+0.5)):0);
 			break;
 		
 		case INT:
-			textField->setValue<int>(int(value+0.5));
+			textField->setValueType(TextField::INT);
+			textField->setValue<int>(int(Math::floor(value+0.5)));
 			break;
 		
 		case FLOAT:
+			textField->setValueType(TextField::FLOAT);
 			textField->setValue<double>(value);
 			break;
 		}
@@ -358,89 +441,71 @@ void TextFieldSlider::setValueRange(double newValueMin,double newValueMax,double
 	valueMax=newValueMax;
 	valueIncrement=newValueIncrement;
 	
-	/* Check the value against the range: */
-	bool valueChanged=false;
-	if(value<valueMin)
+	/* Update the slider's value range: */
+	switch(sliderMapping)
 		{
-		value=valueMin;
-		valueChanged=true;
+		case LINEAR:
+			slider->setValueRange(valueMin,valueMax,valueIncrement);
+			break;
+		
+		case EXP10:
+			slider->setValueRange(Math::log10(valueMin),Math::log10(valueMax),valueIncrement);
+			break;
+		
+		case GAMMA:
+			slider->setValueRange(0.0,1.0,valueIncrement);
+			break;
 		}
-	if(value>valueMax)
+	
+	/* Limit the current value to the new range: */
+	setValue(value);
+	}
+
+void TextFieldSlider::setValue(double newValue)
+	{
+	/* Limit the new value to the valid range: */
+	newValue=Math::clamp(newValue,valueMin,valueMax);
+	
+	/* Check if the value changed: */
+	if(value!=newValue)
 		{
-		value=valueMax;
-		valueChanged=true;
-		}
-	if(valueChanged)
-		{
+		/* Set the value: */
+		value=newValue;
+		
+		/* Update a potential tracked variable: */
+		setTrackedFloat(value);
+		
 		/* Update the text field: */
 		switch(valueType)
 			{
 			case UINT:
-				textField->setValue<unsigned int>(value>0.0?(unsigned int)(value+0.5):0);
+				textField->setValue<unsigned int>(value>0.0?(unsigned int)(Math::floor(value+0.5)):0);
 				break;
 			
 			case INT:
-				textField->setValue<int>(int(value+0.5));
+				textField->setValue<int>(int(Math::floor(value+0.5)));
 				break;
 			
 			case FLOAT:
 				textField->setValue<double>(value);
 				break;
 			}
-		}
-	
-	/* Update the slider: */
-	switch(sliderMapping)
-		{
-		case LINEAR:
-			slider->setValueRange(valueMin,valueMax,valueIncrement);
-			slider->setValue(value);
-			break;
 		
-		case EXP10:
-			slider->setValueRange(Math::log10(valueMin),Math::log10(valueMax),valueIncrement);
-			slider->setValue(Math::log10(value));
-			break;
-		}
-	}
-
-void TextFieldSlider::setValue(double newValue)
-	{
-	/* Set the value: */
-	value=newValue;
-	
-	/* Check the value against the valid range: */
-	if(value<valueMin)
-		value=valueMin;
-	if(value>valueMax)
-		value=valueMax;
-	
-	/* Update the text field: */
-	switch(valueType)
-		{
-		case UINT:
-			textField->setValue<unsigned int>(value>0.0?(unsigned int)(value+0.5):0);
-			break;
-		
-		case INT:
-			textField->setValue<int>(int(value+0.5));
-			break;
-		
-		case FLOAT:
-			textField->setValue<double>(value);
-			break;
-		}
-	
-	/* Update the slider: */
-	switch(sliderMapping)
-		{
-		case LINEAR:
-			slider->setValue(value);
-			break;
-		
-		case EXP10:
-			slider->setValue(Math::log10(value));
-			break;
+		/* Update the slider: */
+		switch(sliderMapping)
+			{
+			case LINEAR:
+				slider->setValue(value);
+				break;
+			
+			case EXP10:
+				slider->setValue(Math::log10(value));
+				break;
+			
+			case GAMMA:
+				slider->setValue(Math::pow((value-valueMin)/(valueMax-valueMin),1.0/gammaExponent));
+				break;
+			}
 		}
 	}
 

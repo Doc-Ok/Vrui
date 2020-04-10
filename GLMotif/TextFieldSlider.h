@@ -1,7 +1,7 @@
 /***********************************************************************
 TextFieldSlider - Compound widget containing a slider and a text field
 to display and edit the slider value.
-Copyright (c) 2010-2016 Oliver Kreylos
+Copyright (c) 2010-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -25,19 +25,20 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <Misc/CallbackData.h>
 #include <Misc/CallbackList.h>
+#include <GLMotif/VariableTracker.h>
 #include <GLMotif/TextField.h>
 #include <GLMotif/Slider.h>
 #include <GLMotif/Container.h>
 
 namespace GLMotif {
 
-class TextFieldSlider:public Container
+class TextFieldSlider:public Container,public VariableTracker
 	{
 	/* Embedded classes: */
 	public:
 	enum SliderMapping // Enumerated type for mappings from slider positions to values
 		{
-		LINEAR,EXP10
+		LINEAR,EXP10,GAMMA
 		};
 	enum ValueType // Enumerated type for value types
 		{
@@ -75,6 +76,7 @@ class TextFieldSlider:public Container
 	GLfloat spacing; // Spacing between text field and slider widget
 	Slider* slider; // Pointer to the slider widget
 	SliderMapping sliderMapping; // Mapping from slider positions to values
+	double gammaExponent; // Exponent for gamma-mapped sliders
 	ValueType valueType; // Slider's value type for display in the text field
 	double valueMin,valueMax; // Value range
 	double valueIncrement; // Value increment in slider position units
@@ -86,20 +88,29 @@ class TextFieldSlider:public Container
 	TextFieldSlider(const char* sName,Container* sParent,GLint sCharWidth,GLfloat sShaftLength,bool sManageChild =true);
 	virtual ~TextFieldSlider(void);
 	
-	/* Methods inherited from Widget: */
+	/* Methods from class Widget: */
 	virtual Vector calcNaturalSize(void) const;
 	virtual ZRange calcZRange(void) const;
 	virtual void resize(const Box& newExterior);
+	virtual void updateVariables(void);
 	virtual void draw(GLContextData& contextData) const;
 	virtual void setEnabled(bool newEnabled);
 	virtual bool findRecipient(Event& event);
 	
-	/* Methods inherited from Container: */
+	/* Methods from class Container: */
 	virtual void addChild(Widget* newChild);
 	virtual void removeChild(Widget* removeChild);
 	virtual void requestResize(Widget* child,const Vector& newExteriorSize);
 	virtual Widget* getFirstChild(void);
 	virtual Widget* getNextChild(Widget* child);
+	
+	/* Methods from class VariableTracker: */
+	template <class VariableTypeParam>
+	void track(VariableTypeParam& newVariable) // Tracks the given variable and sets its initial value
+		{
+		setValue(newVariable);
+		VariableTracker::track(newVariable);
+		}
 	
 	/* New methods: */
 	const TextField* getTextField(void) const // Returns the text field widget
@@ -128,6 +139,8 @@ class TextFieldSlider:public Container
 		return sliderMapping;
 		}
 	void setSliderMapping(SliderMapping newSliderMapping); // Sets the slider position mapping
+	void setGammaExponent(double newGammaExponent); // Sets the exponent for a gamma-mapped slider
+	void setGammaExponent(double sliderPosition,double value); // Sets the exponent for a gamma-mapped slider by mapping the given slider position in [0, 1] to the given value
 	ValueType getValueType(void) const // Returns the slider's value type
 		{
 		return valueType;

@@ -1,7 +1,7 @@
 /***********************************************************************
 GeometryValueCoders - Value coder classes for templatized geometry
 objects.
-Copyright (c) 2003-2013 Oliver Kreylos
+Copyright (c) 2003-2018 Oliver Kreylos
 
 This file is part of the Templatized Geometry Library (TGL).
 
@@ -72,7 +72,7 @@ ValueCoder<Geometry::ComponentArray<ScalarParam,dimensionParam> >::decode(
 		CFixedArrayValueCoder<ScalarParam,dimensionParam>(result.getComponents()).decode(start,end,decodeEnd);
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::ComponentArray due to ")+err.what());
 		}
@@ -105,7 +105,7 @@ ValueCoder<Geometry::Vector<ScalarParam,dimensionParam> >::decode(
 		CFixedArrayValueCoder<ScalarParam,dimensionParam>(result.getComponents()).decode(start,end,decodeEnd);
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::Vector due to ")+err.what());
 		}
@@ -138,7 +138,7 @@ ValueCoder<Geometry::Point<ScalarParam,dimensionParam> >::decode(
 		CFixedArrayValueCoder<ScalarParam,dimensionParam>(result.getComponents()).decode(start,end,decodeEnd);
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::Point due to ")+err.what());
 		}
@@ -171,7 +171,7 @@ ValueCoder<Geometry::HVector<ScalarParam,dimensionParam> >::decode(
 		CFixedArrayValueCoder<ScalarParam,dimensionParam+1>(result.getComponents()).decode(start,end,decodeEnd);
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::HVector due to ")+err.what());
 		}
@@ -224,7 +224,7 @@ ValueCoder<Geometry::Box<ScalarParam,dimensionParam> >::decode(
 			*decodeEnd=cPtr;
 		return Box(origin,size);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::Box due to ")+err.what());
 		}
@@ -277,7 +277,7 @@ ValueCoder<Geometry::Plane<ScalarParam,dimensionParam> >::decode(
 			*decodeEnd=cPtr;
 		return Plane(normal,offset);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::Plane due to ")+err.what());
 		}
@@ -325,7 +325,7 @@ ValueCoder<Geometry::Matrix<ScalarParam,numRowsParam,numColumnsParam> >::decode(
 		
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::Matrix due to ")+err.what());
 		}
@@ -357,7 +357,7 @@ ValueCoder<Geometry::Rotation<ScalarParam,2> >::decode(
 		ScalarParam angle=ValueCoder<ScalarParam>::decode(start,end,decodeEnd);
 		return Geometry::Rotation<ScalarParam,2>(Math::rad(angle));
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::Rotation due to ")+err.what());
 		}
@@ -409,7 +409,7 @@ ValueCoder<Geometry::Rotation<ScalarParam,3> >::decode(
 			*decodeEnd=cPtr;
 		return Geometry::Rotation<ScalarParam,3>(axis,Math::rad(angle));
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::Rotation due to ")+err.what());
 		}
@@ -511,7 +511,7 @@ ValueCoder<Geometry::OrthonormalTransformation<ScalarParam,dimensionParam> >::de
 			*decodeEnd=cPtr;
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::OrthonormalTransformation due to ")+err.what());
 		}
@@ -641,7 +641,7 @@ ValueCoder<Geometry::OrthogonalTransformation<ScalarParam,dimensionParam> >::dec
 			*decodeEnd=cPtr;
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::OrthogonalTransformation due to ")+err.what());
 		}
@@ -755,7 +755,7 @@ ValueCoder<Geometry::AffineTransformation<ScalarParam,dimensionParam> >::decode(
 			*decodeEnd=cPtr;
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::AffineTransformation due to ")+err.what());
 		}
@@ -869,7 +869,7 @@ ValueCoder<Geometry::ProjectiveTransformation<ScalarParam,dimensionParam> >::dec
 			*decodeEnd=cPtr;
 		return result;
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		throw DecodingError(std::string("Unable to convert ")+std::string(start,end)+std::string(" to Geometry::ProjectiveTransformation due to ")+err.what());
 		}

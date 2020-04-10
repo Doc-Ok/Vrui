@@ -1,7 +1,7 @@
 /***********************************************************************
 InputDeviceAdapterMouse - Class to convert mouse and keyboard into a
 Vrui input device.
-Copyright (c) 2004-2016 Oliver Kreylos
+Copyright (c) 2004-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -71,6 +71,8 @@ class InputDeviceAdapterMouse:public InputDeviceAdapter
 	int* numMouseWheelTicks; // Number of mouse wheel ticks for each modifier key mask accumulated during frame processing
 	VRWindow* window; // VR window containing the last reported mouse position
 	Scalar mousePos[2]; // Current mouse position in window (pixel) coordinates of window containing the last known mouse position
+	bool mousePosChanged; // Flag whether the mouse position has changed since the last call to updateInputDevices
+	bool mousePosChangedLastFrame; // Flag whether the mouse position changed during the previous frame
 	bool grabPointer; // Flag whether the input device adapter should attempt to grab the mouse pointer while keys/buttons are pressed
 	VRWindow* grabWindow; // Window that currently has a pointer grab
 	bool mouseLocked; // Flag whether the mouse pointer is currently locked
@@ -110,11 +112,13 @@ class InputDeviceAdapterMouse:public InputDeviceAdapter
 		{
 		return window;
 		}
+	void invalidateMousePosition(void); // Invalidates the mouse device's position due to a change to its containing window's screen and/or viewer
 	const Scalar* getMousePosition(void) const // Returns the current mouse position in window (pixel) coordinates
 		{
 		return mousePos;
 		}
 	void setMousePosition(VRWindow* newWindow,int newMouseX,int newMouseY); // Sets current mouse position in window (pixel) coordinates of given window
+	void setKeyboardMode(bool newKeyboardMode); // Sets the keyboard mode flag, where key presses generate text events
 	bool keyPressed(int keysym,int modifierMask,const char* string); // Notifies adapter that a key has been pressed; returns true if adapter's state changed
 	bool keyReleased(int keysym); // Notifies adapter that a key has been released; returns true if adapter's state changed
 	void resetKeys(VRWindow* newWindow,const XKeymapEvent& event); // Resets pressed keys and the modifier key mask when the mouse cursor re-enters a window

@@ -1,7 +1,7 @@
 /***********************************************************************
 VRDeviceClient - Class encapsulating the VR device protocol's client
 side.
-Copyright (c) 2002-2018 Oliver Kreylos
+Copyright (c) 2002-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -21,6 +21,8 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 02111-1307 USA
 ***********************************************************************/
 
+#define DEBUG_PROTOCOL 0
+
 #include <Vrui/Internal/VRDeviceClient.h>
 
 #include <Misc/SizedTypes.h>
@@ -30,6 +32,10 @@ Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #include <Realtime/Time.h>
 #include <Vrui/Internal/VRDeviceDescriptor.h>
 #include <Vrui/Internal/HMDConfiguration.h>
+
+#if DEBUG_PROTOCOL
+#include <iostream>
+#endif
 
 namespace Vrui {
 
@@ -79,6 +85,10 @@ void* VRDeviceClient::streamReceiveThreadMethod(void)
 			VRDevicePipe::MessageIdType message=pipe.readMessage();
 			if(message==VRDevicePipe::PACKET_REPLY)
 				{
+				#if DEBUG_PROTOCOL
+				std::cout<<"Received PACKET_REPLY"<<std::endl;
+				#endif
+				
 				/* Read server's state: */
 				{
 				Threads::Mutex::Lock stateLock(stateMutex);
@@ -93,6 +103,78 @@ void* VRDeviceClient::streamReceiveThreadMethod(void)
 					/* Adjust all received time stamps by the client/server clock difference: */
 					adjustTrackerStateTimeStamps(state,timeStampDelta);
 					}
+				}
+				
+				/* Signal packet reception: */
+				packetSignalCond.broadcast();
+				
+				/* Invoke packet notification callback: */
+				if(packetNotificationCallback!=0)
+					(*packetNotificationCallback)(this);
+				}
+			else if(message==VRDevicePipe::TRACKER_UPDATE)
+				{
+				/* Read a tracker update packet: */
+				{
+				Threads::Mutex::Lock stateLock(stateMutex);
+				
+				unsigned int trackerIndex=pipe.read<Misc::UInt16>();
+				VRDeviceState::TrackerState trackerState=Misc::Marshaller<VRDeviceState::TrackerState>::read(pipe);
+				state.setTrackerState(trackerIndex,trackerState);
+				VRDeviceState::TimeStamp trackerTimeStamp=pipe.read<VRDeviceState::TimeStamp>();
+				if(!local)
+					trackerTimeStamp+=timeStampDelta;
+				state.setTrackerTimeStamp(trackerIndex,trackerTimeStamp);
+				bool trackerValid=pipe.read<Misc::UInt8>()!=0U;
+				state.setTrackerValid(trackerIndex,trackerValid);
+				
+				#if DEBUG_PROTOCOL
+				std::cout<<"Received TRACKER_UPDATE for tracker "<<trackerIndex<<", time "<<trackerTimeStamp<<", now "<<(trackerValid?"valid":"invalid")<<std::endl;
+				#endif
+				}
+				
+				/* Signal packet reception: */
+				packetSignalCond.broadcast();
+				
+				/* Invoke packet notification callback: */
+				if(packetNotificationCallback!=0)
+					(*packetNotificationCallback)(this);
+				}
+			else if(message==VRDevicePipe::BUTTON_UPDATE)
+				{
+				/* Read a button update packet: */
+				{
+				Threads::Mutex::Lock stateLock(stateMutex);
+				
+				unsigned int buttonIndex=pipe.read<Misc::UInt16>();
+				VRDeviceState::ButtonState buttonState=pipe.read<Misc::UInt8>()!=0U;
+				state.setButtonState(buttonIndex,buttonState);
+				
+				#if DEBUG_PROTOCOL
+				std::cout<<"Received BUTTON_UPDATE for button "<<buttonIndex<<", state "<<(buttonState?"pressed":"released")<<std::endl;
+				#endif
+				}
+				
+				/* Signal packet reception: */
+				packetSignalCond.broadcast();
+				
+				/* Invoke packet notification callback: */
+				if(packetNotificationCallback!=0)
+					(*packetNotificationCallback)(this);
+				}
+			else if(message==VRDevicePipe::VALUATOR_UPDATE)
+				{
+				/* Read a valuator update packet: */
+				{
+				Threads::Mutex::Lock stateLock(stateMutex);
+				
+				unsigned int valuatorIndex=pipe.read<Misc::UInt16>();
+				VRDeviceState::ValuatorState valuatorState=pipe.read<VRDeviceState::ValuatorState>();
+				state.setValuatorState(valuatorIndex,valuatorState);
+				
+				#if DEBUG_PROTOCOL
+				std::cout<<"Received VALUATOR_UPDATE for valuator "<<valuatorIndex<<", state "<<valuatorState<<std::endl;
+				#endif
 				}
 				
 				/* Signal packet reception: */
@@ -156,7 +238,7 @@ void* VRDeviceClient::streamReceiveThreadMethod(void)
 				break;
 				}
 			}
-		catch(std::runtime_error err)
+		catch(const std::runtime_error& err)
 			{
 			/* Signal an error and shut down: */
 			if(errorCallback!=0)
@@ -406,7 +488,7 @@ void VRDeviceClient::getPacket(void)
 					adjustTrackerStateTimeStamps(state,timeStampDelta);
 					}
 				}
-			catch(std::runtime_error err)
+			catch(const std::runtime_error& err)
 				{
 				/* Mark the connection as dead and re-throw the original exception: */
 				connectionDead=true;
@@ -428,7 +510,7 @@ void VRDeviceClient::powerOff(unsigned int powerFeatureIndex)
 		}
 	}
 
-void VRDeviceClient::hapticTick(unsigned int hapticFeatureIndex,unsigned int duration)
+void VRDeviceClient::hapticTick(unsigned int hapticFeatureIndex,unsigned int duration,unsigned int frequency,unsigned int amplitude)
 	{
 	/* Check if device server supports haptic feedback: */
 	if(serverProtocolVersionNumber>=6U)
@@ -437,6 +519,11 @@ void VRDeviceClient::hapticTick(unsigned int hapticFeatureIndex,unsigned int dur
 		pipe.writeMessage(VRDevicePipe::HAPTICTICK_REQUEST);
 		pipe.write<Misc::UInt16>(hapticFeatureIndex);
 		pipe.write<Misc::UInt16>(duration);
+		if(serverProtocolVersionNumber>=8U)
+			{
+			pipe.write<Misc::UInt16>(frequency);
+			pipe.write<Misc::UInt8>(amplitude);
+			}
 		pipe.flush();
 		}
 	}

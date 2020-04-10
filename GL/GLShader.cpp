@@ -2,7 +2,7 @@
 GLShader - Simple class to encapsulate vertex and fragment programs
 written in the OpenGL Shading Language; assumes that vertex and fragment
 shader objects are not shared between shader programs.
-Copyright (c) 2007-2014 Oliver Kreylos
+Copyright (c) 2007-2018 Oliver Kreylos
 
 This file is part of the OpenGL Support Library (GLSupport).
 
@@ -81,7 +81,7 @@ void GLShader::compileVertexShader(const char* shaderSourceFileName)
 		/* Store the shader for linking: */
 		vertexShaderObjects.push_back(vertexShaderObject);
 		}
-	catch(std::runtime_error)
+	catch(const std::runtime_error&)
 		{
 		/* Delete the vertex shader: */
 		if(vertexShaderObject!=0)
@@ -108,7 +108,7 @@ void GLShader::compileVertexShaderFromString(const char* shaderSource)
 		/* Store the shader for linking: */
 		vertexShaderObjects.push_back(vertexShaderObject);
 		}
-	catch(std::runtime_error)
+	catch(const std::runtime_error&)
 		{
 		/* Delete the vertex shader: */
 		if(vertexShaderObject!=0)
@@ -135,7 +135,7 @@ void GLShader::compileFragmentShader(const char* shaderSourceFileName)
 		/* Store the shader for linking: */
 		fragmentShaderObjects.push_back(fragmentShaderObject);
 		}
-	catch(std::runtime_error)
+	catch(const std::runtime_error&)
 		{
 		/* Delete the fragment shader: */
 		if(fragmentShaderObject!=0)
@@ -162,7 +162,7 @@ void GLShader::compileFragmentShaderFromString(const char* shaderSource)
 		/* Store the shader for linking: */
 		fragmentShaderObjects.push_back(fragmentShaderObject);
 		}
-	catch(std::runtime_error)
+	catch(const std::runtime_error&)
 		{
 		/* Delete the fragment shader: */
 		if(fragmentShaderObject!=0)

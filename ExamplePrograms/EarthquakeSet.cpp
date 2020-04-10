@@ -1,7 +1,7 @@
 /***********************************************************************
 EarthquakeSet - Class to represent and render sets of earthquakes with
 3D locations, magnitude and event time.
-Copyright (c) 2006-2015 Oliver Kreylos
+Copyright (c) 2006-2019 Oliver Kreylos
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -194,7 +194,7 @@ EarthquakeSet::DataItem::~DataItem(void)
 Methods of class EarthquakeSet:
 ******************************/
 
-void EarthquakeSet::loadANSSFile(IO::FilePtr earthquakeFile,const Geometry::Geoid<double>& referenceEllipsoid,const Geometry::Vector<double,3>& offset,double scaleFactor,std::vector<Event>& eventList)
+void EarthquakeSet::loadANSSFile(IO::FilePtr earthquakeFile,const Geometry::Geoid<double>& referenceEllipsoid,const Geometry::Vector<double,3>& offset,std::vector<Event>& eventList)
 	{
 	/* Wrap a value source around the input file: */
 	IO::ValueSource source(earthquakeFile);
@@ -238,14 +238,14 @@ void EarthquakeSet::loadANSSFile(IO::FilePtr earthquakeFile,const Geometry::Geoi
 		std::string lon(line,32,9);
 		geodeticPosition[0]=Math::rad(atof(lon.c_str()));
 		
-		/* Read depth and convert to ellipsoid height in meters: */
+		/* Read depth and convert to ellipsoid height in kilometers: */
 		std::string dep(line,42,6);
-		geodeticPosition[2]=atof(dep.c_str())*-1000.0;
+		geodeticPosition[2]=-atof(dep.c_str());
 		
-		/* Convert the spherical position to offset and scaled Cartesian: */
+		/* Convert the spherical position to offset Cartesian: */
 		Geometry::Geoid<double>::Point cartesianPosition=referenceEllipsoid.geodeticToCartesian(geodeticPosition);
 		for(int i=0;i<3;++i)
-			e[i]=float((cartesianPosition[i]+offset[i])*scaleFactor);
+			e[i]=float(cartesianPosition[i]+offset[i]);
 		
 		/* Read magnitude: */
 		std::string mag(line,49,5);
@@ -256,7 +256,7 @@ void EarthquakeSet::loadANSSFile(IO::FilePtr earthquakeFile,const Geometry::Geoi
 		}
 	}
 
-void EarthquakeSet::loadCSVFile(IO::FilePtr earthquakeFile,const Geometry::Geoid<double>& referenceEllipsoid,const Geometry::Vector<double,3>& offset,double scaleFactor,std::vector<Event>& eventList)
+void EarthquakeSet::loadCSVFile(IO::FilePtr earthquakeFile,const Geometry::Geoid<double>& referenceEllipsoid,const Geometry::Vector<double,3>& offset,std::vector<Event>& eventList)
 	{
 	/* Wrap a value source around the input file: */
 	IO::ValueSource source(earthquakeFile);
@@ -376,7 +376,7 @@ void EarthquakeSet::loadCSVFile(IO::FilePtr earthquakeFile,const Geometry::Geoid
 					else if(column==lngIndex)
 						geodeticPosition[0]=Math::rad(source.readNumber());
 					else if(column==radiusIndex)
-						geodeticPosition[2]=source.readNumber()*1000.0;
+						geodeticPosition[2]=source.readNumber();
 					else if(column==dateIndex)
 						date=source.readString();
 					else if(column==timeIndex)
@@ -398,7 +398,7 @@ void EarthquakeSet::loadCSVFile(IO::FilePtr earthquakeFile,const Geometry::Geoid
 					source.skipString();
 				}
 			}
-		catch(IO::ValueSource::NumberError err)
+		catch(const IO::ValueSource::NumberError&)
 			{
 			/* Ignore the error and the malformed event */
 			}
@@ -430,7 +430,7 @@ void EarthquakeSet::loadCSVFile(IO::FilePtr earthquakeFile,const Geometry::Geoid
 				cartesianPosition=referenceEllipsoid.geodeticToCartesian(geodeticPosition);
 				}
 			for(int i=0;i<3;++i)
-				e[i]=float((cartesianPosition[i]+offset[i])*scaleFactor);
+				e[i]=float(cartesianPosition[i]+offset[i]);
 			
 			/* Calculate the event time: */
 			e.time=parseDateTime(date.c_str(),time.c_str());
@@ -746,11 +746,11 @@ void EarthquakeSet::createShader(EarthquakeSet::DataItem* dataItem,const GLClipP
 	dataItem->pointTextureLocation=dataItem->pointRenderer->getUniformLocation("pointTexture");
 	}
 
-EarthquakeSet::EarthquakeSet(IO::DirectoryPtr directory,const char* earthquakeFileName,const Geometry::Geoid<double>& referenceEllipsoid,const Geometry::Vector<double,3>& offset,double scaleFactor,const GLColorMap& sColorMap)
+EarthquakeSet::EarthquakeSet(IO::DirectoryPtr directory,const char* earthquakeFileName,const Geometry::Geoid<double>& referenceEllipsoid,const Geometry::Vector<double,3>& offset,const GLColorMap& sColorMap)
 	:GLObject(false),
 	 colorMap(sColorMap),
 	 layeredRendering(false),
-	 pointRadius(1.0f),highlightTime(1.0),currentTime(0.0)
+	 highlightTime(1.0),currentTime(0.0)
 	{
 	/* Open the earthquake file: */
 	IO::FilePtr earthquakeFile=directory->openFile(earthquakeFileName);
@@ -764,18 +764,18 @@ EarthquakeSet::EarthquakeSet(IO::DirectoryPtr directory,const char* earthquakeFi
 		if(Misc::hasCaseExtension(earthquakeFileName,".anss"))
 			{
 			/* Read an earthquake database snapshot in "readable" ANSS format: */
-			loadANSSFile(earthquakeFile,referenceEllipsoid,offset,scaleFactor,eventList);
+			loadANSSFile(earthquakeFile,referenceEllipsoid,offset,eventList);
 			}
 		else
 			{
 			/* Read an earthquake event file in space- or comma-separated format: */
-			loadCSVFile(earthquakeFile,referenceEllipsoid,offset,scaleFactor,eventList);
+			loadCSVFile(earthquakeFile,referenceEllipsoid,offset,eventList);
 			}
 		
 		/* Sort the event list into a kd-tree: */
 		events.setPoints(int(eventList.size()),&eventList[0],8);
 		}
-	catch(std::runtime_error err)
+	catch(const std::runtime_error& err)
 		{
 		/* Wrap and re-throw the exception: */
 		Misc::throwStdErr("EarthquakeSet::EarthquakeSet: Error \"%s\" while reading file %s",err.what(),earthquakeFileName);
@@ -882,11 +882,6 @@ void EarthquakeSet::disableLayeredRendering(void)
 	layeredRendering=false;
 	}
 
-void EarthquakeSet::setPointRadius(float newPointRadius)
-	{
-	pointRadius=newPointRadius;
-	}
-
 void EarthquakeSet::setHighlightTime(double newHighlightTime)
 	{
 	highlightTime=newHighlightTime;
@@ -897,7 +892,7 @@ void EarthquakeSet::setCurrentTime(double newCurrentTime)
 	currentTime=newCurrentTime;
 	}
 
-void EarthquakeSet::glRenderAction(GLContextData& contextData) const
+void EarthquakeSet::glRenderAction(float pointRadius,GLContextData& contextData) const
 	{
 	/* Get a pointer to the data item: */
 	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);
@@ -977,7 +972,7 @@ void EarthquakeSet::glRenderAction(GLContextData& contextData) const
 	glPopAttrib();
 	}
 
-void EarthquakeSet::glRenderAction(const EarthquakeSet::Point& eyePos,bool front,GLContextData& contextData) const
+void EarthquakeSet::glRenderAction(const EarthquakeSet::Point& eyePos,bool front,float pointRadius,GLContextData& contextData) const
 	{
 	/* Get a pointer to the data item: */
 	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);

@@ -195,7 +195,10 @@ struct WindowState
 	public:
 	Display* display; // The display connection
 	int screen; // The screen containing the window
+	Window root; // Handle of the screen's root window
 	Window window; // X11 window handle
+	Window parent; // Handle of window's parent, to query on-screen position of decorated windows
+	int parentOffset[2]; // Position of window's top-left corner in its parent's coordinate system
 	Atom wmProtocolsAtom,wmDeleteWindowAtom; // Atoms needed for window manager communication
 	int origin[2]; // Window origin in pixels
 	int size[2]; // Window width and height in pixels
@@ -227,14 +230,14 @@ struct WindowState
 		}
 	
 	/* Methods: */
-	void init(Display* sDisplay,int sScreen,bool makeFullscreen,bool decorate)
+	bool init(Display* sDisplay,int sScreen,bool makeFullscreen,bool decorate)
 		{
 		/* Store the display connection: */
 		display=sDisplay;
 		screen=sScreen;
 		
 		/* Get root window of this screen: */
-		Window root=RootWindow(display,screen);
+		root=RootWindow(display,screen);
 		
 		/* Get root window's size: */
 		XWindowAttributes rootAttr;
@@ -247,7 +250,11 @@ struct WindowState
 		XSetStandardProperties(display,window,"XBackground","XBackground",None,0,0,0);
 		XSelectInput(display,window,ExposureMask|StructureNotifyMask|KeyPressMask);
 		
-		if(!decorate)
+		/* Start by assuming that the window is not parented: */
+		parent=window;
+		parentOffset[1]=parentOffset[0]=0;
+		
+		if(!decorate&&!makeFullscreen)
 			{
 			/*******************************************************************
 			Ask the window manager not to decorate this window:
@@ -277,6 +284,8 @@ struct WindowState
 				/* Set the window manager hint property: */
 				XChangeProperty(display,window,hintProperty,hintProperty,32,PropModeReplace,reinterpret_cast<unsigned char*>(&hints),5);
 				}
+			else
+				return false;
 			}
 		
 		/* Initiate window manager communication: */
@@ -287,31 +296,73 @@ struct WindowState
 		/* Map the window onto the screen: */
 		XMapRaised(display,window);
 		
-		/* Move the window to its requested position (modern window managers ignore creation positions: */
-		if(decorate)
+		/* Flush the X queue in case there are events in the receive queue from opening a previous window: */
+		XFlush(display);
+		
+		/* Process events up until the first Expose event to determine the initial window position and size: */
+		bool receivedConfigureNotify=false;
+		while(true)
 			{
-			/* Query the window tree to get the window's parent (the one containing the decorations): */
-			Window win_root,win_parent;
-			Window* win_children;
-			unsigned int win_numChildren;
-			XQueryTree(display,window,&win_root,&win_parent,&win_children,&win_numChildren);
+			XEvent event;
+			XWindowEvent(display,window,ExposureMask|StructureNotifyMask,&event);
 			
-			/* Query the window's and the parent's geometry to calculate the window's offset inside its parent: */
-			int win_parentX,win_parentY,win_x,win_y;
-			unsigned int win_width,win_height,win_borderWidth,win_depth;
-			XGetGeometry(display,win_parent,&win_root,&win_parentX,&win_parentY,&win_width,&win_height,&win_borderWidth,&win_depth);
-			XGetGeometry(display,window,&win_root,&win_x,&win_y,&win_width,&win_height,&win_borderWidth,&win_depth);
-	
-			/* Move the window's interior's top-left corner to the requested position: */
-			XMoveWindow(display,window,origin[0]-(win_x-win_parentX),origin[1]-(win_y-win_parentY));
-			
-			/* Clean up: */
-			XFree(win_children);
+			if(event.type==ConfigureNotify)
+				{
+				/* Check if this is a real event: */
+				if(decorate&&!event.xconfigure.send_event)
+					{
+					/* The event's position is this window's offset inside its parent: */
+					parentOffset[0]=event.xconfigure.x;
+					parentOffset[1]=event.xconfigure.y;
+					}
+				
+				/* Retrieve the window size: */
+				size[0]=event.xconfigure.width;
+				size[1]=event.xconfigure.height;
+				receivedConfigureNotify=true;
+				}
+			else if(event.type==ReparentNotify)
+				{
+				/* Retrieve the window's new parent: */
+				parent=event.xreparent.parent;
+				}
+			else if(event.type==Expose)
+				{
+				/* Put the event back into the queue: */
+				XPutBackEvent(display,&event);
+				
+				/* We're done here: */
+				break;
+				}
 			}
-		else
+		
+		if(receivedConfigureNotify)
 			{
-			/* Move the window's top-left corner to the requested position: */
-			XMoveWindow(display,window,origin[0],origin[1]);
+			/*********************************************************************
+			Since modern window managers ignore window positions when opening
+			windows, we now need to move the window to its requested position.
+			*********************************************************************/
+			
+			/* In case this request goes to a redirected parent window, calculate its intended position by taking this window's parent offset into account: */
+			XMoveWindow(display,window,origin[0]-parentOffset[0],origin[1]-parentOffset[1]);
+			
+			/* Wait for the final ConfigureNotify event to determine the final window position and size: */
+			while(true)
+				{
+				XEvent event;
+				XWindowEvent(display,window,StructureNotifyMask,&event);
+			
+				if(event.type==ConfigureNotify)
+					{
+					/* Retrieve the final window position and size: */
+					origin[0]=event.xconfigure.x;
+					origin[1]=event.xconfigure.y;
+					size[0]=event.xconfigure.width;
+					size[1]=event.xconfigure.height;
+					
+					break;
+					}
+				}
 			}
 		
 		if(makeFullscreen)
@@ -346,6 +397,8 @@ struct WindowState
 		/* Initialize background and foreground colors: */
 		setBackground(0,0,0);
 		setForeground(255,255,255);
+		
+		return true;
 		}
 	void loadImage(const char* ppmFileName,const char* components)
 		{
@@ -467,14 +520,8 @@ struct WindowState
 				window.
 				*******************************************************************/
 				
-				/* Query the window's geometry to calculate its offset inside its parent window (the window manager decoration): */
-				Window win_root;
-				int win_x,win_y;
-				unsigned int win_width,win_height,win_borderWidth,win_depth;
-				XGetGeometry(display,window,&win_root,&win_x,&win_y,&win_width,&win_height,&win_borderWidth,&win_depth);
-				
 				/* Set the window's position and size such that the window manager decoration falls outside the root window: */
-				XMoveResizeWindow(display,window,-win_x,-win_y,DisplayWidth(display,screen),DisplayHeight(display,screen));
+				XMoveResizeWindow(display,window,-parentOffset[0],-parentOffset[1],DisplayWidth(display,screen),DisplayHeight(display,screen));
 				}
 			}
 		fullscreened=!fullscreened;
@@ -833,9 +880,39 @@ int main(int argc,char* argv[])
 			switch(event.type)
 				{
 				case ConfigureNotify:
-					ws[i].size[0]=event.xconfigure.width;
-					ws[i].size[1]=event.xconfigure.height;
+					{
+					/* Check whether this is a real (parent-relative coordinates) or synthetic (root-relative coordinates) event: */
+					if(event.xconfigure.send_event) // Synthetic event
+						{
+						/* Update the window position and size: */
+						ws[i].origin[0]=event.xconfigure.x;
+						ws[i].origin[1]=event.xconfigure.y;
+						ws[i].size[0]=event.xconfigure.width;
+						ws[i].size[1]=event.xconfigure.height;
+						}
+					else // Real event
+						{
+						/* Update this window's parent offset, just in case: */
+						ws[i].parentOffset[0]=event.xconfigure.x;
+						ws[i].parentOffset[1]=event.xconfigure.y;
+						
+						/* Update the window size: */
+						ws[i].size[0]=event.xconfigure.width;
+						ws[i].size[1]=event.xconfigure.height;
+						
+						/* Query the parent's geometry to find the absolute window position: */
+						Window root;
+						int x,y;
+						unsigned int width,height,borderWidth,depth;
+						XGetGeometry(ws[i].display,ws[i].parent,&root,&x,&y,&width,&height,&borderWidth,&depth);
+						
+						/* Calculate the window position: */
+						ws[i].origin[0]=x+ws[i].parentOffset[0];
+						ws[i].origin[1]=y+ws[i].parentOffset[1];
+						}
+					
 					break;
+					}
 				
 				case KeyPress:
 					{

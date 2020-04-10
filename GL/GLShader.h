@@ -2,7 +2,7 @@
 GLShader - Simple class to encapsulate vertex and fragment programs
 written in the OpenGL Shading Language; assumes that vertex and fragment
 shader objects are not shared between shader programs.
-Copyright (c) 2007-2014 Oliver Kreylos
+Copyright (c) 2007-2019 Oliver Kreylos
 
 This file is part of the OpenGL Support Library (GLSupport).
 
@@ -64,6 +64,10 @@ class GLShader
 		}
 	int getAttribLocation(const char* attributeName) const; // Returns the index of an attribute variable defined in the shader program
 	int getUniformLocation(const char* uniformName) const; // Returns the index of a uniform variable defined in the shader program
+	GLhandleARB getProgramObject(void) const
+		{
+		return programObject;
+		}
 	void useProgram(void) const; // Installs the shader program in the current OpenGL context
 	static void disablePrograms(void); // Removes any installed shader programs from the current OpenGL context
 	};

@@ -1,7 +1,7 @@
 /***********************************************************************
 RazerHydra - Class to represent a Razer / Sixense Hydra dual-sensor
 desktop 6-DOF tracking device.
-Copyright (c) 2011-2015 Oliver Kreylos
+Copyright (c) 2011-2018 Oliver Kreylos
 
 This file is part of the Vrui VR Device Driver Daemon (VRDeviceDaemon).
 
@@ -280,7 +280,7 @@ RazerHydra::RazerHydra(unsigned int index)
 			/* This request always fails, but seems to be necessary: */
 			device.readControl(LIBUSB_REQUEST_TYPE_CLASS|LIBUSB_RECIPIENT_INTERFACE,0x01U,0x0100U,interface,replyBuffer,sizeof(replyBuffer));
 			}
-		catch(std::runtime_error)
+		catch(const std::runtime_error&)
 			{
 			/* Just ignore the error and carry on */
 			}

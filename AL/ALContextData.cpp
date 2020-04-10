@@ -1,7 +1,7 @@
 /***********************************************************************
 ALContextData - Class to store per-AL-context data for application
 objects.
-Copyright (c) 2006-2009 Oliver Kreylos
+Copyright (c) 2006-2020 Oliver Kreylos
 
 This file is part of the OpenAL Support Library (ALSupport).
 
@@ -173,4 +173,10 @@ ALContextData::Error ALContextData::getError(void)
 	Error result=lastError;
 	lastError=NO_ERROR;
 	return result;
+	}
+
+void ALContextData::setAttenuation(ALContextData::Scalar newReferenceDistance,ALContextData::Scalar newRolloffFactor)
+	{
+	referenceDistance=newReferenceDistance;
+	rolloffFactor=newRolloffFactor;
 	}

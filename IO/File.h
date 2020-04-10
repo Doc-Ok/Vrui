@@ -1,7 +1,7 @@
 /***********************************************************************
 File - Base class for high-performance buffered binary read/write access
 to file-like objects.
-Copyright (c) 2010-2015 Oliver Kreylos
+Copyright (c) 2010-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -120,6 +120,9 @@ class File:public Threads::RefCounted
 		/* Reset the read buffer pointers: */
 		readDataEnd=readBuffer;
 		readPtr=readBuffer;
+		
+		/* Reset the end-of-file flag: */
+		haveEof=false;
 		}
 	void setReadBuffer(size_t newReadBufferSize,Byte* newReadBuffer,bool deleteOldBuffer =true); // Allows derived class to set a new read buffer while deleting or releasing the previous buffer; discards unread data in read buffer
 	size_t getReadBufferDataSize(void) const // Returns current amount of data in the read buffer

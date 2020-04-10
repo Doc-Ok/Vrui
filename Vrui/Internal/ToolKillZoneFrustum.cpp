@@ -2,7 +2,7 @@
 ToolKillZoneFrustum - Class for "kill zones" for tools and input devices
 that use projection onto a plane to detect whether tools are inside the
 zone.
-Copyright (c) 2007-2014 Oliver Kreylos
+Copyright (c) 2007-2020 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -117,6 +117,10 @@ void ToolKillZoneFrustum::setCenter(const Point& newCenter)
 
 bool ToolKillZoneFrustum::isDeviceIn(const InputDevice* device) const
 	{
+	/* Bail out if the tool kill zone is inactive: */
+	if(!active)
+		return false;
+	
 	/* Project the device's position into the screen plane: */
 	ONTransform screenT=screen->getScreenTransformation();
 	Point screenHead=screenT.inverseTransform(viewer->getHeadPosition());

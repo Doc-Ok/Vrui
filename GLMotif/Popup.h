@@ -1,6 +1,6 @@
 /***********************************************************************
 Popup - Class for top-level GLMotif UI components.
-Copyright (c) 2001-2010 Oliver Kreylos
+Copyright (c) 2001-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -22,7 +22,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #ifndef GLMOTIF_POPUP_INCLUDED
 #define GLMOTIF_POPUP_INCLUDED
 
-#include <GLMotif/Container.h>
+#include <GLMotif/SingleChildContainer.h>
 
 /* Forward declarations: */
 class GLFont;
@@ -32,7 +32,7 @@ class Label;
 
 namespace GLMotif {
 
-class Popup:public Container
+class Popup:public SingleChildContainer
 	{
 	/* Elements: */
 	protected:
@@ -40,14 +40,13 @@ class Popup:public Container
 	GLfloat marginWidth; // Width of margin around title and child widget
 	GLfloat titleSpacing; // Height of spacing between title and child widget
 	Label* title; // Label widget for the popup title (optional)
-	Widget* child; // Single child of the popup
 	
 	/* Constructors and destructors: */
 	public:
 	Popup(const char* sName,WidgetManager* sManager);
 	virtual ~Popup(void); // Pops down the widget if it is currently managed by the widget manager and destroys it
 	
-	/* Methods inherited from Widget: */
+	/* Methods from class Widget: */
 	virtual const WidgetManager* getManager(void) const
 		{
 		return manager;
@@ -60,28 +59,17 @@ class Popup:public Container
 	virtual ZRange calcZRange(void) const;
 	virtual void resize(const Box& newExterior);
 	virtual void draw(GLContextData& contextData) const;
-	virtual bool findRecipient(Event& event);
 	
-	/* Methods inherited from Container: */
+	/* Methods from class Container: */
 	virtual void addChild(Widget* newChild);
 	virtual void removeChild(Widget* removeChild);
 	virtual void requestResize(Widget* child,const Vector& newExteriorSize);
-	virtual Widget* getFirstChild(void);
-	virtual Widget* getNextChild(Widget* child);
 	
 	/* New methods: */
 	void setMarginWidth(GLfloat newMarginWidth); // Changes the margin width
 	void setTitleSpacing(GLfloat newTitleSpacing); // Changes the title spacing
 	void setTitle(const char* titleString,const GLFont* font); // Changes the title label string; deprecated
 	void setTitle(const char* titleString); // Changes the title label string
-	const Widget* getChild(void) const // Returns the popup's child
-		{
-		return child;
-		}
-	Widget* getChild(void) // Ditto
-		{
-		return child;
-		}
 	};
 
 }

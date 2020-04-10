@@ -1,6 +1,6 @@
 /***********************************************************************
 PriorityHeap - Implementation of a priority queue with a heap structure.
-Copyright (c) 2003-2011 Oliver Kreylos
+Copyright (c) 2003-2020 Oliver Kreylos
 
 This file is part of the Miscellaneous Support Library (Misc).
 
@@ -24,6 +24,7 @@ Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #define MISC_PRIORITYHEAP_INCLUDED
 
 #include <stddef.h>
+#include <stdlib.h>
 #include <new>
 #include <Misc/Utility.h>
 
@@ -127,8 +128,6 @@ class PriorityHeap
 	/* Elements: */
 	private:
 	size_t allocSize; // Size of allocated heap array
-	float growRate; // Rate the heap array grows at when running out of space
-	void* memChunk; // Pointer to uninitialized memory
 	size_t numElements; // Number of elements currently in heap
 	Content* heap; // Pointer to heap array
 	
@@ -136,35 +135,31 @@ class PriorityHeap
 	void reallocate(size_t newAllocSize)
 		{
 		/* Allocate a new memory chunk: */
-		allocSize=newAllocSize;
-		void* newMemChunk=new char[allocSize*sizeof(Content)];
-		Content* newHeap=static_cast<Content*>(newMemChunk);
+		Content* newHeap=newAllocSize>0?static_cast<Content*>(malloc(newAllocSize*sizeof(Content))):0;
 		
-		/* Copy all entries from the old heap, then delete the old entries: */
+		/* Copy all entries from the old heap, then destroy them: */
 		for(size_t i=0;i<numElements;++i)
 			{
 			new(&newHeap[i]) Content(heap[i]);
 			heap[i].~Content();
 			}
 		
-		/* Delete the old heap and use the new one: */
-		delete[] static_cast<char*>(memChunk);
-		memChunk=newMemChunk;
+		/* Delete the old heap and install the new one: */
+		free(heap);
+		allocSize=newAllocSize;
 		heap=newHeap;
 		}
 	
 	/* Constructors and destructors: */
 	public:
-	PriorityHeap(size_t sAllocSize =0,float sGrowRate =1.5) // Creates empty heap
-		:allocSize(sAllocSize),growRate(sGrowRate),
-		 memChunk(new char[allocSize*sizeof(Content)]),
-		 numElements(0),heap(static_cast<Content*>(memChunk))
+	PriorityHeap(size_t sAllocSize =0) // Creates empty heap
+		:allocSize(sAllocSize),numElements(0),
+		 heap(allocSize>0?static_cast<Content*>(malloc(allocSize*sizeof(Content))):0)
 		{
 		}
-	PriorityHeap(const PriorityHeap& source)
-		:allocSize(source.allocSize),growRate(source.growRate),
-		 memChunk(new char[allocSize*sizeof(Content)]),
-		 numElements(source.numElements),heap(static_cast<Content*>(memChunk))
+	PriorityHeap(const PriorityHeap& source) // Copy constructor
+		:allocSize(source.allocSize),numElements(source.numElements),
+		 heap(allocSize>0?static_cast<Content*>(malloc(allocSize*sizeof(Content))):0)
 		{
 		/* Copy all entries from the source heap: */
 		for(size_t i=0;i<numElements;++i)
@@ -172,11 +167,10 @@ class PriorityHeap
 		}
 	~PriorityHeap(void)
 		{
-		/* Destroy all heap entries: */
+		/* Destroy all heap entries and delete the heap: */
 		for(size_t i=0;i<numElements;++i)
 			heap[i].~Content();
-		
-		delete[] static_cast<char*>(memChunk);
+		free(heap);
 		}
 	
 	/* Methods: */
@@ -191,12 +185,11 @@ class PriorityHeap
 			/* Allocate a new memory chunk if necessary: */
 			if(allocSize!=source.allocSize)
 				{
-				delete[] static_cast<char*>(memChunk);
+				/* Delete the old heap and allocate a new one: */
+				free(heap);
 				allocSize=source.allocSize;
-				memChunk=new char[allocSize*sizeof(Content)];
-				heap=static_cast<Content*>(memChunk);
+				heap=allocSize>0?static_cast<Content*>(malloc(allocSize*sizeof(Content))):0;
 				}
-			growRate=source.growRate;
 			
 			/* Copy all elements from the source heap: */
 			numElements=source.numElements;
@@ -225,7 +218,7 @@ class PriorityHeap
 	PriorityHeap& insert(const Content& newElement)
 		{
 		if(numElements==allocSize)
-			reallocate(int(float(allocSize)*growRate)+1);
+			reallocate((allocSize*3U)/2U+1U);
 		
 		/* Find the correct insertion position for the new element: */
 		size_t insertionPos=numElements;

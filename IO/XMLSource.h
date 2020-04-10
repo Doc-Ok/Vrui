@@ -1,6 +1,6 @@
 /***********************************************************************
 XMLSource - Class implementing a low-level XML file processor.
-Copyright (c) 2018 Oliver Kreylos
+Copyright (c) 2018-2019 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -198,6 +198,11 @@ class XMLSource
 	~XMLSource(void); // Destroys the XML processor
 	
 	/* Methods: */
+	static bool isSpace(int c) // Returns true if the given character is XML whitespace
+		{
+		/* XML whitespace is space, horizontal tab, and line feed (carriage return is removed on input): */
+		return c==0x20||c==0x09||c==0x0a;
+		}
 	bool eof(void) const // Returns true if the entire source has been read
 		{
 		return syntaxType==EndOfFile;
@@ -244,6 +249,8 @@ class XMLSource
 	int readProcessingInstruction(void); // Returns the next character of a processing instruction, or -1 at end of processing instruction
 	int readAttributeValue(void); // Returns the next attribute value character, or -1 at end of attribute value
 	int readCharacterData(void); // Returns the next character data character, or -1 at end of character data
+	void putback(int character); // Puts the last non-EOF character read from a syntax element back for another read
+	bool skipWhitespace(void); // Skips whitespace in the current character data syntax element; returns true if there is more character data to read
 	std::string& readUTF8(std::string& string); // Appends the current syntax element to the given UTF-8 encoded string
 	std::string readUTF8(void) // Returns the current syntax element as a UTF-8 encoded string
 		{
@@ -251,6 +258,15 @@ class XMLSource
 		std::string result;
 		readUTF8(result);
 		return result;
+		}
+	FilePtr readBase64(void); // Returns a sub-file to read base64-encoded binary data from the current character data element
+	void skip(void); // Skips the next syntax element; if the next syntax element is an opening tag name, it will skip the entire XML element up to and including its closing tag
+	void skipElement(const std::string& elementName); // Skips an element whose name has already been read into the given UTF-8 encoded string
+	bool skipToTag(void); // Skips to the next opening or closing tag; returns true if one is found (eof otherwise)
+	bool skipToElement(const char* elementName); // Skips syntactic elements until the next opening tag for an element of the given name; reads requested element's tag name; returns true if element was found (eof otherwise)
+	bool skipToElement(const std::string& elementName) // Ditto
+		{
+		return skipToElement(elementName.c_str());
 		}
 	};
 

@@ -1,7 +1,7 @@
 /***********************************************************************
 MouseNavigationTool - Class encapsulating the navigation behaviour of a
 mouse in the OpenInventor SoXtExaminerViewer.
-Copyright (c) 2004-2015 Oliver Kreylos
+Copyright (c) 2004-2019 Oliver Kreylos
 
 This file is part of the Virtual Reality User Interface Library (Vrui).
 
@@ -265,7 +265,7 @@ void MouseNavigationTool::startDollying(void)
 	
 	/* Calculate the dollying direction: */
 	if(configuration.dollyCenter)
-		dollyDirection=-getForwardDirection();
+		dollyDirection=Geometry::normalize(getMainViewer()->getHeadPosition()-getDisplayCenter());
 	else
 		dollyDirection=-getButtonDeviceRayDirection(0);
 	
@@ -518,6 +518,9 @@ void MouseNavigationTool::valuatorCallback(int,InputDevice::ValuatorCallbackData
 						currentWheelScale=Scalar(1);
 						navigationMode=SCALING_WHEEL;
 						}
+					
+					/* Set an end time for the wheel operation: */
+					wheelNavEndTime=getApplicationTime()+0.25;
 					}
 				break;
 			
@@ -533,11 +536,13 @@ void MouseNavigationTool::valuatorCallback(int,InputDevice::ValuatorCallbackData
 			{
 			case DOLLYING_WHEEL:
 			case SCALING_WHEEL:
+				#if 0 // Don't do this yet!
 				/* Deactivate this tool: */
 				deactivate();
 				
 				/* Go to idle mode: */
 				navigationMode=IDLE;
+				#endif
 				break;
 			
 			default:
@@ -555,6 +560,22 @@ void MouseNavigationTool::frame(void)
 		{
 		currentPos=newCurrentPos;
 		lastMoveTime=getApplicationTime();
+		}
+	
+	/* Check if a wheel navigation operation timed out: */
+	if(navigationMode==DOLLYING_WHEEL||navigationMode==SCALING_WHEEL)
+		{
+		if(Vrui::getApplicationTime()>=wheelNavEndTime)
+			{
+			/* Deactivate the tool and go back to idle mode: */
+			deactivate();
+			navigationMode=IDLE;
+			}
+		else
+			{
+			/* Schedule another update for the same time-out: */
+			Vrui::scheduleUpdate(wheelNavEndTime);
+			}
 		}
 	
 	/* Act depending on this tool's current state: */

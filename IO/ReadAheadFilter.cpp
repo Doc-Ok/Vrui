@@ -1,7 +1,7 @@
 /***********************************************************************
 ReadAheadFilter - Class to add background read-ahead to other IO::File
 abstractions to improve read throughput.
-Copyright (c) 2011 Oliver Kreylos
+Copyright (c) 2011-2018 Oliver Kreylos
 
 This file is part of the I/O Support Library (IO).
 
@@ -87,7 +87,7 @@ void* ReadAheadFilter::readAheadThreadMethod(void)
 				}
 			bufferSizes[inBuffer]=halfBufferSize-bufSize;
 			}
-		catch(std::runtime_error)
+		catch(const std::runtime_error&)
 			{
 			/* Ignore the error; reader thread will treat it as end-of-file: */
 			bufferSizes[inBuffer]=0;

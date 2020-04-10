@@ -1,7 +1,7 @@
 /***********************************************************************
 DropdownBox - Class for labels that show one string out of a list of
 strings and allow changing the selection by choosing from a pop-up list.
-Copyright (c) 2006-2016 Oliver Kreylos
+Copyright (c) 2006-2019 Oliver Kreylos
 
 This file is part of the GLMotif Widget Library (GLMotif).
 
@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <Misc/CallbackData.h>
 #include <Misc/CallbackList.h>
 #include <GL/gl.h>
+#include <GLMotif/VariableTracker.h>
 #include <GLMotif/GlyphGadget.h>
 #include <GLMotif/Label.h>
 
@@ -39,7 +40,7 @@ class RowColumn;
 
 namespace GLMotif {
 
-class DropdownBox:public Label
+class DropdownBox:public Label,public VariableTracker
 	{
 	/* Embedded classes: */
 	public:
@@ -107,16 +108,25 @@ class DropdownBox:public Label
 	DropdownBox(const char* sName,Container* sParent,const std::vector<std::string>& sItems,bool manageChild =true); // Creates a drop-down box for the given vector of items
 	~DropdownBox(void);
 	
-	/* Methods inherited from Widget: */
+	/* Methods from class Widget: */
 	virtual Vector calcNaturalSize(void) const;
 	virtual ZRange calcZRange(void) const;
 	virtual void resize(const Box& newExterior);
 	virtual void setBackgroundColor(const Color& newBackgroundColor);
+	virtual void updateVariables(void);
 	virtual void draw(GLContextData& contextData) const;
 	virtual bool findRecipient(Event& event);
 	virtual void pointerButtonDown(Event& event);
 	virtual void pointerButtonUp(Event& event);
 	virtual void pointerMotion(Event& event);
+	
+	/* Methods from class VariableTracker: */
+	template <class VariableTypeParam>
+	void track(VariableTypeParam& newVariable) // Tracks the given variable and sets its initial value
+		{
+		setSelectedItem(newVariable);
+		VariableTracker::track(newVariable);
+		}
 	
 	/* New methods: */
 	void setSpacing(GLfloat newSpacing);
